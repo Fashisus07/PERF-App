@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CasoRepositoryImpl } from '../../data/repositories/CasoRepositoryImpl';
 import { Caso, Urgencia } from '../../domain/models/Caso';
 import { ListarCasosPorUrgencia } from '../../domain/usecases/ListarCasosPorUrgencia';
@@ -11,15 +11,21 @@ const listarCasos = new ListarCasosPorUrgencia(new CasoRepositoryImpl());
 export function useCasos() {
   const [casos, setCasos] = useState<Caso[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState<FiltroUrgencia>('todos');
 
-  useEffect(() => {
-    listarCasos.ejecutar().then((c) => {
-      setCasos(c);
-      setCargando(false);
-    });
+  const cargar = useCallback(() => {
+    setCargando(true);
+    setError(false);
+    listarCasos
+      .ejecutar()
+      .then(setCasos)
+      .catch(() => setError(true))
+      .finally(() => setCargando(false));
   }, []);
+
+  useEffect(cargar, [cargar]);
 
   const conteo = useMemo(
     () => ({
@@ -40,5 +46,5 @@ export function useCasos() {
     );
   }, [casos, busqueda, filtro]);
 
-  return { visibles, conteo, cargando, busqueda, setBusqueda, filtro, setFiltro };
+  return { visibles, conteo, casos, cargando, error, recargar: cargar, busqueda, setBusqueda, filtro, setFiltro };
 }

@@ -1,14 +1,18 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { BottomTabBarProps, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArchivoScreen } from '../screens/archivo/ArchivoScreen';
+import { LoginScreen } from '../screens/auth/LoginScreen';
+import { RegistroScreen } from '../screens/auth/RegistroScreen';
 import { CasosScreen } from '../screens/casos/CasosScreen';
 import { TurnosScreen } from '../screens/turnos/TurnosScreen';
 import { colors, fonts } from '../theme';
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
 const ICONOS: Record<string, keyof typeof MaterialIcons.glyphMap> = {
   Casos: 'pets',
@@ -38,14 +42,38 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
   );
 }
 
+function MainTabs() {
+  return (
+    <Tab.Navigator tabBar={(p) => <TabBar {...p} />} screenOptions={{ headerShown: false }}>
+      <Tab.Screen name="Casos" component={CasosScreen} />
+      <Tab.Screen name="Turnos" component={TurnosScreen} />
+      <Tab.Screen name="Archivo" component={ArchivoScreen} />
+    </Tab.Navigator>
+  );
+}
+
 export function AppNavigator() {
   return (
     <NavigationContainer>
-      <Tab.Navigator tabBar={(p) => <TabBar {...p} />} screenOptions={{ headerShown: false }}>
-        <Tab.Screen name="Casos" component={CasosScreen} />
-        <Tab.Screen name="Turnos" component={TurnosScreen} />
-        <Tab.Screen name="Archivo" component={ArchivoScreen} />
-      </Tab.Navigator>
+      <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Login">
+          {({ navigation }) => (
+            <LoginScreen
+              onLogin={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
+              onRegistro={() => navigation.navigate('Registro')}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Registro">
+          {({ navigation }) => (
+            <RegistroScreen
+              onRegistrar={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
+              onLogin={() => navigation.goBack()}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Main" component={MainTabs} />
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }
