@@ -86,11 +86,47 @@ assets/           logo, imágenes e íconos
 | expo-sqlite | Base local de casos, turnos e historial. |
 | AsyncStorage | Preferencias simples (clave-valor). |
 | Supabase (propuesto) | Base remota y almacenamiento de fotos. |
-| expo-camera | Foto del animal en el momento del rescate. |
-| expo-location | Ubicación puntual del rescate (una lectura, cuida la batería). |
+| expo-camera | Foto del animal en el momento del rescate (visor en vivo, flash y cámara frontal). |
+| expo-image-picker | Elegir una foto de la galería como alternativa a la cámara. |
+| expo-location | Ubicación puntual del rescate (una lectura, cuida la batería) y conversión de coordenadas a dirección. |
 | expo-notifications | Recordatorios locales de turnos, sin conexión. |
 | NetInfo | Detectar la conexión y disparar la sincronización. |
 | Jest + React Native Testing Library | Tests de dominio y de pantallas. |
+
+## Cámara y ubicación en el rescate
+
+Las dos capacidades del dispositivo se usan en el flujo **Nuevo rescate** (`src/presentation/screens/rescate/`).
+
+### Cámara (paso 1)
+
+- **Librerías:** `expo-camera` para el visor y la captura, y `expo-image-picker` para elegir una foto de la galería. Se instalaron con `npx expo install`, que elige las versiones compatibles con el SDK de Expo del proyecto.
+- **Cómo funciona:** `PasoFoto.tsx` muestra un `CameraView` con flash (auto, encendido, apagado), cambio de cámara frontal/trasera y una guía de encuadre. Al tocar el disparador se llama a `takePictureAsync` y la foto queda guardada como archivo local en el teléfono; el borrador del rescate guarda solo su ruta (`fotoUri`), no la imagen.
+- **Permisos:** `useCameraPermissions()` pide el permiso de cámara en pantalla. Si el usuario lo rechaza, se muestra una explicación y se puede elegir una foto de la galería o seguir con "Omitir foto por urgencia".
+- **Configuración:** los textos de los permisos están en `app.json`, en la sección `plugins`. El permiso de micrófono se bloquea a propósito (`recordAudioAndroid: false` en `expo-camera` y `microphonePermission: false` en `expo-image-picker`) porque la app no graba audio ni video; ambas librerías lo piden por defecto.
+
+### Ubicación / GPS (paso 2)
+
+- **Librería:** `expo-location`.
+- **Cómo funciona:** el hook `useUbicacion` pide el permiso, lee la última posición conocida (instantánea) y, si no hay, pide una nueva con un límite de 15 segundos para que la pantalla nunca quede esperando. Después convierte las coordenadas en una dirección legible con `reverseGeocodeAsync` ("Barrio, Calle 123").
+- **Sin permiso o sin GPS:** se avisa y el voluntario puede escribir el lugar a mano. Esto es importante en la calle y sin señal.
+- **Qué se guarda:** el barrio y la calle, más las coordenadas (`lat`, `lng`) en el borrador del rescate.
+
+### Dónde está cada cosa
+
+| Archivo | Responsabilidad |
+|---------|-----------------|
+| `screens/rescate/PasoFoto.tsx` | Visor de cámara, captura, galería y permiso |
+| `screens/rescate/PasoDatos.tsx` | Formulario de datos y botón "Usar mi ubicación" |
+| `hooks/useUbicacion.ts` | Permiso, lectura del GPS y dirección |
+| `domain/models/Rescate.ts` | Datos del borrador y cálculo de urgencia por triaje |
+| `domain/usecases/RegistrarRescate.ts` | Validación y registro del caso (sin depender del dispositivo) |
+
+La capa de dominio no conoce la cámara ni el GPS: recibe la ruta de la foto y las coordenadas ya resueltas. Así las reglas se pueden probar sin dispositivo.
+
+### Probarlo en el emulador
+
+- **Cámara:** el emulador de Android usa una cámara virtual, por lo que la foto puede salir negra con la fecha. En un teléfono real se ve normal.
+- **GPS:** se puede fijar una posición desde Android Studio (Extended controls > Location) o con `adb emu geo fix <longitud> <latitud>` (por ejemplo `adb emu geo fix -58.4106 -34.6094` para Balvanera).
 
 ## Estrategia Offline First
 
@@ -112,14 +148,17 @@ Ante un conflicto de edición prevalece la modificación más reciente. El cierr
 - [x] Logo, ícono de la app y splash.
 - [x] Navegación inferior: Casos, Turnos, Archivo.
 - [x] Pantalla **Casos**: resumen de urgentes, búsqueda, filtros por urgencia y lista (datos de ejemplo).
-- [ ] Detalle del caso y cierre por adopción.
-- [ ] Nuevo rescate (3 pasos).
+- [x] Pantalla **Detalle del caso**: ficha, ubicación actual y de rescate, estado, reseña sanitaria e historial.
+- [x] **Cambio de estado** con confirmación (motivo obligatorio; destino obligatorio al derivar a tránsito o clínica).
+- [x] **Nuevo rescate** en 3 pasos, con confirmación y pantalla de error al guardar (datos de ejemplo en memoria).
+- [ ] Cierre por adopción.
 - [ ] Turnos y agendar turno.
 - [ ] Archivo de casos.
 - [ ] Ajustes.
 - [ ] Estados de carga, vacío, error y sin conexión.
 - [ ] SQLite, sincronización y Supabase.
-- [ ] Cámara, ubicación y notificaciones locales.
+- [x] Cámara y ubicación (ver la sección *Cámara y ubicación en el rescate*).
+- [ ] Notificaciones locales.
 - [ ] Tests.
 
 ## Cómo correrla
@@ -132,6 +171,15 @@ npx expo start
 ```
 
 Con el emulador abierto, presionar `a` en la terminal. Con un celular, escanear el QR con Expo Go.
+
+Si se agregaron librerías nativas (como la cámara) o se cambió `app.json`, hay que volver a compilar la app para que tome los permisos:
+
+```bash
+npm install
+npx expo run:android
+```
+
+Este comando genera la carpeta `android/` (no se sube al repositorio) y la instala en el emulador. Necesita JDK 21; con el JDK 25 que trae Android Studio falla la compilación nativa.
 
 Verificar tipos:
 

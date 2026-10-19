@@ -41,7 +41,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "PERF necesita acceder a tus fotos para adjuntar la imagen del animal."
+          "photosPermission": "PERF necesita acceder a tus fotos para adjuntar la imagen del animal.",
+          "microphonePermission": false
         }
       ]
     ]
