@@ -16,14 +16,34 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.PERFtmp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-font",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "PERF necesita la cámara para fotografiar al animal rescatado.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "PERF usa tu ubicación para registrar dónde fue el rescate."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PERF necesita acceder a tus fotos para adjuntar la imagen del animal."
+        }
+      ]
     ]
   }
 }

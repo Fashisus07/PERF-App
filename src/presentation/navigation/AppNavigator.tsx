@@ -7,6 +7,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArchivoScreen } from '../screens/archivo/ArchivoScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegistroScreen } from '../screens/auth/RegistroScreen';
+import { DetalleCasoScreen } from '../screens/detalle/DetalleCasoScreen';
+import { CambioEstadoScreen } from '../screens/estado/CambioEstadoScreen';
+import { ConfirmacionCambioScreen } from '../screens/estado/ConfirmacionCambioScreen';
+import { ErrorGuardadoScreen } from '../screens/rescate/ErrorGuardadoScreen';
+import { NuevoRescateScreen } from '../screens/rescate/NuevoRescateScreen';
+import { RescateGuardadoScreen } from '../screens/rescate/RescateGuardadoScreen';
 import { CasosScreen } from '../screens/casos/CasosScreen';
 import { TurnosScreen } from '../screens/turnos/TurnosScreen';
 import { colors, fonts } from '../theme';
@@ -73,6 +79,12 @@ export function AppNavigator() {
           )}
         </Stack.Screen>
         <Stack.Screen name="Main" component={MainTabs} />
+        <Stack.Screen name="DetalleCaso" component={DetalleCasoScreen} />
+        <Stack.Screen name="NuevoRescate" component={NuevoRescateScreen} />
+        <Stack.Screen name="RescateGuardado" component={RescateGuardadoScreen} options={{ gestureEnabled: false }} />
+        <Stack.Screen name="ErrorGuardado" component={ErrorGuardadoScreen} options={{ gestureEnabled: false }} />
+        <Stack.Screen name="CambioEstado" component={CambioEstadoScreen} />
+        <Stack.Screen name="ConfirmacionCambio" component={ConfirmacionCambioScreen} options={{ gestureEnabled: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

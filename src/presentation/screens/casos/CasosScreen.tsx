@@ -31,6 +31,7 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
     if (online) setUltimaSync(new Date());
   }, [online]);
 
+  const verFicha = (id: string) => navigation?.navigate?.('DetalleCaso', { casoId: id });
   const nuevoRescate = () => navigation?.navigate?.('NuevoRescate');
 
   if (cargando) {
@@ -161,7 +162,11 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
         contentContainerStyle={styles.list}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         renderItem={({ item }) =>
-          online ? <CasoCard caso={item} /> : <CasoOfflineCard caso={item} />
+          online ? (
+            <CasoCard caso={item} onPress={() => verFicha(item.id)} />
+          ) : (
+            <CasoOfflineCard caso={item} onFicha={() => verFicha(item.id)} />
+          )
         }
         ListHeaderComponent={online ? headerOnline : headerOffline}
         ListFooterComponent={

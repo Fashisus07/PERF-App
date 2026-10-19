@@ -2,8 +2,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Caso } from '../../domain/models/Caso';
 import { colors, fonts } from '../theme';
+import { UbicacionCaso } from './UbicacionCaso';
 import { UrgenciaBadge } from './UrgenciaBadge';
 
+const ALTO_CARD = 198;
 const COLOR_DIAS = { urgente: colors.urgente, atencion: colors.atencion, aldia: colors.aldia };
 
 export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }) {
@@ -25,24 +27,15 @@ export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }
               {caso.diasEnEspera} {caso.diasEnEspera === 1 ? 'día' : 'días'} en espera
             </Text>
           </View>
-          <Text style={styles.estado}>
+          <Text style={styles.estado} numberOfLines={1}>
             <Text style={styles.estadoLabel}>Estado: </Text>
             {caso.estado}
           </Text>
-        </View>
-      </View>
-      <View style={styles.footer}>
-        <View style={styles.location}>
-          <MaterialIcons
-            name={caso.ubicacionTipo === 'veterinaria' ? 'local-hospital' : 'location-on'}
-            size={16}
-            color={colors.textSubtle}
-          />
-          <Text style={styles.locationText}>{caso.ubicacion}</Text>
-        </View>
-        <View style={styles.cta}>
-          <Text style={styles.ctaText}>Ver ficha</Text>
-          <MaterialIcons name="chevron-right" size={18} color={colors.primary} />
+          <UbicacionCaso caso={caso} />
+          <View style={styles.cta}>
+            <Text style={styles.ctaText}>Ver ficha</Text>
+            <MaterialIcons name="chevron-right" size={18} color={colors.primary} />
+          </View>
         </View>
       </View>
     </Pressable>
@@ -50,8 +43,9 @@ export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: 12, overflow: 'hidden' },
-  body: { flexDirection: 'row', gap: 14, padding: 14 },
+  // Alto fijo: todas las tarjetas miden lo mismo aunque tengan o no la línea "Rescatado en".
+  card: { height: ALTO_CARD, backgroundColor: colors.surface, borderRadius: 12, overflow: 'hidden' },
+  body: { flex: 1, flexDirection: 'row', gap: 14, padding: 14 },
   foto: { width: 80, height: 80, borderRadius: 12 },
   info: { flex: 1, gap: 6 },
   nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -63,9 +57,6 @@ const styles = StyleSheet.create({
   dias: { fontFamily: fonts.bold, fontSize: 13, flexShrink: 0 },
   estado: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
   estadoLabel: { fontFamily: fonts.regular, color: colors.textSubtle },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surfaceFooter, paddingHorizontal: 14, paddingVertical: 10 },
-  location: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  locationText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted },
-  cta: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  cta: { marginTop: 'auto', alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 2 },
   ctaText: { fontFamily: fonts.bold, fontSize: 13, color: colors.primary },
 });

@@ -2,6 +2,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AccionRapida, Caso } from '../../domain/models/Caso';
 import { colors, fonts } from '../theme';
+import { UbicacionCaso } from './UbicacionCaso';
 
 const ACCIONES: Record<AccionRapida, { label: string; icono: keyof typeof MaterialIcons.glyphMap }> = {
   'llamar-vet': { label: 'Llamar Vet', icono: 'phone' },
@@ -35,16 +36,7 @@ export function CasoOfflineCard({ caso, onFicha, onAccion }: Props) {
               <MaterialIcons name={u.icono} size={14} color={u.fg} />
             </View>
           </View>
-          <View style={styles.location}>
-            <MaterialIcons
-              name={caso.ubicacionTipo === 'veterinaria' ? 'local-hospital' : 'location-on'}
-              size={16}
-              color={colors.textSubtle}
-            />
-            <Text style={styles.locationText} numberOfLines={1}>
-              {caso.direccion ? `${caso.ubicacion} · ${caso.direccion}` : caso.ubicacion}
-            </Text>
-          </View>
+          <UbicacionCaso caso={caso} detalle />
           <View style={styles.chips}>
             <View style={styles.chip}>
               <Text style={[styles.chipText, { color: colors.textMuted }]}>
@@ -91,8 +83,6 @@ const styles = StyleSheet.create({
   nombre: { fontFamily: fonts.bold, fontSize: 18, color: colors.text },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 9999 },
   badgeText: { fontFamily: fonts.semibold, fontSize: 13 },
-  location: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  locationText: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.textMuted },
   chips: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceChip, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
   chipLocal: { backgroundColor: colors.bannerInfo },

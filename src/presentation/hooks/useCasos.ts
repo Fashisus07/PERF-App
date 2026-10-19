@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { CasoRepositoryImpl } from '../../data/repositories/CasoRepositoryImpl';
 import { Caso, Urgencia } from '../../domain/models/Caso';
 import { ListarCasosPorUrgencia } from '../../domain/usecases/ListarCasosPorUrgencia';
@@ -15,17 +16,24 @@ export function useCasos() {
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState<FiltroUrgencia>('todos');
 
-  const cargar = useCallback(() => {
-    setCargando(true);
+  const cargar = useCallback((silencioso = false) => {
+    if (!silencioso) setCargando(true);
     setError(false);
     listarCasos
       .ejecutar()
-      .then(setCasos)
+      .then((lista) => setCasos(lista.map((c) => ({ ...c }))))
       .catch(() => setError(true))
       .finally(() => setCargando(false));
   }, []);
 
-  useEffect(cargar, [cargar]);
+  // Carga al entrar y recarga sin spinner al volver a la pantalla (ej: tras cambiar un estado).
+  const primera = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      cargar(!primera.current);
+      primera.current = false;
+    }, [cargar]),
+  );
 
   const conteo = useMemo(
     () => ({
@@ -46,5 +54,5 @@ export function useCasos() {
     );
   }, [casos, busqueda, filtro]);
 
-  return { visibles, conteo, casos, cargando, error, recargar: cargar, busqueda, setBusqueda, filtro, setFiltro };
+  return { visibles, conteo, casos, cargando, error, recargar: () => cargar(), busqueda, setBusqueda, filtro, setFiltro };
 }
