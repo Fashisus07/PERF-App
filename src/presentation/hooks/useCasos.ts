@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { CasoRepositoryImpl } from '../../data/repositories/CasoRepositoryImpl';
 import { Caso, Urgencia } from '../../domain/models/Caso';
 import { ListarCasosPorUrgencia } from '../../domain/usecases/ListarCasosPorUrgencia';
+import { obtenerAjustes } from './useAjustes';
 
 export type FiltroUrgencia = 'todos' | Urgencia;
 
@@ -19,8 +20,9 @@ export function useCasos() {
   const cargar = useCallback((silencioso = false) => {
     if (!silencioso) setCargando(true);
     setError(false);
-    listarCasos
-      .ejecutar()
+    // El umbral de días de los ajustes decide qué casos se marcan como urgentes.
+    obtenerAjustes()
+      .then((a) => listarCasos.ejecutar(a.umbralUrgenteDias))
       .then((lista) => setCasos(lista.map((c) => ({ ...c }))))
       .catch(() => setError(true))
       .finally(() => setCargando(false));

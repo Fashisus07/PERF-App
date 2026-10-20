@@ -1,10 +1,14 @@
 import { MaterialIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '../theme';
 
 export function AppHeader({ subtitle, onSettings }: { subtitle: string; onSettings?: () => void }) {
   const { top } = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+  // Por defecto el engranaje abre Ajustes en todas las pantallas principales.
+  const abrirAjustes = onSettings ?? (() => navigation.navigate('Ajustes'));
   return (
     <View style={[styles.header, { paddingTop: top }]}>
       <View style={styles.row}>
@@ -16,7 +20,7 @@ export function AppHeader({ subtitle, onSettings }: { subtitle: string; onSettin
           </View>
         </View>
         <View style={styles.actions}>
-          <Pressable style={styles.iconBtn} onPress={onSettings} accessibilityLabel="Ajustes">
+          <Pressable style={styles.iconBtn} onPress={abrirAjustes} accessibilityLabel="Ajustes">
             <MaterialIcons name="settings" size={24} color={colors.text} />
           </Pressable>
           <Image source={require('../../../assets/images/avatar.jpg')} style={styles.avatar} />

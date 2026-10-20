@@ -84,7 +84,7 @@ assets/           logo, imágenes e íconos
 | React Navigation | Barra inferior de pestañas y flujo de rescate en pasos. |
 | Hooks + Zustand | Estado de pantalla y lógica de presentación. |
 | expo-sqlite | Base local de casos, turnos e historial. |
-| AsyncStorage | Preferencias simples (clave-valor). |
+| AsyncStorage | Preferencias simples (clave-valor): ajustes de urgencia y recordatorios. |
 | Supabase (propuesto) | Base remota y almacenamiento de fotos. |
 | expo-camera | Foto del animal en el momento del rescate (visor en vivo, flash y cámara frontal). |
 | expo-image-picker | Elegir una foto de la galería como alternativa a la cámara. |
@@ -128,6 +128,47 @@ La capa de dominio no conoce la cámara ni el GPS: recibe la ruta de la foto y l
 - **Cámara:** el emulador de Android usa una cámara virtual, por lo que la foto puede salir negra con la fecha. En un teléfono real se ve normal.
 - **GPS:** se puede fijar una posición desde Android Studio (Extended controls > Location) o con `adb emu geo fix <longitud> <latitud>` (por ejemplo `adb emu geo fix -58.4106 -34.6094` para Balvanera).
 
+## Turnos y recordatorios locales
+
+La agenda y el flujo de agendar están en `src/presentation/screens/turnos/`. Los recordatorios usan `expo-notifications` y **funcionan sin conexión**, porque los dispara el sistema operativo desde una alarma programada en el teléfono.
+
+- **Cómo funciona:** al confirmar un turno, el caso de uso `AgendarTurno` guarda el turno y le pide a un servicio de recordatorios que programe los avisos elegidos (1 día antes y/o 2 horas antes). Cada aviso se programa con `scheduleNotificationAsync` con un disparador por fecha (`DATE`).
+- **Permiso:** la app pide el permiso de notificaciones la primera vez que se agenda un turno. Si se rechaza, el turno se guarda igual y la confirmación avisa que no hay recordatorios.
+- **Avisos que ya pasaron:** si un aviso cae en un momento anterior a ahora (por ejemplo, "1 día antes" de un turno de mañana a la tarde), no se programa. La pantalla de confirmación muestra solo los que quedaron activos.
+- **Botones de la notificación:** "Llamar al centro" abre el teléfono con el número de la clínica (se maneja en `App.tsx`). "Ver en la app", al igual que tocar la notificación, **por ahora solo abre la aplicación**, sin llevar a una pantalla en particular.
+- **Pendiente (limitación conocida):** tocar la notificación debería llevar directo al turno (la pestaña Turnos). El id del turno ya viaja dentro de la notificación (`data.turnoId`), pero falta navegar al recibirlo. Si la app estaba cerrada, también hay que resolver el paso por el Login, porque la sesión es simulada.
+- **Cupo no disponible:** si el horario elegido ya está reservado en la clínica, `AgendarTurno` lanza `CupoNoDisponible` con los dos próximos horarios libres. La pantalla de error los ofrece para reservar con un toque, sin volver a cargar los datos.
+
+| Archivo | Responsabilidad |
+|---------|-----------------|
+| `domain/usecases/AgendarTurno.ts` | Reglas: horario futuro, cupo libre y alternativas |
+| `domain/services/RecordatorioTurnos.ts` | Interfaz de los recordatorios (el dominio no conoce `expo-notifications`) |
+| `data/local/RecordatoriosNotificaciones.ts` | Implementación con `expo-notifications` |
+| `data/repositories/TurnoRepositoryImpl.ts` | Turnos en memoria (pendiente reemplazar por SQLite) |
+| `screens/turnos/` | Agenda, formulario, confirmación y error de cupo |
+
+Para verificar los avisos en el emulador: `adb shell dumpsys alarm | grep PERFtmp` lista las alarmas programadas por la app.
+
+## Ajustes
+
+Se abre desde el engranaje del encabezado de las pantallas principales (`src/presentation/screens/ajustes/`). Las preferencias se guardan en el teléfono con **AsyncStorage** (`@react-native-async-storage/async-storage`), que es la opción simple para pares clave-valor; los casos y turnos irán en SQLite.
+
+| Ajuste | Qué hace realmente |
+|--------|--------------------|
+| Días para marcar como urgente | Cambia la urgencia de los casos: uno con más días de espera que el umbral se muestra como urgente en la lista y en el detalle. Solo sube la urgencia, nunca la baja. La regla está en `conUmbral` (dominio). Rango 1 a 30 días, validado en `GuardarAjustes`. |
+| Recordatorio anticipado / Alerta de salida | Definen qué recordatorios vienen marcados al agendar un turno (1 día antes y 2 horas antes). |
+| Forzar sincronización ahora | Llama a `SincronizarAhora`: sin conexión no intenta y avisa; con conexión envía los casos pendientes. |
+| Espacio en memoria local | Resumen de casos activos y archivados. |
+| Cerrar sesión | Vuelve al Login (la sesión es simulada). |
+
+Limitaciones actuales, para no confundirlas con funciones terminadas:
+
+- El **modo offline automático** se guarda, pero todavía no cambia el comportamiento: la app ya trabaja siempre con datos locales y no hay base SQLite ni API reales.
+- El **espacio en memoria** y los **casos archivados** son estimados con datos de ejemplo, no una medición real.
+- La **sincronización** es simulada hasta que exista la API (`TODO` de Mateo en `CasoRepositoryImpl`).
+- El **voluntario** de la sesión ("Mariana Gomez · Brigada Caballito") es un dato fijo de ejemplo.
+- La **versión** que se muestra es la real de `app.json`; el Figma muestra una de ejemplo.
+
 ## Estrategia Offline First
 
 La app siempre lee y escribe primero en la base local; la red solo sincroniza en segundo plano.
@@ -152,13 +193,13 @@ Ante un conflicto de edición prevalece la modificación más reciente. El cierr
 - [x] **Cambio de estado** con confirmación (motivo obligatorio; destino obligatorio al derivar a tránsito o clínica).
 - [x] **Nuevo rescate** en 3 pasos, con confirmación y pantalla de error al guardar (datos de ejemplo en memoria).
 - [ ] Cierre por adopción.
-- [ ] Turnos y agendar turno.
+- [x] **Turnos**: agenda, agendar turno, confirmación y aviso de cupo no disponible (datos de ejemplo en memoria).
 - [ ] Archivo de casos.
-- [ ] Ajustes.
+- [x] **Ajustes** (umbral de urgencia, recordatorios y sincronización; ver sus limitaciones en la sección *Ajustes*).
 - [ ] Estados de carga, vacío, error y sin conexión.
 - [ ] SQLite, sincronización y Supabase.
 - [x] Cámara y ubicación (ver la sección *Cámara y ubicación en el rescate*).
-- [ ] Notificaciones locales.
+- [x] Notificaciones locales de turnos (ver la sección *Turnos y recordatorios locales*).
 - [ ] Tests.
 
 ## Cómo correrla

@@ -1,3 +1,4 @@
+import { ResumenAlmacenamiento } from '../../domain/models/Ajustes';
 import { Caso, CambioEstado, ETIQUETA_ESTADO, rescateDe } from '../../domain/models/Caso';
 import { CasoRepository } from '../../domain/repositories/CasoRepository';
 import { casosMock } from '../mock/casosMock';
@@ -21,6 +22,24 @@ export class CasoRepositoryImpl implements CasoRepository {
     };
     casosMock.unshift(caso);
     return caso;
+  }
+
+  // TODO (Mateo): medir el espacio real de la base SQLite y contar los casos archivados.
+  async resumenAlmacenamiento(): Promise<ResumenAlmacenamiento> {
+    const archivados = 14;
+    return {
+      casosActivos: casosMock.length,
+      archivados,
+      megabytes: Math.round(casosMock.length * 1.775 * 10) / 10, // estimado: ~1,8 MB por caso con fotos
+      capacidadMegabytes: 40,
+    };
+  }
+
+  // TODO (Mateo): enviar las operaciones pendientes a la API y esperar su confirmación.
+  async sincronizar(): Promise<number> {
+    const pendientes = casosMock.filter((c) => c.pendienteSync);
+    pendientes.forEach((c) => (c.pendienteSync = false));
+    return pendientes.length;
   }
 
   async actualizarEstado(id: string, cambio: CambioEstado): Promise<Caso> {

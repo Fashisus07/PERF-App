@@ -74,3 +74,17 @@ export function rescateDe(caso: Caso): { lugar: string; barrio?: string } {
 
 // true si el animal ya no está donde fue rescatado (tránsito, clínica, etc.).
 export const cambioDeLugar = (caso: Caso) => !!caso.barrioRescate && caso.ubicacion !== caso.barrioRescate;
+
+// "Macho • 2a" / "Hembra • 8m" a partir del sexo y la edad aproximada ("~2 años", "~8 meses").
+export function sexoYEdadCorto(caso: Caso): string {
+  const sexo = caso.sexo === 'macho' ? 'Macho' : caso.sexo === 'hembra' ? 'Hembra' : '';
+  const m = caso.edadAprox?.match(/(\d+)\s*(año|mes)/);
+  const edad = m ? `${m[1]}${m[2] === 'año' ? 'a' : 'm'}` : '';
+  return [sexo, edad].filter(Boolean).join(' • ');
+}
+
+// Un caso con más días de espera que el umbral de los ajustes se considera urgente.
+// Solo sube la urgencia: un caso marcado como urgente nunca baja por tener pocos días.
+export function conUmbral(caso: Caso, umbralUrgenteDias: number): Caso {
+  return caso.diasEnEspera > umbralUrgenteDias && caso.urgencia !== 'urgente' ? { ...caso, urgencia: 'urgente' } : caso;
+}

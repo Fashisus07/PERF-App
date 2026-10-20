@@ -44,6 +44,12 @@
           "photosPermission": "PERF necesita acceder a tus fotos para adjuntar la imagen del animal.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#005c55"
+        }
       ]
     ]
   }
