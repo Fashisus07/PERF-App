@@ -50,21 +50,24 @@ export function ConfirmacionCambioScreen({ route, navigation }: { route?: { para
           </View>
           <Text style={styles.titulo}>¡Golazo! Estado actualizado</Text>
           <Text style={styles.subtitulo}>
-            La situación de <Text style={styles.subtituloBold}>{caso.nombre}</Text> fue guardada en el registro de seguimiento.
+            La situación de <Text style={styles.subtituloBold}>{caso.nombreProvisorio}</Text> fue guardada en el registro de seguimiento.
           </Text>
         </View>
 
         <View style={styles.card}>
           <View style={styles.casoRow}>
-            <Image source={caso.foto} style={styles.foto} />
+            <Image
+              source={caso.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg')}
+              style={styles.foto}
+            />
             <View style={{ flex: 1 }}>
               <View style={styles.casoTop}>
-                <Text style={styles.nombre}>{caso.nombre}</Text>
+                <Text style={styles.nombre}>{caso.nombreProvisorio}</Text>
                 <View style={styles.idBadge}>
-                  <Text style={styles.idText}>ID #{caso.id}</Text>
+                  <Text style={styles.idText}>ID #{caso.id.slice(0, 8)}</Text>
                 </View>
               </View>
-              <Text style={styles.descripcion}>{caso.descripcion}</Text>
+              <Text style={styles.descripcion}>{caso.especie} · {caso.edadEstimada}</Text>
             </View>
           </View>
 
@@ -127,7 +130,7 @@ export function ConfirmacionCambioScreen({ route, navigation }: { route?: { para
         <View style={{ gap: 10 }}>
           <Pressable style={styles.btnPrimario} onPress={verFicha}>
             <MaterialIcons name="assignment" size={18} color="#fff" />
-            <Text style={styles.btnPrimarioText}>Ver ficha actualizada de {caso.nombre}</Text>
+            <Text style={styles.btnPrimarioText}>Ver ficha actualizada de {caso.nombreProvisorio}</Text>
           </Pressable>
           <Pressable style={styles.btnVolver} onPress={() => navigation?.popTo?.('Main')}>
             <MaterialIcons name="arrow-back" size={16} color={colors.textMuted} />

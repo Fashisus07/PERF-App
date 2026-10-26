@@ -16,7 +16,6 @@ export function RescateGuardadoScreen({ route, navigation }: { route?: { params?
   if (!p || !caso) return <View style={styles.screen} />;
 
   const irALista = () => navigation?.popTo?.('Main');
-  const barrio = caso.barrioRescate ?? caso.ubicacion;
 
   return (
     <View style={styles.screen}>
@@ -51,13 +50,18 @@ export function RescateGuardadoScreen({ route, navigation }: { route?: { params?
 
         <View style={styles.card}>
           <View style={styles.casoRow}>
-            <Image source={caso.foto} style={styles.foto} />
+            <Image
+              source={caso.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg')}
+              style={styles.foto}
+            />
             <View style={{ flex: 1, gap: 2 }}>
               <View style={styles.nombreRow}>
-                <Text style={styles.nombre} numberOfLines={1}>{caso.nombre}</Text>
-                <UrgenciaBadge urgencia={caso.urgencia} />
+                <Text style={styles.nombre} numberOfLines={1}>{caso.nombreProvisorio}</Text>
+                <UrgenciaBadge urgencia={caso.esUrgente ? 'urgente' : 'aldia'} />
               </View>
-              <Text style={styles.descripcion} numberOfLines={1}>{caso.descripcion}</Text>
+              <Text style={styles.descripcion} numberOfLines={1}>
+                {caso.especie} · {caso.edadEstimada}
+              </Text>
             </View>
           </View>
 
@@ -67,23 +71,31 @@ export function RescateGuardadoScreen({ route, navigation }: { route?: { params?
                 <MaterialIcons name="location-on" size={14} color={colors.primary} />
                 <Text style={styles.datoLabel}>Punto de rescate</Text>
               </View>
-              <Text style={styles.datoValor} numberOfLines={1}>{barrio}</Text>
-              {!!caso.direccion && <Text style={styles.datoSub} numberOfLines={1}>{caso.direccion}</Text>}
+              <Text style={styles.datoValor} numberOfLines={1}>{caso.barrio}</Text>
+              {caso.coordenadas && (
+                <Text style={styles.datoSub} numberOfLines={1}>
+                  GPS: {caso.coordenadas.latitud.toFixed(4)}, {caso.coordenadas.longitud.toFixed(4)}
+                </Text>
+              )}
             </View>
             <View style={styles.dato}>
               <View style={styles.datoTitulo}>
-                <MaterialIcons name="flag" size={14} color={colors.atencion} />
-                <Text style={styles.datoLabel}>Destino actual</Text>
+                <MaterialIcons name="home" size={14} color={colors.atencion} />
+                <Text style={styles.datoLabel}>Hogar de tránsito</Text>
               </View>
-              <Text style={styles.datoValor} numberOfLines={1}>En la calle</Text>
-              <Text style={styles.datoSub}>Sin derivación aún</Text>
+              <Text style={styles.datoValor} numberOfLines={1}>
+                {caso.transito.nombre || 'Sin asignar'}
+              </Text>
+              <Text style={styles.datoSub}>
+                {caso.transito.telefono || 'Coordinación PERF'}
+              </Text>
             </View>
           </View>
 
           <View style={styles.pie}>
             <View style={styles.idRow}>
               <MaterialIcons name="qr-code-2" size={16} color={colors.text} />
-              <Text style={styles.idText}>ID: #{caso.codigo}</Text>
+              <Text style={styles.idText}>ID: #{caso.id.slice(0, 8)}</Text>
             </View>
             <View style={styles.idRow}>
               <MaterialIcons name="schedule" size={14} color={colors.primary} />

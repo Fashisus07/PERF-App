@@ -1,12 +1,11 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  BorradorRescate,
-  ETIQUETA_EDAD,
+  ETIQUETA_CASTRACION,
   ETIQUETA_ESPECIE,
-  ETIQUETA_TRIAJE,
-  urgenciaDeTriaje,
-} from '../../../domain/models/Rescate';
+  ETIQUETA_VIRALES,
+} from '../../../domain/models/Caso';
+import { BorradorRescate } from '../../../domain/models/Rescate';
 import { colors, fonts } from '../../theme';
 import { SegmentosPaso } from './BarraRescate';
 
@@ -18,20 +17,11 @@ type Props = {
   onGuardar: () => void;
 };
 
-const ALERTA = {
-  urgente: { texto: 'Atención requerida', icono: 'error', fondo: '#ffe9d5', color: colors.atencion },
-  atencion: { texto: 'Requiere seguimiento', icono: 'schedule', fondo: '#fff1e0', color: colors.atencion },
-  aldia: { texto: 'Sin urgencia aparente', icono: 'check-circle', fondo: colors.aldiaBg, color: colors.aldia },
-} as const;
-
 export function PasoConfirmar({ borrador: b, sinConexion, guardando, onVolver, onGuardar }: Props) {
-  const alerta = ALERTA[urgenciaDeTriaje(b.triaje)];
-  const fecha = new Date(b.fecha);
-  const hora = `${String(fecha.getHours()).padStart(2, '0')}:${String(fecha.getMinutes()).padStart(2, '0')}`;
-  const nombre = b.nombre.trim() || 'Sin nombre';
+  const nombre = b.nombreProvisorio.trim() || 'Sin nombre';
 
   return (
-    <View style={styles.root}>
+    <ScrollView style={styles.root} contentContainerStyle={styles.container}>
       <View style={styles.pasoRow}>
         <Text style={styles.pasoText}>
           <Text style={styles.pasoBold}>Paso 3 de 3</Text> · Confirmación
@@ -57,14 +47,21 @@ export function PasoConfirmar({ borrador: b, sinConexion, guardando, onVolver, o
             <Text style={styles.badgeNuevoText}>Nuevo rescate</Text>
           </View>
         </View>
-        <View style={[styles.alerta, { backgroundColor: alerta.fondo }]}>
+
+        <View style={[styles.alerta, { backgroundColor: b.esUrgente ? colors.urgenteBg : colors.aldiaBg }]}>
           <View style={styles.alertaIzq}>
-            <MaterialIcons name={alerta.icono} size={18} color={alerta.color} />
-            <Text style={[styles.alertaText, { color: alerta.color }]}>{alerta.texto}</Text>
+            <MaterialIcons
+              name={b.esUrgente ? 'emergency' : 'check-circle'}
+              size={18}
+              color={b.esUrgente ? colors.urgente : colors.aldia}
+            />
+            <Text style={[styles.alertaText, { color: b.esUrgente ? colors.urgente : colors.aldia }]}>
+              {b.esUrgente ? 'Caso prioritario / Urgente' : 'Ingreso estándar'}
+            </Text>
           </View>
           <View style={styles.alertaIzq}>
             <MaterialIcons name="schedule" size={14} color={colors.textMuted} />
-            <Text style={styles.alertaHora}>Hoy · {hora}</Text>
+            <Text style={styles.alertaHora}>Hoy</Text>
           </View>
         </View>
 
@@ -73,7 +70,9 @@ export function PasoConfirmar({ borrador: b, sinConexion, guardando, onVolver, o
             <View style={{ flex: 1 }}>
               <Text style={styles.nombre}>{nombre}</Text>
               <Text style={styles.sub}>
-                {b.especie ? ETIQUETA_ESPECIE[b.especie] : ''} · {b.edad ? ETIQUETA_EDAD[b.edad] : ''}
+                {b.especie ? ETIQUETA_ESPECIE[b.especie] : 'Animal'}
+                {b.edadEstimada ? ` · ${b.edadEstimada}` : ''}
+                {b.cantidadAnimales > 1 ? ` (Camada x${b.cantidadAnimales})` : ''}
               </Text>
             </View>
             <View style={styles.pata}>
@@ -81,111 +80,179 @@ export function PasoConfirmar({ borrador: b, sinConexion, guardando, onVolver, o
             </View>
           </View>
 
-          <View style={styles.lugar}>
-            <View style={styles.lugarIcono}>
-              <MaterialIcons name="location-on" size={18} color="#fff" />
+          <View style={styles.separador} />
+
+          {/* Ficha rápida */}
+          <View style={styles.filas}>
+            <View style={styles.fila}>
+              <MaterialIcons name="place" size={18} color={colors.primary} />
+              <View style={styles.filaInfo}>
+                <Text style={styles.filaLabel}>Barrio del hallazgo</Text>
+                <Text style={styles.filaValor}>{b.barrio || 'Sin especificar'}</Text>
+                {b.coordenadas && (
+                  <Text style={styles.filaSub}>
+                    GPS: {b.coordenadas.latitud.toFixed(4)}, {b.coordenadas.longitud.toFixed(4)}
+                  </Text>
+                )}
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.lugarBarrio}>{b.barrio || b.lugar}</Text>
-              {!!b.barrio && !!b.lugar && <Text style={styles.lugarSub}>{b.lugar}</Text>}
-              {!!b.coordenadas && (
-                <Text style={styles.lugarSub}>
-                  GPS {b.coordenadas.lat.toFixed(4)}, {b.coordenadas.lng.toFixed(4)}
+
+            <View style={styles.fila}>
+              <MaterialIcons name="home" size={18} color={colors.primary} />
+              <View style={styles.filaInfo}>
+                <Text style={styles.filaLabel}>Hogar de tránsito</Text>
+                <Text style={styles.filaValor}>
+                  {b.transitoNombre || 'Pendiente de asignación'}
+                  {b.transitoTelefono ? ` (${b.transitoTelefono})` : ''}
                 </Text>
-              )}
+              </View>
             </View>
-          </View>
 
-          <View style={styles.resenaTitulo}>
-            <MaterialIcons name="health-and-safety" size={14} color={colors.textMuted} />
-            <Text style={styles.resenaLabel}>RESEÑA SANITARIA</Text>
-          </View>
-          <View style={styles.notas}>
-            <Text style={styles.notasText}>{b.notas.trim() || 'Sin observaciones cargadas.'}</Text>
-          </View>
-          {b.triaje.length > 0 && (
-            <View style={styles.tags}>
-              {b.triaje.map((t) => (
-                <View key={t} style={styles.tag}>
-                  <Text style={styles.tagText}>{ETIQUETA_TRIAJE[t]}</Text>
+            <View style={styles.fila}>
+              <MaterialIcons name="person" size={18} color={colors.primary} />
+              <View style={styles.filaInfo}>
+                <Text style={styles.filaLabel}>Coordinador PERF</Text>
+                <Text style={styles.filaValor}>{b.quienSigueCaso || 'No asignado'}</Text>
+              </View>
+            </View>
+
+            <View style={styles.fila}>
+              <MaterialIcons name="medical-services" size={18} color={colors.primary} />
+              <View style={styles.filaInfo}>
+                <Text style={styles.filaLabel}>Sanidad</Text>
+                <Text style={styles.filaValor}>
+                  Castrado: {ETIQUETA_CASTRACION[b.castrado || 'PENDIENTE']} · Virales: {ETIQUETA_VIRALES[b.virales || 'PENDIENTE']}
+                </Text>
+              </View>
+            </View>
+
+            {b.historiaOrigen ? (
+              <View style={styles.fila}>
+                <MaterialIcons name="history-edu" size={18} color={colors.primary} />
+                <View style={styles.filaInfo}>
+                  <Text style={styles.filaLabel}>Historia de origen</Text>
+                  <Text style={styles.filaValor}>{b.historiaOrigen}</Text>
                 </View>
-              ))}
-            </View>
-          )}
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.offlineBox}>
+            <MaterialIcons
+              name={sinConexion ? 'cloud-off' : 'cloud-done'}
+              size={18}
+              color={sinConexion ? colors.textMuted : colors.primary}
+            />
+            <Text style={styles.offlineText}>
+              {sinConexion
+                ? 'Modo sin conexión activo: se guardará de forma local en SQLite.'
+                : 'Conectado a la red: se guardará en SQLite y encolará sincronización.'}
+            </Text>
+          </View>
         </View>
       </View>
 
-      <View style={styles.banner}>
-        <View style={styles.bannerIcono}>
-          <MaterialIcons name={sinConexion ? 'cloud-off' : 'cloud-done'} size={26} color="#fff" />
-        </View>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={styles.bannerTitulo}>
-            {sinConexion ? 'Se guarda en tu teléfono, aunque no tengas conexión.' : 'Se guarda en tu teléfono y en la red de PERF.'}
-          </Text>
-          <Text style={styles.bannerTexto}>
-            {sinConexion
-              ? 'Se sincronizará automáticamente con la red de PERF en cuanto recuperes señal de datos o Wi-Fi.'
-              : 'Vas a poder verlo enseguida en la lista de casos.'}
-          </Text>
-        </View>
-      </View>
-
-      <Pressable style={[styles.guardar, guardando && { opacity: 0.7 }]} onPress={onGuardar} disabled={guardando}>
-        {guardando ? <ActivityIndicator color="#fff" /> : <MaterialIcons name="check-circle-outline" size={22} color="#fff" />}
-        <Text style={styles.guardarText}>Guardar rescate</Text>
+      <Pressable style={styles.btnGuardar} onPress={onGuardar} disabled={guardando}>
+        {guardando ? (
+          <ActivityIndicator color={colors.onPrimary} />
+        ) : (
+          <>
+            <MaterialIcons name="save" size={20} color={colors.onPrimary} />
+            <Text style={styles.btnGuardarText}>Guardar Ficha en SQLite</Text>
+          </>
+        )}
       </Pressable>
-      <Pressable style={styles.editar} onPress={onVolver} disabled={guardando}>
-        <MaterialIcons name="edit-note" size={20} color={colors.text} />
-        <Text style={styles.editarText}>Editar datos cargados</Text>
-      </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { gap: 12, paddingHorizontal: 16, paddingTop: 4 },
+  root: { flex: 1, backgroundColor: colors.background },
+  container: { padding: 16, paddingBottom: 60, gap: 14 },
   pasoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  pasoText: { fontFamily: fonts.regular, fontSize: 14, color: colors.textMuted },
+  pasoText: { fontFamily: fonts.regular, fontSize: 13, color: colors.textMuted },
   pasoBold: { fontFamily: fonts.bold, color: colors.primary },
   volver: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  volverText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
-
-  card: { borderRadius: 16, overflow: 'hidden', backgroundColor: colors.surface },
-  hero: { height: 180 },
+  volverText: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  hero: { height: 180, width: '100%', position: 'relative' },
   heroImg: { width: '100%', height: '100%' },
-  heroVacio: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
-  badgeNuevo: { position: 'absolute', left: 14, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.95)' },
-  punto: { width: 8, height: 8, borderRadius: 9999, backgroundColor: colors.primary },
-  badgeNuevoText: { fontFamily: fonts.bold, fontSize: 13, color: colors.text },
-  alerta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8 },
+  heroVacio: { backgroundColor: colors.surfaceChip, alignItems: 'center', justifyContent: 'center' },
+  badgeNuevo: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  punto: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.aldia },
+  badgeNuevoText: { fontFamily: fonts.semibold, fontSize: 12, color: '#fff' },
+  alerta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
   alertaIzq: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  alertaText: { fontFamily: fonts.bold, fontSize: 14 },
-  alertaHora: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted },
-  cuerpo: { gap: 10, padding: 16 },
-  nombreRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  nombre: { fontFamily: fonts.bold, fontSize: 26, color: colors.text },
-  sub: { fontFamily: fonts.regular, fontSize: 14, color: colors.textMuted },
-  pata: { width: 40, height: 40, borderRadius: 9999, alignItems: 'center', justifyContent: 'center', backgroundColor: '#9cf2e8' },
-  lugar: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, backgroundColor: colors.surfaceCard },
-  lugarIcono: { width: 34, height: 34, borderRadius: 9999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
-  lugarBarrio: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
-  lugarSub: { fontFamily: fonts.regular, fontSize: 13, color: colors.textMuted },
-  resenaTitulo: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
-  resenaLabel: { fontFamily: fonts.bold, fontSize: 13, letterSpacing: 0.4, color: colors.textMuted },
-  notas: { padding: 14, borderRadius: 12, backgroundColor: colors.surfaceCard },
-  notasText: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 21, color: colors.text },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tag: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: colors.surfaceChip },
-  tagText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
-
-  banner: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 16, backgroundColor: colors.brand },
-  bannerIcono: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.18)' },
-  bannerTitulo: { fontFamily: fonts.bold, fontSize: 15, color: '#fff' },
-  bannerTexto: { fontFamily: fonts.regular, fontSize: 13, color: '#cfe4e2' },
-
-  guardar: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 9999, backgroundColor: colors.primary },
-  guardarText: { fontFamily: fonts.semibold, fontSize: 17, color: '#fff' },
-  editar: { height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 9999, backgroundColor: colors.surfaceChip },
-  editarText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+  alertaText: { fontFamily: fonts.bold, fontSize: 13 },
+  alertaHora: { fontFamily: fonts.regular, fontSize: 12, color: colors.textMuted },
+  cuerpo: { padding: 16, gap: 12 },
+  nombreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  nombre: { fontFamily: fonts.bold, fontSize: 20, color: colors.text },
+  sub: { fontFamily: fonts.medium, fontSize: 14, color: colors.textMuted },
+  pata: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceChip,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  separador: { height: 1, backgroundColor: colors.borderLight, marginVertical: 4 },
+  filas: { gap: 12 },
+  fila: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  filaInfo: { flex: 1, gap: 2 },
+  filaLabel: { fontFamily: fonts.semibold, fontSize: 12, color: colors.textSubtle },
+  filaValor: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+  filaSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.textMuted },
+  offlineBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surfaceChip,
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  offlineText: { flex: 1, fontFamily: fonts.medium, fontSize: 12, color: colors.textMuted },
+  btnGuardar: {
+    height: 52,
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  btnGuardarText: { fontFamily: fonts.bold, fontSize: 16, color: colors.onPrimary },
 });

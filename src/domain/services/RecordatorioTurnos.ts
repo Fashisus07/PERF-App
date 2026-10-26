@@ -1,9 +1,10 @@
-import { AvisoTurno, Clinica, Turno } from '../models/Turno';
+import { Clinica, Turno } from '../models/Turno';
 
-// Puerto: el dominio pide recordatorios sin saber cómo se programan en el dispositivo.
+/**
+ * Puerto: el dominio solicita programar o cancelar alarmas/notificaciones de turnos
+ * sin acoplarse a la implementación específica de Expo Notifications.
+ */
 export interface RecordatorioTurnos {
-  // Devuelve los avisos que quedaron programados. Vacío si no se pudo (ej: el usuario negó el permiso
-  // de notificaciones) o si todos caían en un momento que ya pasó.
-  programar(turno: Turno, clinica: Clinica, nombreCaso: string): Promise<AvisoTurno[]>;
+  programar(turno: Turno, clinica?: Clinica, nombreCaso?: string): Promise<boolean>;
   cancelar(turnoId: string): Promise<void>;
 }

@@ -5,65 +5,66 @@ type Icono = keyof typeof MaterialIcons.glyphMap;
 
 export type EstadoInfo = {
   key: EstadoCaso;
-  titulo: string; // título largo (pantalla Cambiar Estado)
+  titulo: string;
   descripcion: string;
-  icono: Icono; // ícono de la lista de selección
-  iconoChip: Icono; // ícono del chip en la ficha
+  icono: Icono;
+  iconoChip: Icono;
   aviso?: { texto: string; bg: string; fg: string };
   proximoPaso: string;
 };
 
 export const ESTADOS_CASO: EstadoInfo[] = [
   {
-    key: 'calle',
-    titulo: 'En la Calle / Rescate en Curso',
-    descripcion: 'Seguimiento barrial o animal no retenido en campo.',
-    icono: 'explore',
-    iconoChip: 'pets',
-    proximoPaso: 'Retomá el monitoreo del barrio: confirmá si el animal sigue en la zona y registrá cómo se lo ve.',
-  },
-  {
-    key: 'transito',
+    key: 'EN_TRANSITO',
     titulo: 'En Hogar de Tránsito',
-    descripcion: 'Hospedado temporalmente con voluntario responsable.',
+    descripcion: 'Hospedado temporalmente con voluntario o familia responsable.',
     icono: 'home',
     iconoChip: 'home',
-    proximoPaso: 'Coordiná con el hogar de tránsito el ingreso: alimento, canil y primera revisión.',
+    proximoPaso: 'Coordiná con el hogar de tránsito el ingreso: alimento, canil y cuidados diarios.',
   },
   {
-    key: 'tratamiento',
-    titulo: 'En Clínica / Internación',
-    descripcion: 'Atención médica prioritaria, cirugía o cuidados críticos.',
+    key: 'EN_CLINICA',
+    titulo: 'En Clínica / Tratamiento',
+    descripcion: 'Atención médica prioritaria, internación, cirugía o cuidados críticos.',
     icono: 'local-hospital',
     iconoChip: 'medical-services',
-    aviso: { texto: 'Requiere centro veterinario', bg: '#ffdad6', fg: '#93000a' },
+    aviso: { texto: 'Requiere clínica o veterinaria', bg: '#ffdad6', fg: '#93000a' },
     proximoPaso: 'Confirmá el turno en la clínica y llevá la ficha sanitaria actualizada.',
   },
   {
-    key: 'preadopcion',
+    key: 'EN_ADOPCION',
+    titulo: 'En Adopción Activa',
+    descripcion: 'Listo sanitariamente para ser difundido en redes y buscar familia.',
+    icono: 'pets',
+    iconoChip: 'pets',
+    proximoPaso: 'Publicá las fotos y ficha en los canales de difusión de PERF.',
+  },
+  {
+    key: 'PRE_ADOPTADO',
     titulo: 'En Pre-adopción',
-    descripcion: 'Convivencia de adaptación con familia evaluada.',
+    descripcion: 'Convivencia de adaptación con postulante o familia evaluada.',
     icono: 'groups',
     iconoChip: 'groups',
-    proximoPaso: 'Acordá con la familia evaluada las visitas de adaptación y el seguimiento.',
+    proximoPaso: 'Realizá seguimiento del período de adaptación de 15 días.',
   },
   {
-    key: 'adoptado',
-    titulo: 'Adoptado (Listo para Archivar)',
-    descripcion: 'Final feliz. El caso pasa al archivo histórico.',
+    key: 'ADOPTADO',
+    titulo: 'Adoptado Definitivo',
+    descripcion: 'Adopción concretada con contrato firmado. Caso cerrado.',
     icono: 'volunteer-activism',
     iconoChip: 'volunteer-activism',
-    aviso: { texto: 'Cierre definitivo', bg: '#7ffc97', fg: '#002109' },
-    proximoPaso: 'Registrá los datos de la adopción y archivá el caso.',
+    aviso: { texto: 'Cierre feliz', bg: '#7ffc97', fg: '#002109' },
+    proximoPaso: 'Archivá el caso y enviá felicitaciones a la familia adoptante.',
   },
   {
-    key: 'fallecido',
+    key: 'FALLECIDO',
     titulo: 'Fallecido / Deceso',
     descripcion: 'Cierre sensible con protocolo de constatación clínica.',
     icono: 'bedtime',
     iconoChip: 'sentiment-very-dissatisfied',
-    proximoPaso: 'Completá la constatación clínica y avisá al coordinador de zona.',
+    proximoPaso: 'Registrá la causa clínica y avisá al coordinador del caso.',
   },
 ];
 
-export const infoEstado = (key: EstadoCaso) => ESTADOS_CASO.find((e) => e.key === key)!;
+export const infoEstado = (key: EstadoCaso) =>
+  ESTADOS_CASO.find((e) => e.key === key) || ESTADOS_CASO[0];

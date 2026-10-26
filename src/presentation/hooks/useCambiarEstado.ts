@@ -1,8 +1,17 @@
-import { CasoRepositoryImpl } from '../../data/repositories/CasoRepositoryImpl';
-import { CambiarEstadoCaso } from '../../domain/usecases/CambiarEstadoCaso';
+import { useCasoStore } from '../stores/useCasoStore';
+import { EstadoCaso } from '../../domain/models/Caso';
 
-const cambiarEstado = new CambiarEstadoCaso(new CasoRepositoryImpl());
+export interface ParametrosCambioEstado {
+  estado: EstadoCaso;
+  motivo: string;
+  destino?: string;
+  sinConexion?: boolean;
+}
 
 export function useCambiarEstado() {
-  return cambiarEstado;
+  const cambiar = useCasoStore((s) => s.cambiarEstado);
+  return {
+    ejecutar: (id: string, cambio: ParametrosCambioEstado) =>
+      cambiar(id, cambio.estado, cambio.motivo, cambio.destino),
+  };
 }

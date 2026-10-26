@@ -46,20 +46,29 @@ export function TurnoNoDisponibleScreen({ route, navigation }: { route?: { param
   // Reserva directamente la alternativa elegida, sin volver a cargar datos.
   const seleccionar = async (iso: string) => {
     setEligiendo(iso);
-    const solicitud: SolicitudTurno = { ...p.solicitud, fecha: new Date(iso) };
+    const fechaHora = new Date(iso).getTime();
+    const solicitud: SolicitudTurno = {
+      casoId: p.solicitud.casoId,
+      centroVeterinarioId: p.solicitud.clinicaId,
+      fechaHora,
+      motivo: p.solicitud.motivo,
+      recordatorioMinutos: 120,
+    };
     try {
       const r = await agendarTurno.ejecutar(solicitud, caso);
-      navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id, avisosProgramados: r.avisosProgramados });
+      navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id, avisosProgramados: ['2horas'] });
     } catch (e) {
       if (e instanceof CupoNoDisponible) {
         navigation?.replace?.('TurnoNoDisponible', {
-          solicitud: { ...solicitud, fecha: solicitud.fecha.toISOString() },
+          solicitud: p.solicitud,
           opciones: e.opciones.map((o) => ({ fecha: o.fecha.toISOString(), espera: o.espera })),
         });
       }
       setEligiendo(null);
     }
   };
+
+  const fotoCaso = caso.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg');
 
   return (
     <View style={styles.screen}>
@@ -87,16 +96,16 @@ export function TurnoNoDisponibleScreen({ route, navigation }: { route?: { param
         <View style={styles.afectada}>
           <View style={styles.afectadaTop}>
             <Text style={styles.afectadaTitulo}>Solicitud afectada</Text>
-            <UrgenciaBadge urgencia={caso.urgencia} />
+            <UrgenciaBadge urgencia={caso.esUrgente ? 'urgente' : 'aldia'} />
           </View>
           <View style={styles.casoCard}>
             <View style={styles.casoRow}>
-              <Image source={caso.foto} style={styles.foto} />
+              <Image source={fotoCaso} style={styles.foto} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.casoNombre}>
-                  {caso.nombre} <Text style={styles.casoSub}>· {caso.diasEnEspera} días en rescate</Text>
+                  {caso.nombreProvisorio} <Text style={styles.casoSub}>· {caso.especie} ({caso.edadEstimada})</Text>
                 </Text>
-                <Text style={styles.casoMotivo}>{ETIQUETA_MOTIVO[p.solicitud.motivo]}</Text>
+                <Text style={styles.casoMotivo}>{ETIQUETA_MOTIVO[p.solicitud.motivo] || p.solicitud.motivo}</Text>
               </View>
             </View>
             <View style={styles.tachado}>
@@ -184,7 +193,7 @@ export function TurnoNoDisponibleScreen({ route, navigation }: { route?: { param
             <Text style={styles.secundarioText}>Llamar a {clinica.nombre.replace('Clínica Veterinaria ', '')} directamente</Text>
           </Pressable>
           <Pressable style={styles.terciario} onPress={volverALaFicha}>
-            <Text style={styles.terciarioText}>Volver a la ficha de {caso.nombre} sin cambios</Text>
+            <Text style={styles.terciarioText}>Volver a la ficha de {caso.nombreProvisorio} sin cambios</Text>
           </Pressable>
         </View>
       </ScrollView>

@@ -2,12 +2,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  BorradorRescate,
-  ETIQUETA_EDAD,
-  ETIQUETA_ESPECIE,
-  ETIQUETA_TRIAJE,
-} from '../../../domain/models/Rescate';
+import { BorradorRescate } from '../../../domain/models/Rescate';
+import { ETIQUETA_ESPECIE } from '../../../domain/models/Caso';
 import { StackHeader } from '../../components/StackHeader';
 import { useOnline } from '../../hooks/useOnline';
 import { useRegistrarRescate } from '../../hooks/useRegistrarRescate';
@@ -35,7 +31,7 @@ export function ErrorGuardadoScreen({ route, navigation }: { route?: { params?: 
     setReintentando(true);
     setFalloOtraVez(false);
     try {
-      const caso = await registrar.ejecutar(b, !online, LOGO);
+      const caso = await registrar.ejecutar(b, !online);
       navigation?.replace?.('RescateGuardado', { casoId: caso.id, sinConexion: !online });
     } catch {
       setFalloOtraVez(true);
@@ -48,12 +44,12 @@ export function ErrorGuardadoScreen({ route, navigation }: { route?: { params?: 
   const exportar = () =>
     Share.share({
       message: [
-        `RESCATE PERF (borrador): ${b.nombre.trim() || 'Sin nombre'}`,
-        `${b.especie ? ETIQUETA_ESPECIE[b.especie] : ''} · ${b.edad ? ETIQUETA_EDAD[b.edad] : ''}`,
-        `Lugar: ${[b.barrio, b.lugar].filter(Boolean).join(', ')}`,
-        b.coordenadas ? `GPS: ${b.coordenadas.lat.toFixed(5)}, ${b.coordenadas.lng.toFixed(5)}` : '',
-        b.triaje.length ? `Estado: ${b.triaje.map((t) => ETIQUETA_TRIAJE[t]).join(', ')}` : '',
-        b.notas.trim() ? `Notas: ${b.notas.trim()}` : '',
+        `RESCATE PERF (borrador): ${b.nombreProvisorio.trim() || 'Sin nombre'}`,
+        `${b.especie ? ETIQUETA_ESPECIE[b.especie] : ''} · ${b.edadEstimada}`,
+        `Barrio: ${b.barrio}`,
+        b.coordenadas ? `GPS: ${b.coordenadas.latitud.toFixed(5)}, ${b.coordenadas.longitud.toFixed(5)}` : '',
+        b.historiaOrigen ? `Historia: ${b.historiaOrigen}` : '',
+        b.transitoNombre ? `Tránsito: ${b.transitoNombre} (${b.transitoTelefono})` : '',
       ]
         .filter(Boolean)
         .join('\n'),
@@ -103,17 +99,17 @@ export function ErrorGuardadoScreen({ route, navigation }: { route?: { params?: 
             )}
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={styles.nombre} numberOfLines={1}>
-                {b.nombre.trim() || 'Sin nombre'}{'  '}
+                {b.nombreProvisorio.trim() || 'Sin nombre'}{'  '}
                 <Text style={styles.especie}>{b.especie ? ETIQUETA_ESPECIE[b.especie] : ''}</Text>
               </Text>
               <View style={styles.lugarRow}>
                 <MaterialIcons name="location-on" size={14} color={colors.atencion} />
-                <Text style={styles.lugar} numberOfLines={1}>{[b.lugar, b.barrio].filter(Boolean).join(', ')}</Text>
+                <Text style={styles.lugar} numberOfLines={1}>{b.barrio || 'Sin ubicación'}</Text>
               </View>
-              {b.triaje.length > 0 && (
+              {!!b.edadEstimada && (
                 <View style={styles.triaje}>
                   <Text style={styles.triajeText} numberOfLines={1}>
-                    {[b.edad ? ETIQUETA_EDAD[b.edad] : '', ...b.triaje.map((t) => ETIQUETA_TRIAJE[t])].filter(Boolean).join(', ')}
+                    Edad: {b.edadEstimada}
                   </Text>
                 </View>
               )}

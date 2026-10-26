@@ -1,57 +1,68 @@
-import { Urgencia } from './Caso';
+// Borrador para el formulario de alta (Nuevo rescate).
+// Los datos provisorios se van completando en los pasos del asistente y
+// se convierten en un Caso al momento de persistir en SQLite.
 
-export type Especie = 'gato' | 'perro' | 'otro';
-export type EdadEstimada = 'cachorro' | 'joven' | 'adulto' | 'senior';
-export type Triaje = 'sano' | 'desnutrido' | 'herida' | 'urgente';
+import { Especie, EstadoCastracion, EstadoVirales } from './Caso';
 
-export const ETIQUETA_ESPECIE: Record<Especie, string> = { gato: 'Gato', perro: 'Perro', otro: 'Otro' };
-export const ETIQUETA_EDAD: Record<EdadEstimada, string> = {
-  cachorro: 'Cachorro / Lactante',
-  joven: 'Joven (6 a 12 m)',
-  adulto: 'Adulto',
-  senior: 'Senior (+8 años)',
-};
-export const ETIQUETA_TRIAJE: Record<Triaje, string> = {
-  sano: 'Aparentemente sano',
-  desnutrido: 'Desnutrido / Flaco',
-  herida: 'Herida visible',
-  urgente: 'Urgente veterinario',
-};
+export type Coordenadas = { latitud: number; longitud: number };
 
-export type Coordenadas = { lat: number; lng: number };
-
-// Datos que se van cargando en los 3 pasos de "Nuevo rescate".
-export type BorradorRescate = {
-  fotoUri?: string;
-  nombre: string;
+export interface BorradorRescate {
+  fotoUri?: string | null;
+  nombreProvisorio: string;
+  cantidadAnimales: number;
   especie: Especie | null;
-  edad: EdadEstimada | null;
-  triaje: Triaje[];
-  notas: string;
-  fecha: string; // ISO
+  edadEstimada: string;
+  historiaOrigen: string;
+  personalidad: string;
+  estadoVisible: string;
   barrio: string;
-  lugar: string; // calle o referencia
-  coordenadas?: Coordenadas;
-};
-
-export const borradorVacio = (): BorradorRescate => ({
-  nombre: '',
-  especie: null,
-  edad: null,
-  triaje: [],
-  notas: '',
-  fecha: new Date().toISOString(),
-  barrio: '',
-  lugar: '',
-});
-
-// Cuánta urgencia tiene el caso según lo que se vio en campo.
-export function urgenciaDeTriaje(triaje: Triaje[]): Urgencia {
-  if (triaje.includes('urgente')) return 'urgente';
-  if (triaje.includes('desnutrido') || triaje.includes('herida')) return 'atencion';
-  return 'aldia';
+  coordenadas?: Coordenadas | null;
+  quienSigueCaso: string;
+  transitoNombre: string;
+  transitoTelefono: string;
+  transitoCorreo?: string;
+  castrado: EstadoCastracion;
+  virales: EstadoVirales;
+  fechaPrimeraDesparasitacion?: number | null;
+  fechaSegundaDesparasitacion?: number | null;
+  esUrgente: boolean;
 }
 
-const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-// ej: "24 Feb 2025"
-export const formatoFecha = (d: Date) => `${d.getDate()} ${MESES[d.getMonth()]} ${d.getFullYear()}`;
+export const borradorVacio = (): BorradorRescate => ({
+  fotoUri: null,
+  nombreProvisorio: '',
+  cantidadAnimales: 1,
+  especie: 'Gato',
+  edadEstimada: '',
+  historiaOrigen: '',
+  personalidad: '',
+  estadoVisible: '',
+  barrio: '',
+  coordenadas: null,
+  quienSigueCaso: 'Cami',
+  transitoNombre: '',
+  transitoTelefono: '',
+  transitoCorreo: '',
+  castrado: 'PENDIENTE',
+  virales: 'PENDIENTE',
+  fechaPrimeraDesparasitacion: null,
+  fechaSegundaDesparasitacion: null,
+  esUrgente: false,
+});
+
+// ─── Validaciones del asistente ───
+
+export function faltantesDelRescate(b: BorradorRescate): string[] {
+  const faltan: string[] = [];
+  if (!b.nombreProvisorio.trim()) faltan.push('el nombre provisorio');
+  if (!b.especie) faltan.push('la especie');
+  if (!b.barrio.trim()) faltan.push('el barrio del rescate');
+  return faltan;
+}
+
+export function formatoFecha(d: Date): string {
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+}
+
+export { ETIQUETA_ESPECIE } from './Caso';
+

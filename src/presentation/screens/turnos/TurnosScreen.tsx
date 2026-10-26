@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Caso, sexoYEdadCorto } from '../../../domain/models/Caso';
+import { Caso } from '../../../domain/models/Caso';
 import { Clinica, horaDe, mismoDia, nombreDia, Turno } from '../../../domain/models/Turno';
 import { AppHeader } from '../../components/AppHeader';
 import { cancelarTurno, useTurnos } from '../../hooks/useTurnos';
@@ -18,12 +18,12 @@ export function TurnosScreen({ navigation }: { navigation?: any }) {
   const [cancelando, setCancelando] = useState(false);
 
   const ahora = new Date();
-  const deHoy = turnos.filter((t) => mismoDia(t.fecha, ahora));
-  const proximos = turnos.filter((t) => !mismoDia(t.fecha, ahora));
-  const clinica = (t: Turno) => clinicas.find((c) => c.id === t.clinicaId)!;
+  const deHoy = turnos.filter((t) => mismoDia(new Date(t.fechaHora), ahora));
+  const proximos = turnos.filter((t) => !mismoDia(new Date(t.fechaHora), ahora));
+  const clinica = (t: Turno) => clinicas.find((c) => c.id === (t.centroVeterinarioId || (t as any).clinicaId)) || clinicas[0];
 
   const menu = (t: Turno) =>
-    Alert.alert('Turno', `${casosPorId[t.casoId]?.nombre} · ${t.titulo}`, [
+    Alert.alert('Turno', `${casosPorId[t.casoId]?.nombreProvisorio || 'Animal'} · ${t.motivo}`, [
       {
         text: 'Cancelar turno',
         style: 'destructive',
@@ -134,49 +134,40 @@ type TarjetaProps = { turno: Turno; caso?: Caso; clinica: Clinica; hoy?: boolean
 
 function TarjetaTurno({ turno: t, caso, clinica, hoy, navigation, onMenu }: TarjetaProps) {
   if (!caso) return null;
-  const confirmado = t.estado === 'confirmado';
   const lugar = [clinica.barrio, clinica.direccion].filter(Boolean).join(' · ');
+  const fecha = new Date(t.fechaHora);
+  const fotoCaso = caso.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg');
 
   return (
     <View style={styles.card}>
       <View style={styles.cardTop}>
-        <Image source={caso.foto} style={styles.foto} />
+        <Image source={fotoCaso} style={styles.foto} />
         <View style={{ flex: 1, gap: 3 }}>
           <View style={styles.nombreRow}>
-            <Text style={styles.nombre}>{caso.nombre}</Text>
+            <Text style={styles.nombre}>{caso.nombreProvisorio}</Text>
             <View style={styles.chip}>
-              <Text style={styles.chipText}>{sexoYEdadCorto(caso)}</Text>
+              <Text style={styles.chipText}>{caso.especie} · {caso.edadEstimada}</Text>
             </View>
           </View>
           <View style={styles.cuando}>
             <MaterialIcons name={hoy ? 'schedule' : 'event'} size={15} color={colors.atencion} />
             <Text style={styles.cuandoText}>
-              {hoy ? `${horaDe(t.fecha)} hs` : `${nombreDia(t.fecha)} · ${horaDe(t.fecha)} hs`}
+              {hoy ? `${horaDe(fecha)} hs` : `${nombreDia(fecha)} · ${horaDe(fecha)} hs`}
             </Text>
           </View>
         </View>
-        <View style={[styles.estado, confirmado ? styles.estadoOk : styles.estadoPend]}>
-          <MaterialIcons name={confirmado ? 'check-circle' : 'phone-callback'} size={14} color={confirmado ? colors.aldiaText : colors.atencion} />
-          <Text style={[styles.estadoText, { color: confirmado ? colors.aldiaText : colors.atencion }]}>
-            {confirmado ? 'Confirmado' : 'Por confirmar'}
+        <View style={[styles.estado, t.cumplido ? styles.estadoOk : styles.estadoPend]}>
+          <MaterialIcons name={t.cumplido ? 'check-circle' : 'schedule'} size={14} color={t.cumplido ? colors.aldiaText : colors.atencion} />
+          <Text style={[styles.estadoText, { color: t.cumplido ? colors.aldiaText : colors.atencion }]}>
+            {t.cumplido ? 'Cumplido' : 'Pendiente'}
           </Text>
         </View>
       </View>
 
-      {!!t.aviso && (
-        <View style={styles.ayuno}>
-          <MaterialIcons name="warning" size={20} color={colors.atencion} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.ayunoTitulo}>{t.aviso.titulo}</Text>
-            <Text style={styles.ayunoTexto}>{t.aviso.texto}</Text>
-          </View>
-        </View>
-      )}
-
       <View style={styles.detalle}>
         <View style={styles.detalleFila}>
-          <MaterialIcons name="vaccines" size={18} color={colors.textMuted} />
-          <Text style={styles.detalleTitulo}>{t.titulo}</Text>
+          <MaterialIcons name="medical-services" size={18} color={colors.textMuted} />
+          <Text style={styles.detalleTitulo}>{t.motivo}</Text>
         </View>
         <View style={styles.detalleFila}>
           <MaterialIcons name={clinica.tipo === 'consultorio' ? 'storefront' : 'local-hospital'} size={18} color={colors.textMuted} />
@@ -198,7 +189,7 @@ function TarjetaTurno({ turno: t, caso, clinica, hoy, navigation, onMenu }: Tarj
             <Text style={styles.btnSecundarioText}>Ver dirección</Text>
           </Pressable>
         </View>
-      ) : !confirmado ? (
+      ) : !t.cumplido ? (
         <Pressable style={[styles.btn, styles.btnPrimario]} onPress={() => llamar(clinica)}>
           <MaterialIcons name="call" size={18} color="#fff" />
           <Text style={styles.btnPrimarioText}>Confirmar turno con la clínica</Text>

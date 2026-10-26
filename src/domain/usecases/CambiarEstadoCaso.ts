@@ -1,17 +1,28 @@
-import { Caso, CambioEstado, EstadoCaso } from '../models/Caso';
+import { Caso, EstadoCaso } from '../models/Caso';
 import { CasoRepository } from '../repositories/CasoRepository';
 
-// Al derivar a un hogar de tránsito o a una clínica hay que indicar adónde va.
-export const estadoRequiereDestino = (estado: EstadoCaso) => estado === 'transito' || estado === 'tratamiento';
+export interface SolicitudCambioEstado {
+  estado: EstadoCaso;
+  motivo: string;
+  destino?: string;
+  sinConexion?: boolean;
+}
+
+// Al derivar a un hogar de tránsito o a una clínica hay que indicar adónde va o el motivo.
+export const estadoRequiereDestino = (estado: EstadoCaso): boolean =>
+  estado === 'EN_TRANSITO' || estado === 'EN_CLINICA';
 
 export class CambiarEstadoCaso {
   constructor(private readonly repo: CasoRepository) {}
 
-  ejecutar(id: string, cambio: CambioEstado): Promise<Caso> {
-    if (!cambio.motivo.trim()) throw new Error('El motivo es obligatorio');
-    if (estadoRequiereDestino(cambio.estado) && !cambio.destino?.trim()) {
-      throw new Error('El destino es obligatorio para este estado');
+  async ejecutar(id: string, cambio: SolicitudCambioEstado): Promise<Caso> {
+    if (!cambio.motivo.trim()) {
+      throw new Error('El motivo es obligatorio');
     }
-    return this.repo.actualizarEstado(id, cambio);
+    const detalle = cambio.destino?.trim()
+      ? `${cambio.motivo.trim()} (Destino: ${cambio.destino.trim()})`
+      : cambio.motivo.trim();
+
+    return this.repo.actualizarEstado(id, cambio.estado, detalle);
   }
 }

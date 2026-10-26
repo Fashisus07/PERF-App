@@ -24,19 +24,22 @@ export function TurnoAgendadoScreen({ route, navigation }: { route?: { params?: 
   const programados = route?.params?.avisosProgramados ?? [];
   const avisosActivos = programados.length > 0;
   const ahora = new Date();
-  const manana = mismoDia(turno.fecha, sumarDias(ahora, 1));
-  const diaTexto = manana ? `Mañana, ${diaLargo(turno.fecha)}` : etiquetaDia(turno.fecha, ahora) === 'Hoy' ? `Hoy, ${diaLargo(turno.fecha)}` : diaLargo(turno.fecha);
+  const fecha = new Date(turno.fechaHora);
+  const manana = mismoDia(fecha, sumarDias(ahora, 1));
+  const diaTexto = manana ? `Mañana, ${diaLargo(fecha)}` : etiquetaDia(fecha, ahora) === 'Hoy' ? `Hoy, ${diaLargo(fecha)}` : diaLargo(fecha);
 
   const irALista = () => navigation?.popTo?.('Main', { screen: 'Turnos' });
   const agregarACalendario = () => {
-    const fin = new Date(turno.fecha.getTime() + 45 * 60 * 1000);
+    const fin = new Date(fecha.getTime() + 45 * 60 * 1000);
     Linking.openURL(
       'https://calendar.google.com/calendar/render?action=TEMPLATE' +
-        `&text=${encodeURIComponent(`Turno de ${caso.nombre} — ${ETIQUETA_MOTIVO[turno.motivo]}`)}` +
-        `&dates=${marcaCalendario(turno.fecha)}/${marcaCalendario(fin)}` +
+        `&text=${encodeURIComponent(`Turno de ${caso.nombreProvisorio} — ${turno.motivo}`)}` +
+        `&dates=${marcaCalendario(fecha)}/${marcaCalendario(fin)}` +
         `&location=${encodeURIComponent(`${clinica.nombre}, ${clinica.direccion}, ${clinica.barrio}`)}`,
     );
   };
+
+  const fotoCaso = caso.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg');
 
   return (
     <View style={styles.screen}>
@@ -61,14 +64,14 @@ export function TurnoAgendadoScreen({ route, navigation }: { route?: { params?: 
 
         <View style={styles.card}>
           <View style={styles.casoRow}>
-            <Image source={caso.foto} style={styles.foto} />
+            <Image source={fotoCaso} style={styles.foto} />
             <View style={{ flex: 1, gap: 2 }}>
               <View style={styles.nombreRow}>
-                <Text style={styles.nombre}>{caso.nombre}</Text>
-                <UrgenciaBadge urgencia={caso.urgencia} />
+                <Text style={styles.nombre}>{caso.nombreProvisorio}</Text>
+                <UrgenciaBadge urgencia={caso.esUrgente ? 'urgente' : 'aldia'} />
               </View>
               <Text style={styles.casoSub}>
-                {caso.descripcion.split(' ')[0]} · {caso.diasEnEspera} días en rescate
+                {caso.especie} · {caso.edadEstimada}
               </Text>
             </View>
           </View>
@@ -79,7 +82,7 @@ export function TurnoAgendadoScreen({ route, navigation }: { route?: { params?: 
             </View>
             <View>
               <Text style={styles.fechaDia}>{diaTexto}</Text>
-              <Text style={styles.fechaHora}>{horaDe(turno.fecha)} hs</Text>
+              <Text style={styles.fechaHora}>{horaDe(fecha)} hs</Text>
             </View>
           </View>
 
@@ -93,32 +96,16 @@ export function TurnoAgendadoScreen({ route, navigation }: { route?: { params?: 
           </Fila>
           <Fila icono="medical-services">
             <Text style={styles.filaTitulo}>Motivo de consulta</Text>
-            <Text style={styles.filaSub}>{ETIQUETA_MOTIVO[turno.motivo]}{turno.notas ? ` — ${turno.notas}` : ''}</Text>
+            <Text style={styles.filaSub}>{turno.motivo}</Text>
           </Fila>
 
           <View style={styles.avisos}>
             <View style={styles.avisosTitulo}>
-              <MaterialIcons name={avisosActivos ? 'notifications-active' : 'notifications-off'} size={16} color={avisosActivos ? colors.primary : colors.textSubtle} />
-              <Text style={[styles.avisosText, !avisosActivos && { color: colors.textMuted }]}>
-                {avisosActivos ? 'Avisos automáticos activos' : 'Sin avisos en el teléfono'}
+              <MaterialIcons name="notifications-active" size={16} color={colors.primary} />
+              <Text style={styles.avisosText}>
+                {turno.recordatorioMinutos === 1440 ? 'Aviso 24 horas antes' : 'Aviso 2 horas antes'}
               </Text>
             </View>
-            {avisosActivos ? (
-              <View style={styles.avisosChips}>
-                {programados.map((a) => (
-                  <View key={a} style={styles.avisoChip}>
-                    <MaterialIcons name={a === '1dia' ? 'alarm' : 'notifications'} size={13} color={colors.atencion} />
-                    <Text style={styles.avisoChipText}>{ETIQUETA_AVISO[a]}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <Text style={styles.avisosAyuda}>
-                {turno.avisos.length
-                  ? 'No se pudieron programar: revisá el permiso de notificaciones o que el turno no sea tan pronto que los avisos ya hayan pasado.'
-                  : 'Elegiste no recibir recordatorios para este turno.'}
-              </Text>
-            )}
           </View>
         </View>
 
@@ -129,7 +116,7 @@ export function TurnoAgendadoScreen({ route, navigation }: { route?: { params?: 
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={styles.recoTitulo}>Recomendaciones para el traslado</Text>
             <Text style={styles.recoTexto}>
-              Recordá llevar a {caso.nombre} en canil cerrado con manta térmica y libreta sanitaria provisoria.
+              Recordá llevar a {caso.nombreProvisorio} en canil cerrado con manta térmica y libreta sanitaria provisoria.
             </Text>
           </View>
         </View>
@@ -145,7 +132,7 @@ export function TurnoAgendadoScreen({ route, navigation }: { route?: { params?: 
           </Pressable>
           <Pressable style={styles.terciario} onPress={() => navigation?.popTo?.('DetalleCaso', { casoId: caso.id })}>
             <MaterialIcons name="arrow-back" size={16} color={colors.primary} />
-            <Text style={styles.terciarioText}>Volver a la ficha de {caso.nombre}</Text>
+            <Text style={styles.terciarioText}>Volver a la ficha de {caso.nombreProvisorio}</Text>
           </Pressable>
         </View>
       </ScrollView>

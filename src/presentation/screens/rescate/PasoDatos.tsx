@@ -1,17 +1,25 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  BorradorRescate,
-  EdadEstimada,
-  ETIQUETA_EDAD,
-  ETIQUETA_ESPECIE,
-  ETIQUETA_TRIAJE,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import {
+  COORDINADORES_PERF,
   Especie,
-  formatoFecha,
-  Triaje,
-} from '../../../domain/models/Rescate';
-import { faltantesDelRescate } from '../../../domain/usecases/RegistrarRescate';
+  EstadoCastracion,
+  EstadoVirales,
+  ETIQUETA_CASTRACION,
+  ETIQUETA_ESPECIE,
+  ETIQUETA_VIRALES,
+} from '../../../domain/models/Caso';
+import { BorradorRescate, faltantesDelRescate } from '../../../domain/models/Rescate';
 import { useUbicacion } from '../../hooks/useUbicacion';
 import { colors, fonts } from '../../theme';
 import { SegmentosPaso } from './BarraRescate';
@@ -24,52 +32,34 @@ type Props = {
 };
 
 const ESPECIES: { key: Especie; emoji: string }[] = [
-  { key: 'gato', emoji: '🐱' },
-  { key: 'perro', emoji: '🐶' },
-  { key: 'otro', emoji: '🐾' },
-];
-const EDADES: { key: EdadEstimada; emoji: string }[] = [
-  { key: 'cachorro', emoji: '🍼' },
-  { key: 'joven', emoji: '🦴' },
-  { key: 'adulto', emoji: '🌿' },
-  { key: 'senior', emoji: '👑' },
-];
-const TRIAJES: { key: Triaje; icono: keyof typeof MaterialIcons.glyphMap; color: string; fondo: string }[] = [
-  { key: 'sano', icono: 'check-circle', color: colors.aldia, fondo: colors.aldiaBg },
-  { key: 'desnutrido', icono: 'water-drop', color: colors.atencion, fondo: colors.atencionBg },
-  { key: 'herida', icono: 'healing', color: colors.urgente, fondo: colors.urgenteBg },
-  { key: 'urgente', icono: 'emergency', color: colors.urgente, fondo: colors.urgenteBg },
+  { key: 'Gato', emoji: '🐱' },
+  { key: 'Perro', emoji: '🐶' },
+  { key: 'Otro', emoji: '🐾' },
 ];
 
-const DIA = 24 * 60 * 60 * 1000;
+const CASTRACION_OPCIONES: EstadoCastracion[] = ['PENDIENTE', 'SI', 'NO'];
+const VIRALES_OPCIONES: EstadoVirales[] = [
+  'PENDIENTE',
+  'NEGATIVO',
+  'VIF_POSITIVO',
+  'VILEF_POSITIVO',
+  'AMBOS_POSITIVOS',
+];
 
 export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }: Props) {
   const gps = useUbicacion();
-  const [lugarTexto, setLugarTexto] = useState([b.barrio, b.lugar].filter(Boolean).join(', '));
   const [intento, setIntento] = useState(false);
-
-  const fecha = new Date(b.fecha);
-  const esHoy = Math.abs(Date.now() - fecha.getTime()) < DIA / 2;
-  const faltan = faltantesDelRescate({ ...b, ...separarLugar(lugarTexto) });
-
-  const cambiarLugar = (texto: string) => {
-    setLugarTexto(texto);
-    onCambio(separarLugar(texto));
-  };
+  const faltan = faltantesDelRescate(b);
 
   const usarGps = async () => {
     const r = await gps.obtener();
     if (r) {
-      cambiarLugar(r.texto);
-      onCambio({ coordenadas: r.coordenadas });
+      onCambio({
+        barrio: r.texto,
+        coordenadas: r.coordenadas,
+      });
     }
   };
-
-  const alternarTriaje = (t: Triaje) =>
-    onCambio({ triaje: b.triaje.includes(t) ? b.triaje.filter((x) => x !== t) : [...b.triaje, t] });
-
-  // "Modificar" alterna entre hoy y ayer (sin librerías de calendario).
-  const alternarFecha = () => onCambio({ fecha: new Date(Date.now() - (esHoy ? DIA : 0)).toISOString() });
 
   const continuar = () => {
     if (faltan.length) {
@@ -80,256 +70,452 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
   };
 
   return (
-    <View style={styles.root}>
+    <ScrollView style={styles.root} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.stepper}>
         <View style={styles.stepperRow}>
           <Pressable style={styles.volver} onPress={onVolverAFoto}>
             <MaterialIcons name="arrow-back" size={18} color={colors.textMuted} />
-            <Text style={styles.volverText}>Paso 1</Text>
+            <Text style={styles.volverText}>Paso 1 (Foto)</Text>
           </Pressable>
           <Text style={styles.pasoActual}>Paso 2 de 3</Text>
-          <Text style={styles.pasoSub}>Datos</Text>
+          <Text style={styles.pasoSub}>Ficha Operativa</Text>
         </View>
         <SegmentosPaso paso={2} />
       </View>
 
+      {/* Tarjeta de Identificación */}
       <View style={styles.card}>
         <View style={styles.fotoRow}>
           {b.fotoUri ? (
             <Image source={{ uri: b.fotoUri }} style={styles.foto} />
           ) : (
             <View style={[styles.foto, styles.fotoVacia]}>
-              <MaterialIcons name="no-photography" size={28} color={colors.textSubtle} />
+              <MaterialIcons name="pets" size={32} color={colors.textSubtle} />
             </View>
           )}
           <View style={{ flex: 1, gap: 4 }}>
-            <View style={[styles.badgeFoto, !b.fotoUri && { backgroundColor: colors.surfaceChip }]}>
-              <Text style={[styles.badgeFotoText, !b.fotoUri && { color: colors.textMuted }]}>
-                {b.fotoUri ? 'Foto capturada' : 'Sin foto'}
-              </Text>
-              <MaterialIcons name={b.fotoUri ? 'photo-camera' : 'fast-forward'} size={13} color={b.fotoUri ? colors.aldiaText : colors.textMuted} />
-            </View>
-            <Text style={styles.fotoDesc}>{b.fotoUri ? 'Imagen adjunta al registro' : 'Omitida por urgencia'}</Text>
-            <Pressable style={styles.cambiarFoto} onPress={onVolverAFoto}>
-              <MaterialIcons name="edit" size={14} color={colors.primary} />
-              <Text style={styles.cambiarFotoText}>{b.fotoUri ? 'Cambiar foto' : 'Agregar foto'}</Text>
-            </Pressable>
+            <Text style={styles.campoLabel}>Nombre provisorio / Camada *</Text>
+            <TextInput
+              style={[styles.input, intento && !b.nombreProvisorio.trim() && styles.inputError]}
+              placeholder="Ej: Misho / Mamá con 4 bebés"
+              placeholderTextColor={colors.placeholder}
+              value={b.nombreProvisorio}
+              onChangeText={(nombreProvisorio) => onCambio({ nombreProvisorio })}
+            />
           </View>
         </View>
-      </View>
 
-      <View style={styles.card}>
-        <View style={styles.tituloRow}>
-          <Text style={styles.titulo}>Nombre o apodo provisorio</Text>
-          <Text style={styles.opcional}>Recomendado</Text>
-        </View>
-        <Text style={styles.ayuda}>Poné un apodo cariñoso o el código del sector para ubicarlo rápido.</Text>
+        {/* Cantidad de animales */}
         <View style={styles.campo}>
-          <MaterialIcons name="badge" size={20} color={colors.textSubtle} />
-          <TextInput
-            style={styles.input}
-            value={b.nombre}
-            onChangeText={(nombre) => onCambio({ nombre })}
-            placeholder="Ej: Bigote Rayado"
-            placeholderTextColor={colors.placeholderInput}
-          />
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={[styles.titulo, intento && !b.especie && styles.error]}>Especie rescatada</Text>
-        <View style={styles.chips}>
-          {ESPECIES.map((e) => (
-            <Chip key={e.key} activo={b.especie === e.key} onPress={() => onCambio({ especie: e.key })}>
-              {e.emoji}  {ETIQUETA_ESPECIE[e.key]}
-            </Chip>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.tituloRow}>
-          <Text style={[styles.titulo, intento && !b.edad && styles.error]}>Edad estimada</Text>
-          <Text style={styles.opcional}>A ojo de campo</Text>
-        </View>
-        <View style={styles.chips}>
-          {EDADES.map((e) => (
-            <Chip key={e.key} activo={b.edad === e.key} onPress={() => onCambio({ edad: e.key })}>
-              {e.emoji} {ETIQUETA_EDAD[e.key]}
-            </Chip>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.tituloRow}>
-          <Text style={styles.titulo}>Estado visible / Triaje rápido</Text>
-          <View style={styles.sanidad}>
-            <MaterialIcons name="health-and-safety" size={14} color={colors.atencion} />
-            <Text style={styles.sanidadText}>Sanidad</Text>
-          </View>
-        </View>
-        <View style={styles.chips}>
-          {TRIAJES.map((t) => {
-            const activo = b.triaje.includes(t.key);
-            return (
+          <Text style={styles.campoLabel}>Cantidad de animales rescatados</Text>
+          <View style={styles.contadorRow}>
+            {[1, 2, 3, 4, 5].map((num) => (
               <Pressable
-                key={t.key}
-                onPress={() => alternarTriaje(t.key)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: activo }}
-                style={[styles.chipTriaje, activo && { backgroundColor: t.fondo, borderColor: t.color }]}
+                key={num}
+                style={[
+                  styles.contadorChip,
+                  b.cantidadAnimales === num && styles.chipActivo,
+                ]}
+                onPress={() => onCambio({ cantidadAnimales: num })}
               >
-                <MaterialIcons name={t.icono} size={18} color={t.color} />
-                <Text style={[styles.chipTriajeText, activo && { color: t.color }]}>{ETIQUETA_TRIAJE[t.key]}</Text>
+                <Text
+                  style={[
+                    styles.contadorChipText,
+                    b.cantidadAnimales === num && styles.chipActivoText,
+                  ]}
+                >
+                  {num === 5 ? '5+' : num}
+                </Text>
               </Pressable>
-            );
-          })}
+            ))}
+          </View>
         </View>
-        <View style={styles.notas}>
-          <Text style={styles.notasLabel}>Notas de campo / Observaciones adicionales</Text>
+
+        {/* Especie */}
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Especie *</Text>
+          <View style={styles.chipsRow}>
+            {ESPECIES.map(({ key, emoji }) => (
+              <Pressable
+                key={key}
+                style={[styles.chip, b.especie === key && styles.chipActivo]}
+                onPress={() => onCambio({ especie: key })}
+              >
+                <Text style={styles.chipEmoji}>{emoji}</Text>
+                <Text
+                  style={[
+                    styles.chipTexto,
+                    b.especie === key && styles.chipActivoText,
+                  ]}
+                >
+                  {ETIQUETA_ESPECIE[key]}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {/* Edad estimada */}
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Edad estimada</Text>
           <TextInput
-            style={styles.notasInput}
-            value={b.notas}
-            onChangeText={(notas) => onCambio({ notas })}
-            multiline
-            textAlignVertical="top"
-            placeholder="Ej: Con buen ánimo, un poco asustado y bajo peso. Sin pulgas visibles."
-            placeholderTextColor={colors.placeholderInput}
+            style={styles.input}
+            placeholder="Ej: 45 días, Bebé, 2 años aprox."
+            placeholderTextColor={colors.placeholder}
+            value={b.edadEstimada}
+            onChangeText={(edadEstimada) => onCambio({ edadEstimada })}
           />
         </View>
       </View>
 
+      {/* Tarjeta de Ubicación y GPS */}
       <View style={styles.card}>
-        <Text style={styles.titulo}>Fecha del rescate</Text>
-        <View style={styles.campo}>
-          <MaterialIcons name="event" size={20} color={colors.primary} />
-          <Text style={[styles.input, styles.fechaText]}>
-            {esHoy ? 'Hoy' : 'Ayer'} ({formatoFecha(fecha)})
-          </Text>
-          <Pressable onPress={alternarFecha} hitSlop={8}>
-            <Text style={styles.link}>Modificar</Text>
-          </Pressable>
+        <View style={styles.seccionHeader}>
+          <MaterialIcons name="place" size={20} color={colors.primary} />
+          <Text style={styles.seccionTitulo}>Ubicación del Hallazgo</Text>
         </View>
 
-        <View style={[styles.tituloRow, { marginTop: 4 }]}>
-          <Text style={[styles.titulo, intento && !lugarTexto.trim() && styles.error]}>Lugar / Barrio del rescate</Text>
-          <Pressable style={styles.gps} onPress={usarGps} hitSlop={8}>
-            <MaterialIcons name="my-location" size={14} color={colors.primary} />
-            <Text style={styles.link}>
-              {gps.estado === 'buscando' ? 'Buscando…' : gps.estado === 'activo' ? 'GPS Activo' : 'Usar mi ubicación'}
-            </Text>
-          </Pressable>
-        </View>
         <View style={styles.campo}>
-          <MaterialIcons name="location-on" size={20} color={colors.textSubtle} />
+          <Text style={styles.campoLabel}>Barrio o localidad del rescate *</Text>
           <TextInput
-            style={styles.input}
-            value={lugarTexto}
-            onChangeText={cambiarLugar}
-            placeholder="Barrio, calle o referencia"
-            placeholderTextColor={colors.placeholderInput}
+            style={[styles.input, intento && !b.barrio.trim() && styles.inputError]}
+            placeholder="Ej: Caballito / Plaza Miserere, Balvanera"
+            placeholderTextColor={colors.placeholder}
+            value={b.barrio}
+            onChangeText={(barrio) => onCambio({ barrio })}
           />
         </View>
-        {(gps.estado === 'denegado' || gps.estado === 'error') && (
-          <Text style={styles.avisoGps}>
-            {gps.estado === 'denegado'
-              ? 'Sin permiso de ubicación. Podés escribir el lugar a mano.'
-              : 'No pudimos leer el GPS. Escribí el lugar a mano.'}
+
+        <Pressable
+          style={[styles.btnGps, gps.estado === 'buscando' && styles.btnGpsBuscando]}
+          onPress={usarGps}
+          disabled={gps.estado === 'buscando'}
+        >
+          <MaterialIcons
+            name={gps.estado === 'buscando' ? 'hourglass-empty' : 'my-location'}
+            size={18}
+            color={colors.primary}
+          />
+          <Text style={styles.btnGpsText}>
+            {gps.estado === 'buscando' ? 'Capturando coordenadas...' : 'Capturar GPS puntual (expo-location)'}
           </Text>
+        </Pressable>
+
+        {b.coordenadas && (
+          <View style={styles.coordenadasInfo}>
+            <MaterialIcons name="check-circle" size={14} color={colors.aldia} />
+            <Text style={styles.coordenadasTexto}>
+              GPS: {b.coordenadas.latitud.toFixed(4)}, {b.coordenadas.longitud.toFixed(4)}
+            </Text>
+          </View>
         )}
       </View>
 
-      <View style={styles.red}>
-        <View style={styles.redIcono}>
-          <MaterialIcons name="volunteer-activism" size={20} color={colors.atencionText} />
+      {/* Tarjeta de Seguimiento PERF y Tránsito */}
+      <View style={styles.card}>
+        <View style={styles.seccionHeader}>
+          <MaterialIcons name="volunteer-activism" size={20} color={colors.primary} />
+          <Text style={styles.seccionTitulo}>Seguimiento y Tránsito</Text>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.redTitulo}>Red PERF lista para derivar</Text>
-          <Text style={styles.redTexto}>En el próximo paso asignás hogar de tránsito o veterinaria de guardia.</Text>
+
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Coordinador responsable (PERF)</Text>
+          <View style={styles.chipsRow}>
+            {COORDINADORES_PERF.map((coord) => (
+              <Pressable
+                key={coord}
+                style={[styles.chip, b.quienSigueCaso === coord && styles.chipActivo]}
+                onPress={() => onCambio({ quienSigueCaso: coord })}
+              >
+                <Text
+                  style={[
+                    styles.chipTexto,
+                    b.quienSigueCaso === coord && styles.chipActivoText,
+                  ]}
+                >
+                  {coord}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Hogar de tránsito (Responsable)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Nombre y apellido del tránsito"
+            placeholderTextColor={colors.placeholder}
+            value={b.transitoNombre}
+            onChangeText={(transitoNombre) => onCambio({ transitoNombre })}
+          />
+        </View>
+
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Teléfono celular de contacto</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ej: +54 9 11 1234-5678"
+            placeholderTextColor={colors.placeholder}
+            keyboardType="phone-pad"
+            value={b.transitoTelefono}
+            onChangeText={(transitoTelefono) => onCambio({ transitoTelefono })}
+          />
+        </View>
+
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Correo electrónico (opcional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="contacto@transito.com"
+            placeholderTextColor={colors.placeholder}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={b.transitoCorreo || ''}
+            onChangeText={(transitoCorreo) => onCambio({ transitoCorreo })}
+          />
         </View>
       </View>
 
-      {intento && faltan.length > 0 && <Text style={styles.avisoFalta}>Falta completar {faltan.join(', ')}.</Text>}
+      {/* Ficha Sanitaria */}
+      <View style={styles.card}>
+        <View style={styles.seccionHeader}>
+          <MaterialIcons name="medical-services" size={20} color={colors.primary} />
+          <Text style={styles.seccionTitulo}>Ficha Sanitaria Preliminar</Text>
+        </View>
 
-      <Pressable style={[styles.cta, faltan.length > 0 && styles.ctaGris]} onPress={continuar}>
-        <Text style={styles.ctaText}>Continuar al paso 3</Text>
-        <MaterialIcons name="arrow-forward" size={20} color="#fff" />
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>¿Está castrado/a?</Text>
+          <View style={styles.chipsRow}>
+            {CASTRACION_OPCIONES.map((opcion) => (
+              <Pressable
+                key={opcion}
+                style={[styles.chip, b.castrado === opcion && styles.chipActivo]}
+                onPress={() => onCambio({ castrado: opcion })}
+              >
+                <Text
+                  style={[
+                    styles.chipTexto,
+                    b.castrado === opcion && styles.chipActivoText,
+                  ]}
+                >
+                  {ETIQUETA_CASTRACION[opcion]}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Test Virales (VIF / ViLeF)</Text>
+          <View style={[styles.chipsRow, { flexWrap: 'wrap' }]}>
+            {VIRALES_OPCIONES.map((opcion) => (
+              <Pressable
+                key={opcion}
+                style={[styles.chipSmall, b.virales === opcion && styles.chipActivo]}
+                onPress={() => onCambio({ virales: opcion })}
+              >
+                <Text
+                  style={[
+                    styles.chipSmallText,
+                    b.virales === opcion && styles.chipActivoText,
+                  ]}
+                >
+                  {ETIQUETA_VIRALES[opcion]}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {/* Antecedentes y Estado Clínico */}
+      <View style={styles.card}>
+        <View style={styles.seccionHeader}>
+          <MaterialIcons name="assignment" size={20} color={colors.primary} />
+          <Text style={styles.seccionTitulo}>Historia y Personalidad</Text>
+        </View>
+
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Historia / De dónde viene</Text>
+          <TextInput
+            style={[styles.input, styles.inputMultiline]}
+            multiline
+            numberOfLines={3}
+            placeholder="Antecedentes del hallazgo, colonia, rescate en techo, etc."
+            placeholderTextColor={colors.placeholder}
+            value={b.historiaOrigen}
+            onChangeText={(historiaOrigen) => onCambio({ historiaOrigen })}
+          />
+        </View>
+
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Personalidad / Comportamiento</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ej: Mimoso, convive con otros gatos, asustadizo"
+            placeholderTextColor={colors.placeholder}
+            value={b.personalidad}
+            onChangeText={(personalidad) => onCambio({ personalidad })}
+          />
+        </View>
+
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Estado visible al rescatarlo</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ej: Desnutrido, cuadro respiratorio, sin lesiones evidentes"
+            placeholderTextColor={colors.placeholder}
+            value={b.estadoVisible}
+            onChangeText={(estadoVisible) => onCambio({ estadoVisible })}
+          />
+        </View>
+
+        {/* Switch Urgencia */}
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.switchTitulo}>Marcar como caso urgente</Text>
+            <Text style={styles.switchSub}>Requiere atención médica o traslado prioritario</Text>
+          </View>
+          <Switch
+            value={b.esUrgente}
+            onValueChange={(esUrgente) => onCambio({ esUrgente })}
+            thumbColor={b.esUrgente ? colors.urgente : '#f4f3f4'}
+            trackColor={{ false: '#767577', true: colors.urgenteBg }}
+          />
+        </View>
+      </View>
+
+      {intento && faltan.length > 0 && (
+        <View style={styles.errorBox}>
+          <MaterialIcons name="error-outline" size={18} color={colors.urgente} />
+          <Text style={styles.errorText}>
+            Completá los campos obligatorios: {faltan.join(', ')}.
+          </Text>
+        </View>
+      )}
+
+      {/* Botón de acción */}
+      <Pressable style={styles.btnContinuar} onPress={continuar}>
+        <Text style={styles.btnContinuarText}>Continuar a Confirmación</Text>
+        <MaterialIcons name="arrow-forward" size={20} color={colors.onPrimary} />
       </Pressable>
-    </View>
-  );
-}
-
-// "Balvanera, Plaza Miserere" -> barrio y lugar
-function separarLugar(texto: string): Pick<BorradorRescate, 'barrio' | 'lugar'> {
-  const [barrio, ...resto] = texto.split(',');
-  return { barrio: (barrio ?? '').trim(), lugar: resto.join(',').trim() };
-}
-
-function Chip({ activo, onPress, children }: { activo: boolean; onPress: () => void; children: React.ReactNode }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ selected: activo }}
-      style={[styles.chip, activo && styles.chipActivo]}
-    >
-      <Text style={[styles.chipText, activo && { color: colors.onPrimary }]}>{children}</Text>
-    </Pressable>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { gap: 12, paddingHorizontal: 16, paddingTop: 4 },
-  stepper: { gap: 10, padding: 14, borderRadius: 16, backgroundColor: colors.surfaceCard },
+  root: { flex: 1, backgroundColor: colors.background },
+  container: { padding: 16, paddingBottom: 60, gap: 14 },
+  stepper: { gap: 8, marginBottom: 4 },
   stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  volver: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  volverText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
+  volver: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  volverText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textMuted },
   pasoActual: { fontFamily: fonts.bold, fontSize: 14, color: colors.primary },
-  pasoSub: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
-
-  card: { gap: 10, padding: 16, borderRadius: 16, backgroundColor: colors.surface },
-  fotoRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  foto: { width: 80, height: 80, borderRadius: 12 },
-  fotoVacia: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
-  badgeFoto: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.toastIcon },
-  badgeFotoText: { fontFamily: fonts.bold, fontSize: 13, color: colors.aldiaText },
-  fotoDesc: { fontFamily: fonts.regular, fontSize: 14, color: colors.textMuted },
-  cambiarFoto: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  cambiarFotoText: { fontFamily: fonts.bold, fontSize: 14, color: colors.primary },
-
-  tituloRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  titulo: { fontFamily: fonts.bold, fontSize: 16, color: colors.text },
-  error: { color: colors.urgente },
-  opcional: { fontFamily: fonts.regular, fontSize: 14, color: colors.textSubtle },
-  ayuda: { fontFamily: fonts.regular, fontSize: 14, color: colors.textMuted },
-  campo: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, borderRadius: 12, backgroundColor: colors.surfaceCard },
-  input: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: colors.text, paddingVertical: 10 },
-  fechaText: { fontFamily: fonts.semibold },
-  link: { fontFamily: fonts.bold, fontSize: 14, color: colors.primary },
-  gps: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  avisoGps: { fontFamily: fonts.regular, fontSize: 13, color: colors.urgente },
-
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: colors.surfaceChip },
+  pasoSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.textSubtle },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  seccionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  seccionTitulo: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
+  fotoRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  foto: { width: 68, height: 68, borderRadius: 12, backgroundColor: colors.surfaceChip },
+  fotoVacia: { alignItems: 'center', justifyContent: 'center' },
+  campo: { gap: 6 },
+  campoLabel: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textSubtle },
+  input: {
+    backgroundColor: colors.surfaceChip,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    color: colors.text,
+  },
+  inputMultiline: { minHeight: 64, textAlignVertical: 'top' },
+  inputError: { borderWidth: 1, borderColor: colors.urgente },
+  chipsRow: { flexDirection: 'row', gap: 8 },
+  contadorRow: { flexDirection: 'row', gap: 8 },
+  contadorChip: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceChip,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contadorChipText: { fontFamily: fonts.bold, fontSize: 14, color: colors.textMuted },
+  chip: {
+    flex: 1,
+    height: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceChip,
+  },
+  chipSmall: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceChip,
+    marginBottom: 4,
+  },
+  chipSmallText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.textMuted },
+  chipEmoji: { fontSize: 16 },
+  chipTexto: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted },
   chipActivo: { backgroundColor: colors.primary },
-  chipText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
-
-  sanidad: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  sanidadText: { fontFamily: fonts.bold, fontSize: 14, color: colors.atencion },
-  chipTriaje: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: colors.surfaceChip },
-  chipTriajeText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
-  notas: { gap: 4, padding: 14, borderRadius: 12, backgroundColor: colors.surfaceCard },
-  notasLabel: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
-  notasInput: { minHeight: 64, padding: 0, fontFamily: fonts.regular, fontSize: 16, color: colors.text },
-
-  red: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.surfaceMuted },
-  redIcono: { width: 40, height: 40, borderRadius: 9999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.atencionBg },
-  redTitulo: { fontFamily: fonts.bold, fontSize: 14, color: colors.text },
-  redTexto: { fontFamily: fonts.regular, fontSize: 14, color: colors.textMuted },
-
-  avisoFalta: { fontFamily: fonts.semibold, fontSize: 14, color: colors.urgente, textAlign: 'center' },
-  cta: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 9999, backgroundColor: colors.primary },
-  ctaGris: { opacity: 0.55 },
-  ctaText: { fontFamily: fonts.semibold, fontSize: 17, color: '#fff' },
+  chipActivoText: { color: colors.onPrimary },
+  btnGps: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.surfaceCard,
+  },
+  btnGpsBuscando: { opacity: 0.6 },
+  btnGpsText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
+  coordenadasInfo: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center' },
+  coordenadasTexto: { fontFamily: fonts.medium, fontSize: 12, color: colors.textMuted },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  switchTitulo: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
+  switchSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.textSubtle },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.urgenteBg,
+    padding: 12,
+    borderRadius: 10,
+  },
+  errorText: { flex: 1, fontFamily: fonts.semibold, fontSize: 13, color: colors.urgente },
+  btnContinuar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 50,
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    marginTop: 6,
+  },
+  btnContinuarText: { fontFamily: fonts.bold, fontSize: 15, color: colors.onPrimary },
 });

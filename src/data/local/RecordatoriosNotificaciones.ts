@@ -1,16 +1,20 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import { AvisoTurno, Clinica, horaDe, MS_AVISO, Turno } from '../../domain/models/Turno';
+import { Clinica, horaDe, Turno } from '../../domain/models/Turno';
 import { RecordatorioTurnos } from '../../domain/services/RecordatorioTurnos';
 
 const CANAL = 'turnos';
 export const CATEGORIA = 'turno';
 export const ACCION_LLAMAR = 'llamar';
 
-// Se llama una vez al iniciar la app: cómo se muestran las notificaciones y qué botones llevan.
 export async function configurarNotificaciones() {
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
   });
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(CANAL, {
@@ -31,40 +35,47 @@ async function pedirPermiso() {
   return (await Notifications.requestPermissionsAsync()).granted;
 }
 
-// Programa los avisos en el teléfono: funcionan sin conexión porque los dispara el sistema.
 export class RecordatoriosNotificaciones implements RecordatorioTurnos {
-  async programar(turno: Turno, clinica: Clinica, nombreCaso: string): Promise<AvisoTurno[]> {
-    const programados: AvisoTurno[] = [];
+  async programar(turno: Turno, clinica?: Clinica, nombreCaso?: string): Promise<boolean> {
     try {
-      if (!(await pedirPermiso())) return [];
+      if (!(await pedirPermiso())) return false;
       const ahora = Date.now();
-      for (const aviso of turno.avisos) {
-        const cuando = new Date(turno.fecha.getTime() - MS_AVISO[aviso]);
-        if (cuando.getTime() <= ahora) continue; // ese aviso ya pasó
-        // El aviso de 1 día antes suena el día anterior ("mañana"); el de 2 horas, el mismo día ("hoy").
-        const dia = aviso === '1dia' ? 'mañana' : 'hoy';
-        await Notifications.scheduleNotificationAsync({
-          identifier: `${turno.id}-${aviso}`,
-          content: {
-            title: `Turno ${dia} ${horaDe(turno.fecha)} — ${nombreCaso}`,
-            subtitle: clinica.nombre,
-            body: `${turno.titulo}. Recordá verificar el canil de transporte y el ayuno previo si corresponde.`,
-            categoryIdentifier: CATEGORIA,
-            data: { turnoId: turno.id, telefono: clinica.telefono },
-          },
-          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: cuando, channelId: CANAL },
-        });
-        programados.push(aviso);
+      const msAnticipacion = (turno.recordatorioMinutos || 120) * 60 * 1000;
+      const momentoDisparo = turno.fechaHora - msAnticipacion;
+
+      if (momentoDisparo <= ahora) {
+        return false; // el momento del recordatorio ya transcurrió
       }
-      return programados;
+
+      const fechaCita = new Date(turno.fechaHora);
+      const clinicaNombre = clinica?.nombre || 'Centro Veterinario';
+      const animal = nombreCaso || 'Animal rescatado';
+
+      await Notifications.scheduleNotificationAsync({
+        identifier: `${turno.id}-recordatorio`,
+        content: {
+          title: `Recordatorio de turno: ${animal}`,
+          subtitle: clinicaNombre,
+          body: `Cita a las ${horaDe(fechaCita)} hs en ${clinicaNombre}. Motivo: ${turno.motivo}.`,
+          categoryIdentifier: CATEGORIA,
+          data: { turnoId: turno.id, telefono: clinica?.telefono },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: new Date(momentoDisparo),
+          channelId: CANAL,
+        },
+      });
+
+      return true;
     } catch {
-      return programados;
+      return false;
     }
   }
 
   async cancelar(turnoId: string): Promise<void> {
-    for (const aviso of ['1dia', '2horas']) {
-      await Notifications.cancelScheduledNotificationAsync(`${turnoId}-${aviso}`).catch(() => {});
-    }
+    try {
+      await Notifications.cancelScheduledNotificationAsync(`${turnoId}-recordatorio`);
+    } catch {}
   }
 }

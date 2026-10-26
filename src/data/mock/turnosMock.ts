@@ -45,14 +45,50 @@ const hoy = () => {
 export function turnosIniciales(): Turno[] {
   const h = hoy();
   return [
-    { id: 't1', casoId: '1', clinicaId: 'patitas', fecha: conHora(h, '10:30'), motivo: 'vacunacion', titulo: 'Chequeo general y vacunación', estado: 'confirmado', avisos: ['2horas'] },
-    { id: 't2', casoId: '4', clinicaId: 'central', fecha: conHora(h, '16:45'), motivo: 'laboratorio', titulo: 'Ecografía abdominal', estado: 'confirmado', avisos: ['2horas'] },
     {
-      id: 't3', casoId: '3', clinicaId: 'zoonosis', fecha: conHora(sumarDias(h, 3), '11:00'), motivo: 'cirugia',
-      titulo: 'Cirugía de esterilización programada', estado: 'porConfirmar', avisos: ['1dia'],
-      aviso: { titulo: 'Ayuno obligatorio de 8 horas', texto: 'Retirar alimento a las 03:00 hs y agua 2 horas antes de la intervención quirúrgica.' },
+      id: 't-1',
+      casoId: 'caso-1-misho',
+      centroVeterinarioId: 'patitas',
+      fechaHora: conHora(h, '10:30').getTime(),
+      motivo: 'Control respiratorio y evaluación de vacuna triple',
+      recordatorioMinutos: 120,
+      cumplido: false,
+      syncStatus: 'SYNCED',
+      updatedAt: Date.now(),
     },
-    { id: 't4', casoId: '2', clinicaId: 'central', fecha: conHora(sumarDias(h, 4), '15:30'), motivo: 'control', titulo: 'Retiro de puntos y control postoperatorio', estado: 'confirmado', avisos: ['1dia'] },
+    {
+      id: 't-2',
+      casoId: 'caso-4-luna',
+      centroVeterinarioId: 'central',
+      fechaHora: conHora(h, '16:45').getTime(),
+      motivo: 'Ecografía de control post-castración',
+      recordatorioMinutos: 120,
+      cumplido: false,
+      syncStatus: 'SYNCED',
+      updatedAt: Date.now(),
+    },
+    {
+      id: 't-3',
+      casoId: 'caso-3-tigre',
+      centroVeterinarioId: 'zoonosis',
+      fechaHora: conHora(sumarDias(h, 3), '11:00').getTime(),
+      motivo: 'Castración y control ocular quirúrgico',
+      recordatorioMinutos: 1440,
+      cumplido: false,
+      syncStatus: 'SYNCED',
+      updatedAt: Date.now(),
+    },
+    {
+      id: 't-4',
+      casoId: 'caso-2-canela',
+      centroVeterinarioId: 'central',
+      fechaHora: conHora(sumarDias(h, 4), '15:30').getTime(),
+      motivo: 'Control prenatal y ecografía fetal',
+      recordatorioMinutos: 1440,
+      cumplido: false,
+      syncStatus: 'SYNCED',
+      updatedAt: Date.now(),
+    },
   ];
 }
 

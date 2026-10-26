@@ -16,6 +16,7 @@ import {
   sumarDias,
   etiquetaDia,
   diaLargo,
+  SolicitudTurno,
 } from '../../../domain/models/Turno';
 import { CupoNoDisponible } from '../../../domain/usecases/AgendarTurno';
 import { StackHeader } from '../../components/StackHeader';
@@ -83,20 +84,29 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
   const confirmar = async () => {
     if (!caso || !hora || !clinica || guardando) return;
     setGuardando(true);
-    const solicitud = { casoId: caso.id, clinicaId, fecha: conHora(fechaDia, hora), motivo, notas: notas.trim() || undefined, avisos };
+    const fechaTurno = conHora(fechaDia, hora);
+    const solicitud: SolicitudTurno = {
+      casoId: caso.id,
+      centroVeterinarioId: clinicaId,
+      fechaHora: fechaTurno.getTime(),
+      motivo,
+      recordatorioMinutos: avisos.includes('1dia') ? 1440 : 120,
+    };
     try {
       const r = await agendarTurno.ejecutar(solicitud, caso);
-      navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id, avisosProgramados: r.avisosProgramados });
+      navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id, avisosProgramados: avisos });
     } catch (e) {
       if (e instanceof CupoNoDisponible) {
         navigation?.replace?.('TurnoNoDisponible', {
-          solicitud: { ...solicitud, fecha: solicitud.fecha.toISOString() },
+          solicitud: { ...solicitud, clinicaId, fecha: fechaTurno.toISOString(), avisos },
           opciones: e.opciones.map((o) => ({ fecha: o.fecha.toISOString(), espera: o.espera })),
         });
       }
       setGuardando(false);
     }
   };
+
+  const fotoCaso = caso?.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg');
 
   return (
     <View style={styles.screen}>
@@ -105,15 +115,15 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
         {caso ? (
           <View style={styles.card}>
             <View style={styles.casoRow}>
-              <Image source={caso.foto} style={styles.foto} />
+              <Image source={fotoCaso} style={styles.foto} />
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={styles.casoNombre}>
-                  {caso.nombre} <Text style={styles.casoDesc}>({caso.descripcion})</Text>
+                  {caso.nombreProvisorio} <Text style={styles.casoDesc}>({caso.especie} · {caso.edadEstimada})</Text>
                 </Text>
-                {!!caso.nota && <Text style={styles.casoResumen}>{caso.nota.split('.')[0]}</Text>}
+                {!!caso.historiaOrigen && <Text style={styles.casoResumen}>{caso.historiaOrigen.split('.')[0]}</Text>}
                 <View style={styles.prioridad}>
                   <MaterialIcons name="schedule" size={14} color={colors.textMuted} />
-                  <Text style={styles.prioridadText}>{PRIORIDAD[caso.urgencia]}</Text>
+                  <Text style={styles.prioridadText}>{caso.esUrgente ? 'Caso urgente' : 'Atención regular'}</Text>
                 </View>
               </View>
               {!route?.params?.casoId && (
@@ -130,8 +140,11 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
               {casos.map((c) => (
                 <Pressable key={c.id} style={styles.casoOpcion} onPress={() => setCasoId(c.id)} accessibilityRole="button">
-                  <Image source={c.foto} style={styles.casoOpcionFoto} />
-                  <Text style={styles.casoOpcionNombre}>{c.nombre}</Text>
+                  <Image
+                    source={c.fotoUri ? { uri: c.fotoUri } : require('../../../../assets/images/casos/misho.jpg')}
+                    style={styles.casoOpcionFoto}
+                  />
+                  <Text style={styles.casoOpcionNombre}>{c.nombreProvisorio}</Text>
                 </Pressable>
               ))}
             </ScrollView>

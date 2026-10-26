@@ -1,239 +1,330 @@
-# PERF Móvil
+# PERF Móvil 🐾
 
-App Android para voluntarios de rescate animal: registra y sigue casos en la calle, **incluso sin conexión**.
+> **Aplicación móvil para la gestión de rescates de animales, seguimiento de casos clínicos y turnos veterinarios con soporte Offline First.**
 
-- **Materia:** Desarrollo de Aplicaciones I (Aula 548, turno noche)
-- **Stack:** React Native + Expo + TypeScript
-- **Diseño:** Figma "TPO - Perf App"
-- **Equipo:** Mateo Mirarchi, Facundo Pérez Espinosa, Tobías
+Desarrollada para los voluntarios de refugios y redes de rescate animal en la vía pública (foco en felinos). Permite registrar rescates en el momento, gestionar el historial sanitario, coordinar hogares de tránsito o atención veterinaria, y mantener la continuidad operativa **incluso en zonas sin cobertura de red**.
 
-## Problema
+---
 
-Los voluntarios de los refugios que rescatan animales en la calle pierden la información de cada caso: la registran en chats, planillas o de memoria. Los casos urgentes se pierden entre mensajes, los datos se duplican, los turnos veterinarios se olvidan y no hay un historial confiable al momento de la adopción.
+## 📌 Datos del Proyecto
 
-## Solución
+- **Materia:** Desarrollo de Aplicaciones I (UADE - Aula 548, Turno Noche)
+- **Año / Cuatrimestre:** 2026 - 2do Cuatrimestre
+- **Stack Principal:** React Native 0.86 + Expo SDK 57 + TypeScript 6.0
+- **Diseño UI/UX:** Prototipo Figma *"TPO - Perf App"*
+- **Integrantes del Equipo:**
+  - **Mateo Mirarchi:** Arquitectura, capa de datos, base de datos SQLite y sincronización offline.
+  - **Facundo Pérez Espinosa:** Diseño UI/UX, componentes visuales, stores y flujo de navegación.
+  - **Tobías:** Capacidades nativas de hardware (cámara, geolocalización, notificaciones locales) y documentación.
 
-Una app móvil que permite:
+---
 
-- Registrar un rescate en pocos pasos (foto, datos del animal, ubicación).
-- Ver los casos ordenados por urgencia.
-- Agendar turnos veterinarios con recordatorio.
-- Cerrar un caso como adoptado y consultarlo en el Archivo.
-- Funcionar sin conexión y sincronizar al recuperar la señal (Offline First).
+## 💡 Problema y Solución
 
-## Alcance de la v1
+### El Problema
+Los voluntarios que realizan rescates en la calle enfrentan múltiples dificultades:
+- Información dispersa en grupos de mensajería (WhatsApp, Telegram), planillas de cálculo y anotaciones sueltas.
+- Dificultad para priorizar casos urgentes que requieren atención veterinaria inmediata.
+- Pérdida u olvido de turnos médicos y controles de medicación.
+- Falta de un historial sanitario consolidado al momento de dar un animal en adopción.
+- Pérdida de datos por falta de señal o conexión de datos móviles durante los operativos de rescate.
 
-**Incluye**
+### La Solución
+**PERF Móvil** proporciona una herramienta centralizada y robusta:
+- **Flujo de Rescate Guiado en 3 Pasos:** Captura fotográfica con visor de cámara, geolocalización GPS automática con geocodificación inversa, y evaluación rápida de urgencia mediante triaje.
+- **Priorización Inteligente:** Bandeja de casos clasificados por urgencia (Alta, Media, Baja) y umbral configurable de días en espera.
+- **Seguimiento Clínico e Historial:** Ficha completa de cada animal (estado de castración, test VIF/ViLeF, desparasitaciones) y línea de tiempo de eventos.
+- **Agenda Veterinaria y Alarmas Locales:** Reserva de turnos con validación de cupos y programación de recordatorios locales en el dispositivo que no dependen de conexión a internet.
+- **Arquitectura Offline First:** Toda lectura y escritura se ejecuta primero contra la base de datos SQLite local (`perf.db`) y se encola en una tabla de operaciones pendientes para sincronizar cuando se recupere la conexión.
 
-- Registro de rescate en 3 pasos con ubicación.
-- Lista de casos con prioridad por urgencia, búsqueda y filtros.
-- Detalle de caso con reseña sanitaria e historial.
-- Agenda de turnos veterinarios con recordatorio local.
-- Cierre de caso como adoptado y vista de Archivo.
-- Persistencia local y sincronización automática.
-- Estados de carga, vacío, error y sin conexión.
-- Ajustes mínimos: sincronización manual y recordatorios.
+---
 
-**No incluye**
+## 📐 Arquitectura del Software
 
-- Autenticación real y roles (la sesión es simulada).
-- Notificaciones push remotas.
-- Mapa interactivo embebido.
-- Chat entre voluntarios.
-- Versión iOS y panel web.
-
-## Requisitos funcionales
-
-| ID | Requisito |
-|----|-----------|
-| RF01 | Registrar un rescate en tres pasos (foto, datos, confirmación). Con el dispositivo sin conexión el caso queda guardado y marcado como pendiente de sincronizar. |
-| RF02 | Consultar y priorizar casos: lista ordenada por urgencia, búsqueda por nombre y detalle con historial. |
-| RF03 | Agendar un turno veterinario con recordatorio local, aun sin conexión. |
-| RF04 | Cerrar un caso como adoptado con confirmación explícita; pasa al Archivo y se cancelan sus turnos pendientes. |
-
-## Arquitectura
-
-Tres capas. Una acción baja de la pantalla al caso de uso y llega al repositorio, que escribe primero en la base local y después sincroniza con la API.
+El proyecto implementa los principios de **Clean Architecture** (Arquitectura Limpia) con separación en capas desacopladas, complementada con un patrón **Offline First** y gestión de dependencias centralizada.
 
 ```
-src/
-  presentation/   UI, estado de pantalla y navegación
-    theme/          colores y tipografías del Figma
-    components/     componentes reutilizables (CasoCard, AppHeader, ...)
-    hooks/          estado y lógica por pantalla (useCasos, ...)
-    navigation/     barra inferior y flujos
-    screens/        casos, detalle, rescate, turnos, archivo, ajustes
-  domain/         reglas de negocio, sin depender de la UI ni del dispositivo
-    models/         Caso, Turno, Evento
-    usecases/       ListarCasosPorUrgencia, RegistrarRescate, AgendarTurno, CerrarCasoComoAdoptado
-    repositories/   interfaces
-  data/           acceso a datos
-    repositories/   implementaciones de las interfaces del dominio
-    local/          SQLite
-    remote/         cliente de la API
-    mappers/        filas de base <-> modelos de dominio
-    mock/           datos de ejemplo
-assets/           logo, imágenes e íconos
+                           ┌──────────────────────────────┐
+                           │    Capa de Presentación      │
+                           │  Screens, Hooks, Components  │
+                           └──────────────┬───────────────┘
+                                          │ usa
+                                          ▼
+                           ┌──────────────────────────────┐
+                           │       Capa de Dominio        │
+                           │   Models, UseCases, Ports    │
+                           └──────────────▲───────────────┘
+                                          │ implementa
+                                          │
+                           ┌──────────────┴───────────────┐
+                           │        Capa de Datos         │
+                           │  SQLite, Storage, Mappers    │
+                           └──────────────────────────────┘
 ```
 
-## Tecnologías
+### Estructura de Directorios
 
-| Tecnología | Para qué se usa |
-|------------|-----------------|
-| React Native + Expo + TypeScript | Interfaz y lógica de la app, con tipado para mantener las capas separadas. |
-| React Navigation | Barra inferior de pestañas y flujo de rescate en pasos. |
-| Hooks + Zustand | Estado de pantalla y lógica de presentación. |
-| expo-sqlite | Base local de casos, turnos e historial. |
-| AsyncStorage | Preferencias simples (clave-valor): ajustes de urgencia y recordatorios. |
-| Supabase (propuesto) | Base remota y almacenamiento de fotos. |
-| expo-camera | Foto del animal en el momento del rescate (visor en vivo, flash y cámara frontal). |
-| expo-image-picker | Elegir una foto de la galería como alternativa a la cámara. |
-| expo-location | Ubicación puntual del rescate (una lectura, cuida la batería) y conversión de coordenadas a dirección. |
-| expo-notifications | Recordatorios locales de turnos, sin conexión. |
-| NetInfo | Detectar la conexión y disparar la sincronización. |
-| Jest + React Native Testing Library | Tests de dominio y de pantallas. |
+```
+PERF-App/
+├── App.tsx                     # Punto de entrada, fuentes, notificaciones y SafeArea
+├── app.json                    # Manifiesto de Expo, plugins nativos y permisos
+├── index.ts                    # Registro raíz de Expo
+├── package.json                # Dependencias y scripts de ejecución
+├── tsconfig.json               # Configuración estricta de TypeScript
+├── assets/                     # Recursos gráficos (iconos, splash, imágenes mock)
+└── src/
+    ├── di/                     # Inyección de dependencias
+    │   └── container.ts        # Contenedor de singletons (repositorios, servicios, usecases)
+    ├── domain/                 # Lógica de negocio pura (independiente de UI y frameworks)
+    │   ├── models/             # Entidades de dominio (Caso, Turno, Rescate, Ajustes, etc.)
+    │   ├── repositories/       # Interfaces de repositorios (contratos)
+    │   ├── services/           # Interfaces de servicios de dominio (RecordatorioTurnos)
+    │   └── usecases/           # Casos de uso de la aplicación
+    ├── data/                   # Acceso y persistencia de datos
+    │   ├── local/              # Base SQLite (Database.ts), Storage y notificaciones
+    │   ├── mappers/            # Traductores DB Row <-> Modelo de Dominio
+    │   ├── mock/               # Datos iniciales para seeding y desarrollo
+    │   ├── remote/             # Clientes de API remota (preparado para Supabase/REST)
+    │   └── repositories/       # Implementaciones concretas de los repositorios
+    └── presentation/           # Capa visual y de interacción
+        ├── components/         # Componentes UI reutilizables
+        ├── hooks/              # Custom Hooks para pantallas y estados locales
+        ├── navigation/         # Configuración de React Navigation (Tabs y Stacks)
+        ├── screens/            # Vistas agrupadas por módulos funcionales
+        ├── stores/             # Estado global reactivo con Zustand
+        └── theme/              # Tokens de diseño (paleta de colores y tipografía)
+```
 
-## Cámara y ubicación en el rescate
+---
 
-Las dos capacidades del dispositivo se usan en el flujo **Nuevo rescate** (`src/presentation/screens/rescate/`).
+## 🗄️ Estrategia Offline First y Persistencia
 
-### Cámara (paso 1)
+1. **Base de Datos SQLite Local (`expo-sqlite`):**
+   - Base de datos relacional local en archivo `perf.db`.
+   - Modos activados: `PRAGMA journal_mode = WAL;` y `PRAGMA foreign_keys = ON;`.
+   - **Tablas:**
+     - `casos`: almacena la información integral del animal, estado de rescate, datos de tránsito, coordenadas y estado de sincronización (`sync_status`).
+     - `turnos`: agenda médica vinculada al caso con fecha/hora, motivo, centro veterinario y recordatorio.
+     - `eventos_historial`: registro cronológico de eventos (rescate inicial, cambios de estado, derivaciones a clínicas, etc.).
+     - `operaciones_pendientes`: cola de transacciones locales (`CREATE`, `UPDATE`, `DELETE`) pendientes de replicación en el servidor.
+2. **Preferencias y Ajustes (`@react-native-async-storage/async-storage`):**
+   - Configuración de días para marcar casos urgentes, valores por defecto de recordatorios y preferencias del voluntario.
+3. **Monitoreo de Conectividad (`@react-native-community/netinfo`):**
+   - Hook reactivo `useOnline()` que notifica en tiempo real si el dispositivo cuenta con acceso a internet, reflejado en barras de estado y banners visuales.
 
-- **Librerías:** `expo-camera` para el visor y la captura, y `expo-image-picker` para elegir una foto de la galería. Se instalaron con `npx expo install`, que elige las versiones compatibles con el SDK de Expo del proyecto.
-- **Cómo funciona:** `PasoFoto.tsx` muestra un `CameraView` con flash (auto, encendido, apagado), cambio de cámara frontal/trasera y una guía de encuadre. Al tocar el disparador se llama a `takePictureAsync` y la foto queda guardada como archivo local en el teléfono; el borrador del rescate guarda solo su ruta (`fotoUri`), no la imagen.
-- **Permisos:** `useCameraPermissions()` pide el permiso de cámara en pantalla. Si el usuario lo rechaza, se muestra una explicación y se puede elegir una foto de la galería o seguir con "Omitir foto por urgencia".
-- **Configuración:** los textos de los permisos están en `app.json`, en la sección `plugins`. El permiso de micrófono se bloquea a propósito (`recordAudioAndroid: false` en `expo-camera` y `microphonePermission: false` en `expo-image-picker`) porque la app no graba audio ni video; ambas librerías lo piden por defecto.
+---
 
-### Ubicación / GPS (paso 2)
+## 📱 Módulos y Pantallas
 
-- **Librería:** `expo-location`.
-- **Cómo funciona:** el hook `useUbicacion` pide el permiso, lee la última posición conocida (instantánea) y, si no hay, pide una nueva con un límite de 15 segundos para que la pantalla nunca quede esperando. Después convierte las coordenadas en una dirección legible con `reverseGeocodeAsync` ("Barrio, Calle 123").
-- **Sin permiso o sin GPS:** se avisa y el voluntario puede escribir el lugar a mano. Esto es importante en la calle y sin señal.
-- **Qué se guarda:** el barrio y la calle, más las coordenadas (`lat`, `lng`) en el borrador del rescate.
+### 1. Autenticación (`presentation/screens/auth/`)
+- **`LoginScreen`**: Inicio de sesión del voluntario con credenciales, selector para mostrar/ocultar contraseña, opción de recordar sesión e indicador de modo online/offline.
+- **`RegistroScreen`**: Alta de voluntarios (nombre, teléfono, brigada/rol, correo y contraseña).
 
-### Dónde está cada cosa
+### 2. Gestión de Casos (`presentation/screens/casos/` & `detalle/`)
+- **`CasosScreen`**: Pantalla principal con:
+  - Buscador reactivo por nombre provisorio o ubicación.
+  - Filtros rápidos por urgencia: **Todos**, **Alta**, **Media**, **Baja**.
+  - Tarjeta destacada de casos críticos urgentes.
+  - Pull-to-refresh y lista optimizada de tarjetas (`CasoCard`).
+- **Estados de Pantalla:**
+  - `CasosCargando`: estado de carga (skeleton / shimmer).
+  - `CasosVacio`: estado sin casos coincidentes con sugerencias.
+  - `CasosError`: pantalla de captura de fallos con reintento.
+- **`DetalleCasoScreen`**:
+  - Fotografía ampliada del rescate.
+  - Reseña sanitaria: estado de castración, test VIF/ViLeF y fechas de desparasitaciones.
+  - Ubicación de rescate y domicilio actual de tránsito con geolocalización.
+  - Línea de tiempo con historial de eventos (`eventos_historial`).
+  - Accesos directos para agendar turno o solicitar cambio de estado.
 
-| Archivo | Responsabilidad |
-|---------|-----------------|
-| `screens/rescate/PasoFoto.tsx` | Visor de cámara, captura, galería y permiso |
-| `screens/rescate/PasoDatos.tsx` | Formulario de datos y botón "Usar mi ubicación" |
-| `hooks/useUbicacion.ts` | Permiso, lectura del GPS y dirección |
-| `domain/models/Rescate.ts` | Datos del borrador y cálculo de urgencia por triaje |
-| `domain/usecases/RegistrarRescate.ts` | Validación y registro del caso (sin depender del dispositivo) |
+### 3. Flujo "Nuevo Rescate" (`presentation/screens/rescate/`)
+Asistente guiado de 3 pasos con barra de progreso superior (`BarraRescate`):
+- **Paso 1: Foto (`PasoFoto`)**
+  - Visor en vivo con `CameraView` de `expo-camera`.
+  - Controles de flash (automático, activado, desactivado) y switch entre cámara frontal y trasera.
+  - Acceso alternativo a la galería multimedia del teléfono (`expo-image-picker`).
+  - Opción de "Omitir foto por urgencia" para situaciones críticas en la calle.
+- **Paso 2: Datos del Animal (`PasoDatos`)**
+  - Nombre provisorio, especie (foco felino), cantidad de animales, edad estimada, estado visible y temperamento.
+  - Preguntas de triaje que calculan automáticamente la urgencia del caso.
+  - Botón **"Usar mi ubicación"**: obtiene coordenadas GPS mediante `expo-location` y ejecuta geocodificación inversa para obtener la calle y barrio de forma legible (con límite de 15 segundos para no bloquear la app).
+- **Paso 3: Confirmación (`PasoConfirmar`)**
+  - Resumen completo de la información antes de guardar.
+- **Pantallas de Resultado:**
+  - `RescateGuardadoScreen`: confirmación con indicador de guardado local / pendiente de sincronizar.
+  - `ErrorGuardadoScreen`: manejo de fallos con opción de reintentar sin perder los datos ingresados.
 
-La capa de dominio no conoce la cámara ni el GPS: recibe la ruta de la foto y las coordenadas ya resueltas. Así las reglas se pueden probar sin dispositivo.
+### 4. Cambio de Estado (`presentation/screens/estado/`)
+- **`CambioEstadoScreen`**: Flujo para actualizar la situación del animal entre los estados disponibles:
+  - `EN_TRANSITO`, `EN_CLINICA`, `PRE_ADOPTADO`, `EN_ADOPCION`, `ADOPTADO`, `FALLECIDO`.
+  - Validación de destino obligatorio si el caso se deriva a clínica o tránsito.
+  - Motivo del cambio obligatorio con registro automático en el historial de eventos del caso.
+- **`ConfirmacionCambioScreen`**: Resumen visual de la actualización efectuada.
 
-### Probarlo en el emulador
+### 5. Agenda Veterinaria y Recordatorios (`presentation/screens/turnos/`)
+- **`TurnosScreen`**: Listado cronológico de turnos agendados, filtrado por clínica veterinaria, opción para marcar como cumplido o cancelar.
+- **`AgendarTurnoScreen`**:
+  - Selección de clínica y motivo de consulta.
+  - Selector de fecha y hora.
+  - Configuración de alertas anticipadas (1 día antes / 2 horas antes).
+- **`TurnoAgendadoScreen`**: Confirmación con resumen de notificaciones programadas y botón para realizar llamada telefónica directa al centro veterinario.
+- **`TurnoNoDisponibleScreen`**: Manejo de cupos ocupados que sugiere de manera automática los dos horarios libres más próximos.
 
-- **Cámara:** el emulador de Android usa una cámara virtual, por lo que la foto puede salir negra con la fecha. En un teléfono real se ve normal.
-- **GPS:** se puede fijar una posición desde Android Studio (Extended controls > Location) o con `adb emu geo fix <longitud> <latitud>` (por ejemplo `adb emu geo fix -58.4106 -34.6094` para Balvanera).
+### 6. Ajustes y Diagnóstico (`presentation/screens/ajustes/`)
+- **`AjustesScreen`**:
+  - Configuración del umbral de días para marcar casos como urgentes (1 a 30 días).
+  - Preferencias predeterminadas para recordatorios de turnos.
+  - **Sincronización manual:** botón para forzar el envío de operaciones pendientes.
+  - Diagnóstico de memoria local: contador de casos activos, eventos archivados y espacio utilizado en MB.
+  - Información del voluntario activo y cierre de sesión.
 
-## Turnos y recordatorios locales
+### 7. Archivo de Casos (`presentation/screens/archivo/`)
+- **`ArchivoScreen`**: Sección destinada a consultar el histórico de animales adoptados o finalizados.
 
-La agenda y el flujo de agendar están en `src/presentation/screens/turnos/`. Los recordatorios usan `expo-notifications` y **funcionan sin conexión**, porque los dispara el sistema operativo desde una alarma programada en el teléfono.
+---
 
-- **Cómo funciona:** al confirmar un turno, el caso de uso `AgendarTurno` guarda el turno y le pide a un servicio de recordatorios que programe los avisos elegidos (1 día antes y/o 2 horas antes). Cada aviso se programa con `scheduleNotificationAsync` con un disparador por fecha (`DATE`).
-- **Permiso:** la app pide el permiso de notificaciones la primera vez que se agenda un turno. Si se rechaza, el turno se guarda igual y la confirmación avisa que no hay recordatorios.
-- **Avisos que ya pasaron:** si un aviso cae en un momento anterior a ahora (por ejemplo, "1 día antes" de un turno de mañana a la tarde), no se programa. La pantalla de confirmación muestra solo los que quedaron activos.
-- **Botones de la notificación:** "Llamar al centro" abre el teléfono con el número de la clínica (se maneja en `App.tsx`). "Ver en la app", al igual que tocar la notificación, **por ahora solo abre la aplicación**, sin llevar a una pantalla en particular.
-- **Pendiente (limitación conocida):** tocar la notificación debería llevar directo al turno (la pestaña Turnos). El id del turno ya viaja dentro de la notificación (`data.turnoId`), pero falta navegar al recibirlo. Si la app estaba cerrada, también hay que resolver el paso por el Login, porque la sesión es simulada.
-- **Cupo no disponible:** si el horario elegido ya está reservado en la clínica, `AgendarTurno` lanza `CupoNoDisponible` con los dos próximos horarios libres. La pantalla de error los ofrece para reservar con un toque, sin volver a cargar los datos.
+## 🛠️ Tecnologías y Librerías
 
-| Archivo | Responsabilidad |
-|---------|-----------------|
-| `domain/usecases/AgendarTurno.ts` | Reglas: horario futuro, cupo libre y alternativas |
-| `domain/services/RecordatorioTurnos.ts` | Interfaz de los recordatorios (el dominio no conoce `expo-notifications`) |
-| `data/local/RecordatoriosNotificaciones.ts` | Implementación con `expo-notifications` |
-| `data/repositories/TurnoRepositoryImpl.ts` | Turnos en memoria (pendiente reemplazar por SQLite) |
-| `screens/turnos/` | Agenda, formulario, confirmación y error de cupo |
+| Tecnología / Paquete | Versión | Propósito en el Proyecto |
+|---|---|---|
+| **React** | `19.2.3` | Biblioteca base para componentes de interfaz de usuario. |
+| **React Native** | `0.86.3` | Framework móvil multiplataforma. |
+| **Expo** | `~57.0.27` | Ecosistema y suite de desarrollo para React Native. |
+| **TypeScript** | `~6.0.3` | Tipado estático estricto para modelos de dominio, use cases y componentes. |
+| **React Navigation** | `^7.x` | Navegación nativa con Stack y Bottom Tabs. |
+| **Zustand** | `^5.0.16` | Gestión de estado global ligera, reactiva y sin boilerplate. |
+| **expo-sqlite** | `~57.0.4` | Persistencia relacional local rápida con modo WAL. |
+| **AsyncStorage** | `2.2.0` | Persistencia clave-valor para configuraciones y ajustes. |
+| **expo-camera** | `~57.0.6` | Acceso a cámara de fotos para capturar el rescate en vivo. |
+| **expo-image-picker** | `~57.0.20` | Selección de fotografías desde la galería del dispositivo. |
+| **expo-location** | `~57.0.21` | Captura de coordenadas GPS y geocodificación inversa a direcciones. |
+| **expo-notifications** | `~57.0.23` | Programación de alarmas y notificaciones locales sin conexión. |
+| **NetInfo** | `12.0.1` | Detección en tiempo real del estado de conexión a internet. |
+| **Plus Jakarta Sans** | `^0.4.2` | Tipografía institucional moderna (Google Fonts). |
+| **@expo/vector-icons** | `^15.0.2` | Iconos del sistema (MaterialIcons). |
 
-Para verificar los avisos en el emulador: `adb shell dumpsys alarm | grep PERFtmp` lista las alarmas programadas por la app.
+---
 
-## Ajustes
+## 🎨 Sistema de Diseño y Estilos
 
-Se abre desde el engranaje del encabezado de las pantallas principales (`src/presentation/screens/ajustes/`). Las preferencias se guardan en el teléfono con **AsyncStorage** (`@react-native-async-storage/async-storage`), que es la opción simple para pares clave-valor; los casos y turnos irán en SQLite.
+- **Tipografía:** *Plus Jakarta Sans* en variantes Regular (400), SemiBold (600) y Bold (700).
+- **Paleta de Colores (`presentation/theme/colors.ts`):**
+  - **Primary:** `#005C55` (Verde esmeralda institucional)
+  - **Primary Soft:** `#E6F2F0`
+  - **Secondary:** `#FFBE0B` (Amarillo cálido para alertas y badges)
+  - **Background:** `#FAF7EF` (Tono neutro cálido tipo papel)
+  - **Surface:** `#FFFFFF` (Blanco puro para tarjetas y modales)
+  - **Urgencia Alta:** Fondo `#FEE2E2`, Texto `#B91C1C`
+  - **Urgencia Media:** Fondo `#FEF3C7`, Texto `#B45309`
+  - **Urgencia Baja:** Fondo `#E0E7FF`, Texto `#3730A3`
+  - **Texto Principal:** `#1F2937` | **Texto Secundario:** `#6B7280`
 
-| Ajuste | Qué hace realmente |
-|--------|--------------------|
-| Días para marcar como urgente | Cambia la urgencia de los casos: uno con más días de espera que el umbral se muestra como urgente en la lista y en el detalle. Solo sube la urgencia, nunca la baja. La regla está en `conUmbral` (dominio). Rango 1 a 30 días, validado en `GuardarAjustes`. |
-| Recordatorio anticipado / Alerta de salida | Definen qué recordatorios vienen marcados al agendar un turno (1 día antes y 2 horas antes). |
-| Forzar sincronización ahora | Llama a `SincronizarAhora`: sin conexión no intenta y avisa; con conexión envía los casos pendientes. |
-| Espacio en memoria local | Resumen de casos activos y archivados. |
-| Cerrar sesión | Vuelve al Login (la sesión es simulada). |
+---
 
-Limitaciones actuales, para no confundirlas con funciones terminadas:
+## 🚀 Requisitos Previos
 
-- El **modo offline automático** se guarda, pero todavía no cambia el comportamiento: la app ya trabaja siempre con datos locales y no hay base SQLite ni API reales.
-- El **espacio en memoria** y los **casos archivados** son estimados con datos de ejemplo, no una medición real.
-- La **sincronización** es simulada hasta que exista la API (`TODO` de Mateo en `CasoRepositoryImpl`).
-- El **voluntario** de la sesión ("Mariana Gomez · Brigada Caballito") es un dato fijo de ejemplo.
-- La **versión** que se muestra es la real de `app.json`; el Figma muestra una de ejemplo.
+Antes de instalar y correr la aplicación, asegurate de tener instalado en tu computadora:
 
-## Estrategia Offline First
+1. **Node.js**: Versión `20.x` o superior (LTS recomendada).
+   - Verificar con: `node -v`
+2. **npm** (incluido con Node.js) o **yarn**.
+3. **Dispositivo o Emulador de Pruebas:**
+   - **Opción A (Recomendada - Teléfono Físico):** Instalar la app gratuita **Expo Go** desde Google Play Store (Android) o App Store (iOS).
+   - **Opción B (Emulador Android):** Tener instalado **Android Studio** con un AVD (Android Virtual Device) configurado.
+   - **Opción C (Nativo Android con `run:android`):** Requiere **JDK 21** configurado y variables de entorno `ANDROID_HOME` y `JAVA_HOME`.
 
-La app siempre lee y escribe primero en la base local; la red solo sincroniza en segundo plano.
+---
 
-| Situación | Qué hace la app |
-|-----------|-----------------|
-| Con conexión | Muestra datos locales, los actualiza desde el servidor y envía las operaciones pendientes. |
-| Sin conexión | Sigue funcionando con la base local. Cada cambio queda como operación pendiente. |
-| Recupera conexión | Envía las pendientes en orden y descarga novedades. |
-| Sin datos locales | Pide conexión para la primera descarga; si falla, ofrece reintentar. |
+## 📦 Instalación
 
-Ante un conflicto de edición prevalece la modificación más reciente. El cierre por adopción nunca se revierte.
+1. **Clonar el repositorio:**
+   ```bash
+   git clone https://github.com/Fashisus07/PERF-App.git
+   cd PERF-App
+   ```
 
-## Estado actual
+2. **Instalar las dependencias del proyecto:**
+   ```bash
+   npm install
+   ```
 
-- [x] Proyecto Expo + TypeScript con estructura por capas.
-- [x] Tema (colores y tipografía Plus Jakarta Sans) tomado del Figma.
-- [x] Logo, ícono de la app y splash.
-- [x] Navegación inferior: Casos, Turnos, Archivo.
-- [x] Pantalla **Casos**: resumen de urgentes, búsqueda, filtros por urgencia y lista (datos de ejemplo).
-- [x] Pantalla **Detalle del caso**: ficha, ubicación actual y de rescate, estado, reseña sanitaria e historial.
-- [x] **Cambio de estado** con confirmación (motivo obligatorio; destino obligatorio al derivar a tránsito o clínica).
-- [x] **Nuevo rescate** en 3 pasos, con confirmación y pantalla de error al guardar (datos de ejemplo en memoria).
-- [ ] Cierre por adopción.
-- [x] **Turnos**: agenda, agendar turno, confirmación y aviso de cupo no disponible (datos de ejemplo en memoria).
-- [ ] Archivo de casos.
-- [x] **Ajustes** (umbral de urgencia, recordatorios y sincronización; ver sus limitaciones en la sección *Ajustes*).
-- [ ] Estados de carga, vacío, error y sin conexión.
-- [ ] SQLite, sincronización y Supabase.
-- [x] Cámara y ubicación (ver la sección *Cámara y ubicación en el rescate*).
-- [x] Notificaciones locales de turnos (ver la sección *Turnos y recordatorios locales*).
-- [ ] Tests.
+3. **Verificar que no existan errores de tipos en TypeScript:**
+   ```bash
+   npx tsc --noEmit
+   ```
 
-## Cómo correrla
+---
 
-Requisitos: Node.js 20 o superior y un emulador de Android (Android Studio) o un celular con Expo Go.
+## 🏃‍♂️ Cómo Iniciar el Proyecto
+
+### 1. Iniciar el Servidor de Desarrollo (Expo Metro)
 
 ```bash
-npm install
+npm start
+# O alternativamente:
 npx expo start
 ```
 
-Con el emulador abierto, presionar `a` en la terminal. Con un celular, escanear el QR con Expo Go.
+Al ejecutarse, Metro Bundler mostrará un código QR en la terminal y un panel con atajos interactivos:
+- Presioná `a` para abrir directamente en un emulador de Android conectado.
+- Presioná `w` para abrir la versión Web en tu navegador.
+- Presioná `r` para recargar la aplicación en caliente (Fast Refresh).
 
-Si se agregaron librerías nativas (como la cámara) o se cambió `app.json`, hay que volver a compilar la app para que tome los permisos:
+### 2. Probar en un Dispositivo Móvil Físico (Expo Go)
+
+1. Conectá tu teléfono a la **misma red Wi-Fi** que la computadora donde corre Metro.
+2. Abrí la app **Expo Go** en tu celular.
+3. Escaneá el código QR mostrado en la terminal.
+4. *Tip:* Si estás en redes públicas o con aislamiento entre dispositivos, podés iniciar con el flag de túnel:
+   ```bash
+   npx expo start --tunnel
+   ```
+
+### 3. Ejecución Nativa en Android (Build Local)
+
+Si necesitás compilar los módulos nativos completos de Android (para probar permisos del sistema operativo al 100%):
 
 ```bash
-npm install
+npm run android
+# O equivalentemente:
 npx expo run:android
 ```
 
-Este comando genera la carpeta `android/` (no se sube al repositorio) y la instala en el emulador. Necesita JDK 21; con el JDK 25 que trae Android Studio falla la compilación nativa.
+> **Nota para compilación nativa:** Requiere tener instalado el JDK 21 y el Android SDK. Genera la carpeta nativa `android/` en tu entorno local.
 
-Verificar tipos:
+---
 
-```bash
-npx tsc --noEmit
-```
+## 🧪 Pruebas de Capacidades Nativas en Emulador
 
-## Roles
+- **Cámara:** El emulador de Android utiliza por defecto una cámara virtual animada. En un dispositivo físico capturará fotos reales y las almacenará en el almacenamiento temporal de la app.
+- **Geolocalización (GPS):** Podés simular una posición geográfica en el emulador desde la ventana de **Extended Controls** (`...` en el emulador > *Location*) o mediante comandos ADB en la terminal:
+  ```bash
+  adb emu geo fix -58.4106 -34.6094
+  ```
+- **Recordatorios / Notificaciones:** Podés inspeccionar las alarmas locales programadas por la app en Android mediante:
+  ```bash
+  adb shell dumpsys alarm | grep PERFtmp
+  ```
+- **Modo Sin Conexión (Offline):** Podés activar el Modo Avión en el teléfono o emulador; la aplicación continuará permitiendo registrar rescates, consultar detalles y agendar turnos, guardando todo en SQLite.
 
-| Integrante | Rol principal |
-|------------|---------------|
-| Mateo | Arquitectura, datos y sincronización |
-| Facundo | UI, UX y navegación |
-| Tobías | Capacidades del dispositivo, testing y documentación |
+---
 
-Todos participan en todo el proyecto y deben poder explicar la app completa.
+## 📄 Scripts Disponibles en `package.json`
+
+| Comando | Descripción |
+|---|---|
+| `npm start` | Inicia el servidor de desarrollo de Metro con Expo. |
+| `npm run android` | Compila y ejecuta el proyecto nativo en Android. |
+| `npm run ios` | Compila y ejecuta el proyecto nativo en iOS (requiere macOS). |
+| `npm run web` | Inicia el servidor para previsualización web en el navegador. |
+| `npx tsc --noEmit` | Ejecuta el comprobador de tipos de TypeScript sobre todo el código fuente. |
+
+---
+
+## 👥 Equipo de Desarrollo
+
+Proyecto desarrollado en el marco del **Trabajo Práctico Obligatorio (TPO)** de la materia **Desarrollo de Aplicaciones I** - UADE.
+
+- **Mateo Mirarchi**
+- **Facundo Pérez Espinosa**
+- **Tobías**

@@ -28,7 +28,7 @@ export function NuevoRescateScreen({ route, navigation }: { route?: { params?: P
   const guardar = async () => {
     setGuardando(true);
     try {
-      const caso = await registrar.ejecutar(borrador, !online, LOGO);
+      const caso = await registrar.ejecutar(borrador, !online);
       navigation?.replace?.('RescateGuardado', { casoId: caso.id, sinConexion: !online });
     } catch (e) {
       navigation?.replace?.('ErrorGuardado', { borrador, motivo: e instanceof Error ? e.message : undefined });

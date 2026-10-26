@@ -17,7 +17,7 @@ type Props = {
 };
 
 export function CasosError({ guardados, onReintentar, onNuevoRescate }: Props) {
-  const pendientes = guardados.filter((c) => c.pendienteSync).length;
+  const pendientes = guardados.filter((c) => c.syncStatus === 'PENDING').length;
   return (
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -84,16 +84,16 @@ export function CasosError({ guardados, onReintentar, onNuevoRescate }: Props) {
             </View>
             <View style={{ gap: 6 }}>
               {guardados.slice(0, 2).map((c) => {
-                const b = BADGE[c.urgencia];
+                const b = BADGE[c.esUrgente ? 'urgente' : 'aldia'];
                 return (
                   <View key={c.id} style={styles.fila}>
                     <View style={[styles.filaIcon, { backgroundColor: b.bg }]}>
                       <MaterialIcons name="pets" size={18} color={b.fg} />
                     </View>
                     <View style={styles.filaInfo}>
-                      <Text style={styles.filaNombre} numberOfLines={1}>{c.nombre}</Text>
+                      <Text style={styles.filaNombre} numberOfLines={1}>{c.nombreProvisorio}</Text>
                       <Text style={styles.filaDetalle} numberOfLines={1}>
-                        {c.direccion ? `${c.ubicacion} • ${c.direccion}` : c.ubicacion}
+                        {c.barrio} {c.transito.nombre ? `• Tránsito: ${c.transito.nombre}` : ''}
                       </Text>
                     </View>
                     <View style={[styles.filaBadge, { backgroundColor: b.bg }]}>

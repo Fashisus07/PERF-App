@@ -25,7 +25,7 @@ export function useUbicacion() {
       const pos =
         (await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000 })) ??
         (await conLimite(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }), 15000));
-      const coordenadas = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      const coordenadas = { latitud: pos.coords.latitude, longitud: pos.coords.longitude };
       let texto = '';
       try {
         const [d] = await Location.reverseGeocodeAsync(pos.coords);
@@ -37,7 +37,7 @@ export function useUbicacion() {
       } catch {
         // sin red o sin servicio de geocodificación: usamos las coordenadas
       }
-      if (!texto) texto = `${coordenadas.lat.toFixed(5)}, ${coordenadas.lng.toFixed(5)}`;
+      if (!texto) texto = `${coordenadas.latitud.toFixed(5)}, ${coordenadas.longitud.toFixed(5)}`;
       setEstado('activo');
       return { texto, coordenadas };
     } catch {

@@ -1,60 +1,72 @@
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { CasoRepositoryImpl } from '../../data/repositories/CasoRepositoryImpl';
-import { Caso, Urgencia } from '../../domain/models/Caso';
-import { ListarCasosPorUrgencia } from '../../domain/usecases/ListarCasosPorUrgencia';
+import { useCallback, useMemo, useRef } from 'react';
+import { calcularUrgencia, Caso } from '../../domain/models/Caso';
+import { useCasoStore, FiltroUrgencia } from '../stores/useCasoStore';
 import { obtenerAjustes } from './useAjustes';
 
-export type FiltroUrgencia = 'todos' | Urgencia;
-
-// Composición simple de dependencias (sin framework de DI).
-const listarCasos = new ListarCasosPorUrgencia(new CasoRepositoryImpl());
+export type { FiltroUrgencia };
 
 export function useCasos() {
-  const [casos, setCasos] = useState<Caso[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(false);
-  const [busqueda, setBusqueda] = useState('');
-  const [filtro, setFiltro] = useState<FiltroUrgencia>('todos');
+  const casos = useCasoStore((s) => s.casos);
+  const cargando = useCasoStore((s) => s.cargando);
+  const error = useCasoStore((s) => !!s.error);
+  const busqueda = useCasoStore((s) => s.busqueda);
+  const setBusqueda = useCasoStore((s) => s.setBusqueda);
+  const filtro = useCasoStore((s) => s.filtroUrgencia);
+  const setFiltro = useCasoStore((s) => s.setFiltroUrgencia);
+  const cargarCasos = useCasoStore((s) => s.cargarCasos);
 
-  const cargar = useCallback((silencioso = false) => {
-    if (!silencioso) setCargando(true);
-    setError(false);
-    // El umbral de días de los ajustes decide qué casos se marcan como urgentes.
-    obtenerAjustes()
-      .then((a) => listarCasos.ejecutar(a.umbralUrgenteDias))
-      .then((lista) => setCasos(lista.map((c) => ({ ...c }))))
-      .catch(() => setError(true))
-      .finally(() => setCargando(false));
-  }, []);
+  const cargar = useCallback(async (silencioso = false) => {
+    try {
+      const ajustes = await obtenerAjustes();
+      await cargarCasos(ajustes.umbralUrgenteDias, silencioso);
+    } catch {
+      await cargarCasos(10, silencioso);
+    }
+  }, [cargarCasos]);
 
-  // Carga al entrar y recarga sin spinner al volver a la pantalla (ej: tras cambiar un estado).
   const primera = useRef(true);
   useFocusEffect(
     useCallback(() => {
       cargar(!primera.current);
       primera.current = false;
-    }, [cargar]),
+    }, [cargar])
   );
 
   const conteo = useMemo(
     () => ({
       todos: casos.length,
-      urgente: casos.filter((c) => c.urgencia === 'urgente').length,
-      atencion: casos.filter((c) => c.urgencia === 'atencion').length,
-      aldia: casos.filter((c) => c.urgencia === 'aldia').length,
+      urgente: casos.filter((c) => calcularUrgencia(c, 10) === 'urgente').length,
+      atencion: casos.filter((c) => calcularUrgencia(c, 10) === 'atencion').length,
+      aldia: casos.filter((c) => calcularUrgencia(c, 10) === 'aldia').length,
     }),
-    [casos],
+    [casos]
   );
 
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return casos.filter(
-      (c) =>
-        (filtro === 'todos' || c.urgencia === filtro) &&
-        (!q || c.nombre.toLowerCase().includes(q) || c.ubicacion.toLowerCase().includes(q)),
-    );
+    return casos.filter((c) => {
+      const urg = calcularUrgencia(c, 10);
+      const cumpleFiltro = filtro === 'todos' || urg === filtro;
+      const cumpleBusqueda =
+        !q ||
+        c.nombreProvisorio.toLowerCase().includes(q) ||
+        c.barrio.toLowerCase().includes(q) ||
+        c.quienSigueCaso.toLowerCase().includes(q);
+      return cumpleFiltro && cumpleBusqueda;
+    });
   }, [casos, busqueda, filtro]);
 
-  return { visibles, conteo, casos, cargando, error, recargar: () => cargar(), busqueda, setBusqueda, filtro, setFiltro };
+  return {
+    visibles,
+    conteo,
+    casos,
+    cargando,
+    error,
+    recargar: () => cargar(false),
+    busqueda,
+    setBusqueda,
+    filtro,
+    setFiltro,
+  };
 }

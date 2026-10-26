@@ -1,38 +1,49 @@
 import { Caso } from '../models/Caso';
-import { BorradorRescate, ETIQUETA_EDAD, ETIQUETA_ESPECIE, formatoFecha, urgenciaDeTriaje } from '../models/Rescate';
+import { BorradorRescate, faltantesDelRescate } from '../models/Rescate';
 import { CasoRepository } from '../repositories/CasoRepository';
-
-// Qué falta completar para poder pasar al paso siguiente / guardar.
-export function faltantesDelRescate(b: BorradorRescate): string[] {
-  const faltan: string[] = [];
-  if (!b.especie) faltan.push('la especie');
-  if (!b.edad) faltan.push('la edad estimada');
-  if (!b.barrio.trim() && !b.lugar.trim()) faltan.push('el lugar del rescate');
-  return faltan;
-}
+import { generarUUID } from '../../data/local/uuid';
 
 export class RegistrarRescate {
   constructor(private readonly repo: CasoRepository) {}
 
-  async ejecutar(b: BorradorRescate, sinConexion: boolean, fotoPorDefecto: Caso['foto']): Promise<Caso> {
+  async ejecutar(b: BorradorRescate, sinConexion: boolean = false): Promise<Caso> {
     const faltan = faltantesDelRescate(b);
-    if (faltan.length) throw new Error(`Falta completar ${faltan.join(', ')}`);
+    if (faltan.length) {
+      throw new Error(`Falta completar: ${faltan.join(', ')}`);
+    }
 
-    const caso: Omit<Caso, 'id' | 'codigo'> = {
-      nombre: b.nombre.trim() || 'Sin nombre',
-      descripcion: `${ETIQUETA_ESPECIE[b.especie!]} · ${ETIQUETA_EDAD[b.edad!]}`,
-      urgencia: urgenciaDeTriaje(b.triaje),
-      diasEnEspera: 0,
-      estado: 'En la calle',
-      estadoCaso: 'calle',
-      ubicacion: b.barrio.trim() || b.lugar.trim(),
-      ubicacionTipo: 'calle',
-      direccion: b.lugar.trim() || undefined,
-      nota: b.notas.trim() || undefined,
-      foto: b.fotoUri ? { uri: b.fotoUri } : fotoPorDefecto,
-      pendienteSync: sinConexion,
-      fechaIngreso: formatoFecha(new Date(b.fecha)),
+    const ahora = Date.now();
+    const caso: Caso = {
+      id: generarUUID(),
+      nombreProvisorio: b.nombreProvisorio.trim(),
+      cantidadAnimales: Math.max(1, b.cantidadAnimales || 1),
+      especie: b.especie || 'Gato',
+      edadEstimada: b.edadEstimada.trim() || 'Desconocida',
+      historiaOrigen: b.historiaOrigen.trim(),
+      personalidad: b.personalidad.trim(),
+      estadoVisible: b.estadoVisible.trim(),
+      barrio: b.barrio.trim(),
+      coordenadas: b.coordenadas ?? null,
+      fotoUri: b.fotoUri ?? null,
+      fechaRescate: ahora,
+      quienSigueCaso: b.quienSigueCaso || 'PERF',
+      transito: {
+        nombre: b.transitoNombre.trim(),
+        telefono: b.transitoTelefono.trim(),
+        correo: b.transitoCorreo?.trim() || undefined,
+      },
+      sanidad: {
+        castrado: b.castrado || 'PENDIENTE',
+        virales: b.virales || 'PENDIENTE',
+        fechaPrimeraDesparasitacion: b.fechaPrimeraDesparasitacion ?? null,
+        fechaSegundaDesparasitacion: b.fechaSegundaDesparasitacion ?? null,
+      },
+      estadoCaso: 'EN_TRANSITO',
+      esUrgente: b.esUrgente,
+      syncStatus: sinConexion ? 'PENDING' : 'SYNCED',
+      updatedAt: ahora,
     };
+
     return this.repo.agregar(caso);
   }
 }

@@ -1,5 +1,4 @@
 import {
-  AvisoTurno,
   Clinica,
   conHora,
   ETIQUETA_MOTIVO,
@@ -12,9 +11,8 @@ import { Caso } from '../models/Caso';
 import { TurnoRepository } from '../repositories/TurnoRepository';
 import { RecordatorioTurnos } from '../services/RecordatorioTurnos';
 
-export type OpcionTurno = { fecha: Date; espera: number }; // espera: ms respecto del horario pedido
+export type OpcionTurno = { fecha: Date; espera: number };
 
-// El horario pedido ya fue reservado por otra guardia. Trae alternativas libres en la misma clínica.
 export class CupoNoDisponible extends Error {
   constructor(public readonly solicitud: SolicitudTurno, public readonly opciones: OpcionTurno[]) {
     super('Cupo no disponible');
@@ -23,7 +21,6 @@ export class CupoNoDisponible extends Error {
 
 const ocupado = (fecha: Date, ocupados: Date[]) => ocupados.some((o) => o.getTime() === fecha.getTime());
 
-// Próximos horarios libres de la clínica, a partir del pedido (revisa los 7 días siguientes).
 export function proximosLibres(desde: Date, ocupados: Date[], cantidad = 2): OpcionTurno[] {
   const libres: OpcionTurno[] = [];
   for (let d = 0; d < 7 && libres.length < cantidad; d++) {
@@ -39,7 +36,7 @@ export function proximosLibres(desde: Date, ocupados: Date[], cantidad = 2): Opc
   return libres;
 }
 
-export type TurnoAgendado = { turno: Turno; clinica: Clinica; avisosProgramados: AvisoTurno[] };
+export type TurnoAgendado = { turno: Turno; clinica?: Clinica; recordatorioProgramado: boolean };
 
 export class AgendarTurno {
   constructor(
@@ -48,17 +45,27 @@ export class AgendarTurno {
   ) {}
 
   async ejecutar(s: SolicitudTurno, caso: Caso, ahora = new Date()): Promise<TurnoAgendado> {
-    if (s.fecha.getTime() <= ahora.getTime()) throw new Error('El horario elegido ya pasó');
+    const ts = typeof s.fechaHora === 'number' ? s.fechaHora : ((s as any).fecha ? (s as any).fecha.getTime() : 0);
+    if (ts <= ahora.getTime()) {
+      throw new Error('El horario elegido ya pasó');
+    }
 
+    const clinicaId = s.centroVeterinarioId || (s as any).clinicaId;
     const clinicas = await this.repo.obtenerClinicas();
-    const clinica = clinicas.find((c) => c.id === s.clinicaId);
-    if (!clinica) throw new Error('Clínica inexistente');
+    const clinica = clinicas.find((c) => c.id === clinicaId);
 
-    const ocupados = await this.repo.horariosOcupados(s.clinicaId);
-    if (ocupado(s.fecha, ocupados)) throw new CupoNoDisponible(s, proximosLibres(s.fecha, ocupados));
+    if (clinicaId) {
+      const ocupados = await this.repo.horariosOcupados(clinicaId);
+      const fechaCita = new Date(ts);
+      if (ocupado(fechaCita, ocupados)) {
+        throw new CupoNoDisponible(s, proximosLibres(fechaCita, ocupados));
+      }
+    }
 
-    const turno = await this.repo.agregar(s, ETIQUETA_MOTIVO[s.motivo]);
-    const avisosProgramados = s.avisos.length ? await this.recordatorios.programar(turno, clinica, caso.nombre) : [];
-    return { turno, clinica, avisosProgramados };
+    const motivoDesc = ETIQUETA_MOTIVO[s.motivo] || s.motivo;
+    const turno = await this.repo.agregar(s, motivoDesc);
+    const recordatorioProgramado = await this.recordatorios.programar(turno, clinica, caso.nombreProvisorio);
+
+    return { turno, clinica, recordatorioProgramado };
   }
 }

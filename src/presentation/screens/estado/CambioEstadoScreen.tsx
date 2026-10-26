@@ -12,13 +12,15 @@ import { colors, fonts } from '../../theme';
 import { ESTADOS_CASO, infoEstado } from './estadosCaso';
 
 const PLACEHOLDER_DESTINO: Partial<Record<EstadoCaso, string>> = {
-  transito: 'Ej: Casa de Lucía (Caballito)',
-  tratamiento: 'Ej: Clínica Veterinaria Patitas',
-  preadopcion: 'Ej: Familia evaluada (opcional)',
-  calle: 'Ej: Plaza Miserere (opcional)',
-  adoptado: 'Ej: Domicilio del adoptante (opcional)',
-  fallecido: 'Ej: Clínica que constató (opcional)',
+  EN_TRANSITO: 'Ej: Casa de Lucía (Caballito)',
+  EN_CLINICA: 'Ej: Clínica Veterinaria Patitas',
+  PRE_ADOPTADO: 'Ej: Familia evaluada (opcional)',
+  EN_ADOPCION: 'Ej: Redes PERF / Difusión',
+  ADOPTADO: 'Ej: Domicilio del adoptante (opcional)',
+  FALLECIDO: 'Ej: Clínica que constató (opcional)',
 };
+
+const FOTO_DEFAULT = require('../../../../assets/images/casos/misho.jpg');
 
 type Props = {
   route?: { params?: { casoId: string } };
@@ -44,7 +46,7 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
     );
   }
 
-  const actual = caso.estadoCaso ?? 'calle';
+  const actual = caso.estadoCaso ?? 'EN_TRANSITO';
   const requiereDestino = !!elegido && estadoRequiereDestino(elegido);
   const completo = !!elegido && !!motivo.trim() && (!requiereDestino || !!destino.trim());
 
@@ -56,9 +58,7 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
       estado: elegido,
       motivo: motivo.trim(),
       destino: destino.trim() || undefined,
-      notificarCoordinador: notificar,
       sinConexion: !online,
-      fecha,
     });
     navigation?.navigate?.('ConfirmacionCambio', {
       casoId: caso.id,
@@ -70,6 +70,9 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
     });
   };
 
+  const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;
+  const ubicacionActual = caso.transito.nombre ? `Tránsito: ${caso.transito.nombre}` : `Barrio: ${caso.barrio}`;
+
   return (
     <View style={styles.screen}>
       <StackHeader titulo="Cambiar Estado" onBack={() => navigation?.goBack?.()} />
@@ -80,22 +83,19 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
         <View style={styles.resumen}>
           <View style={styles.resumenTop}>
             <View>
-              <Image source={caso.foto} style={styles.foto} />
-              <View style={styles.sexoBadge}>
-                <MaterialIcons name={caso.sexo === 'hembra' ? 'female' : 'male'} size={12} color={colors.atencionText} />
-              </View>
+              <Image source={fotoSource} style={styles.foto} />
             </View>
             <View style={styles.resumenInfo}>
               <View style={styles.nombreRow}>
-                <Text style={styles.nombre}>{caso.nombre}</Text>
+                <Text style={styles.nombre}>{caso.nombreProvisorio}</Text>
                 <View style={styles.idBadge}>
-                  <Text style={styles.idText}>#{caso.id}</Text>
+                  <Text style={styles.idText}>#{caso.id.slice(0, 8)}</Text>
                 </View>
               </View>
-              <Text style={styles.descripcion}>{caso.descripcion}</Text>
+              <Text style={styles.descripcion}>{caso.especie} · {caso.edadEstimada}</Text>
               <View style={styles.diasRow}>
                 <MaterialIcons name="schedule" size={14} color={colors.textMuted} />
-                <Text style={styles.dias}>{caso.diasEnEspera} {caso.diasEnEspera === 1 ? 'día' : 'días'} en rescate</Text>
+                <Text style={styles.dias}>{caso.quienSigueCaso ? `Coordina: ${caso.quienSigueCaso}` : 'PERF'}</Text>
               </View>
             </View>
           </View>
@@ -108,7 +108,7 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
                 <Text style={styles.actualLabel}>
                   Estado actual: <Text style={{ color: colors.atencion }}>{ETIQUETA_ESTADO[actual]}</Text>
                 </Text>
-                <Text style={styles.actualSub} numberOfLines={1}>Ubicación actual: {caso.ubicacion}</Text>
+                <Text style={styles.actualSub} numberOfLines={1}>{ubicacionActual}</Text>
               </View>
             </View>
             <View style={styles.vigente}>
@@ -139,7 +139,7 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
                   <MaterialIcons
                     name={e.icono}
                     size={22}
-                    color={e.key === 'tratamiento' ? colors.urgente : esActual ? colors.textSubtle : colors.primary}
+                    color={e.key === 'EN_CLINICA' ? colors.urgente : esActual ? colors.textSubtle : colors.primary}
                   />
                 </View>
                 <View style={styles.opcionTexto}>
@@ -240,7 +240,7 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
           <Text style={styles.ctaText}>{elegido ? 'Confirmar cambio de estado' : 'Selecciona un nuevo estado'}</Text>
         </Pressable>
         <Pressable style={styles.cancelar} onPress={() => navigation?.goBack?.()}>
-          <Text style={styles.cancelarText}>Cancelar y volver a la ficha de {caso.nombre}</Text>
+          <Text style={styles.cancelarText}>Cancelar y volver a la ficha de {caso.nombreProvisorio}</Text>
         </Pressable>
       </View>
     </View>

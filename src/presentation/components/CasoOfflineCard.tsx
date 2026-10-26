@@ -1,16 +1,10 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { AccionRapida, Caso } from '../../domain/models/Caso';
+import { calcularUrgencia, Caso, diasEnEspera } from '../../domain/models/Caso';
 import { colors, fonts } from '../theme';
 import { UbicacionCaso } from './UbicacionCaso';
 
-const ACCIONES: Record<AccionRapida, { label: string; icono: keyof typeof MaterialIcons.glyphMap }> = {
-  'llamar-vet': { label: 'Llamar Vet', icono: 'phone' },
-  coordinar: { label: 'Coordinar', icono: 'phone' },
-  dosis: { label: 'Dosis', icono: 'vaccines' },
-  transito: { label: 'Tránsito', icono: 'chat' },
-  tratamiento: { label: 'Tratamiento', icono: 'medication' },
-};
+const FOTO_DEFAULT = require('../../../assets/images/casos/misho.jpg');
 
 const URGENCIA = {
   urgente: { label: 'Urgente', icono: 'error', bg: colors.urgenteBg, fg: colors.urgenteText, espera: colors.urgente },
@@ -21,16 +15,18 @@ const URGENCIA = {
 type Props = { caso: Caso; onFicha?: () => void; onAccion?: () => void };
 
 export function CasoOfflineCard({ caso, onFicha, onAccion }: Props) {
-  const u = URGENCIA[caso.urgencia];
-  const accion = caso.accionRapida ? ACCIONES[caso.accionRapida] : undefined;
-  const dias = caso.diasEnEspera;
+  const urgencia = calcularUrgencia(caso, 10);
+  const u = URGENCIA[urgencia];
+  const dias = diasEnEspera(caso);
+  const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;
+
   return (
     <View style={styles.card}>
       <View style={styles.top}>
-        <Image source={caso.foto} style={styles.foto} />
+        <Image source={fotoSource} style={styles.foto} />
         <View style={styles.info}>
           <View style={styles.nameRow}>
-            <Text style={styles.nombre}>{caso.nombre}</Text>
+            <Text style={styles.nombre}>{caso.nombreProvisorio}</Text>
             <View style={[styles.badge, { backgroundColor: u.bg }]}>
               <Text style={[styles.badgeText, { color: u.fg }]}>{u.label}</Text>
               <MaterialIcons name={u.icono} size={14} color={u.fg} />
@@ -52,21 +48,21 @@ export function CasoOfflineCard({ caso, onFicha, onAccion }: Props) {
         </View>
       </View>
 
-      {caso.nota ? (
+      {caso.historiaOrigen ? (
         <View style={styles.nota}>
-          <Text style={styles.notaText}>{caso.nota}</Text>
+          <Text style={styles.notaText}>{caso.historiaOrigen}</Text>
         </View>
       ) : null}
 
       <View style={styles.botones}>
-        {accion && (
+        {caso.transito.telefono ? (
           <Pressable style={[styles.btn, styles.btnSecundario]} onPress={onAccion}>
-            <Text style={styles.btnSecundarioText}>{accion.label}</Text>
-            <MaterialIcons name={accion.icono} size={16} color={colors.primary} />
+            <Text style={styles.btnSecundarioText}>Llamar tránsito</Text>
+            <MaterialIcons name="phone" size={16} color={colors.primary} />
           </Pressable>
-        )}
+        ) : null}
         <Pressable style={[styles.btn, styles.btnPrimario]} onPress={onFicha}>
-          <Text style={styles.btnPrimarioText}>Ficha offline</Text>
+          <Text style={styles.btnPrimarioText}>Ver ficha</Text>
           <MaterialIcons name="edit-note" size={18} color={colors.onPrimary} />
         </Pressable>
       </View>

@@ -1,8 +1,11 @@
-import { CasoRepositoryImpl } from '../../data/repositories/CasoRepositoryImpl';
-import { RegistrarRescate } from '../../domain/usecases/RegistrarRescate';
-
-const registrarRescate = new RegistrarRescate(new CasoRepositoryImpl());
+import { useCasoStore } from '../stores/useCasoStore';
+import { BorradorRescate } from '../../domain/models/Rescate';
+import { Caso } from '../../domain/models/Caso';
 
 export function useRegistrarRescate() {
-  return registrarRescate;
+  const registrar = useCasoStore((s) => s.registrarRescate);
+  return {
+    ejecutar: (b: BorradorRescate, sinConexion: boolean = false): Promise<Caso> =>
+      registrar(b, sinConexion),
+  };
 }

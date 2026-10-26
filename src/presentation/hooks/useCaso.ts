@@ -1,25 +1,22 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
-import { CasoRepositoryImpl } from '../../data/repositories/CasoRepositoryImpl';
-import { Caso } from '../../domain/models/Caso';
-import { ObtenerCaso } from '../../domain/usecases/ObtenerCaso';
-import { obtenerAjustes } from './useAjustes';
-
-const obtenerCaso = new ObtenerCaso(new CasoRepositoryImpl());
+import { Caso, EventoHistorial } from '../../domain/models/Caso';
+import { useCasoStore } from '../stores/useCasoStore';
 
 export function useCaso(id: string) {
-  const [caso, setCaso] = useState<Caso | undefined>();
+  const casoSeleccionado = useCasoStore((s) => s.casoSeleccionado);
+  const historial = useCasoStore((s) => s.historial);
+  const cargarDetalleCaso = useCasoStore((s) => s.cargarDetalleCaso);
   const [cargando, setCargando] = useState(true);
 
-  // Se recarga cada vez que la pantalla vuelve a estar en foco (ej: después de cambiar el estado).
   useFocusEffect(
     useCallback(() => {
-      obtenerAjustes()
-        .then((a) => obtenerCaso.ejecutar(id, a.umbralUrgenteDias))
-        .then((c) => setCaso(c ? { ...c } : undefined))
-        .finally(() => setCargando(false));
-    }, [id]),
+      setCargando(true);
+      cargarDetalleCaso(id).finally(() => setCargando(false));
+    }, [id, cargarDetalleCaso])
   );
 
-  return { caso, cargando };
+  const caso = casoSeleccionado?.id === id ? casoSeleccionado : undefined;
+
+  return { caso, historial, cargando };
 }
