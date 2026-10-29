@@ -1,6 +1,6 @@
 import { ResumenAlmacenamiento } from '../../domain/models/Ajustes';
 import { Caso, EstadoCaso, EventoHistorial } from '../../domain/models/Caso';
-import { CasoRepository } from '../../domain/repositories/CasoRepository';
+import { CasoRepository, OperacionPendiente } from '../../domain/repositories/CasoRepository';
 import { getDatabase } from '../local/Database';
 import { generarUUID } from '../local/uuid';
 import {
@@ -65,6 +65,24 @@ export class CasoRepositoryImpl implements CasoRepository {
   }
 
   async obtenerActivos(): Promise<Caso[]> {
+    await this.asegurarSemilla();
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<CasoRow>(
+      `SELECT * FROM casos WHERE estado_caso NOT IN ('ADOPTADO', 'FALLECIDO') ORDER BY fecha_rescate DESC;`
+    );
+    return rows.map(casoFromRow);
+  }
+
+  async obtenerArchivados(): Promise<Caso[]> {
+    await this.asegurarSemilla();
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<CasoRow>(
+      `SELECT * FROM casos WHERE estado_caso IN ('ADOPTADO', 'FALLECIDO') ORDER BY updated_at DESC;`
+    );
+    return rows.map(casoFromRow);
+  }
+
+  async obtenerTodos(): Promise<Caso[]> {
     await this.asegurarSemilla();
     const db = await getDatabase();
     const rows = await db.getAllAsync<CasoRow>(
@@ -211,8 +229,11 @@ export class CasoRepositoryImpl implements CasoRepository {
 
   async resumenAlmacenamiento(): Promise<ResumenAlmacenamiento> {
     const db = await getDatabase();
-    const totalCasos = await db.getFirstAsync<{ count: number }>(
-      'SELECT COUNT(*) as count FROM casos;'
+    const totalActivos = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) as count FROM casos WHERE estado_caso NOT IN ('ADOPTADO', 'FALLECIDO');`
+    );
+    const totalArchivados = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) as count FROM casos WHERE estado_caso IN ('ADOPTADO', 'FALLECIDO');`
     );
     const totalEventos = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM eventos_historial;'
@@ -220,12 +241,13 @@ export class CasoRepositoryImpl implements CasoRepository {
     const totalTurnos = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM turnos;'
     );
-    const cant = totalCasos?.count ?? 0;
+    const cantActivos = totalActivos?.count ?? 0;
+    const cantArchivados = totalArchivados?.count ?? 0;
 
     return {
-      casosActivos: cant,
-      archivados: (totalEventos?.count ?? 0) + (totalTurnos?.count ?? 0),
-      megabytes: Math.round(cant * 0.45 * 10) / 10,
+      casosActivos: cantActivos,
+      archivados: cantArchivados,
+      megabytes: Math.round((cantActivos + cantArchivados) * 0.45 * 10) / 10,
       capacidadMegabytes: 50,
     };
   }
@@ -245,6 +267,13 @@ export class CasoRepositoryImpl implements CasoRepository {
     await db.runAsync('DELETE FROM operaciones_pendientes;');
 
     return pendientes.length;
+  }
+
+  async obtenerOperacionesPendientes(): Promise<OperacionPendiente[]> {
+    const db = await getDatabase();
+    return await db.getAllAsync<OperacionPendiente>(
+      'SELECT id, entidad, operacion, payload, reintentos, created_at FROM operaciones_pendientes ORDER BY id DESC;'
+    );
   }
 
   async obtenerHistorial(casoId: string): Promise<EventoHistorial[]> {

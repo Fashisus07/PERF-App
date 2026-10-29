@@ -1,6 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -12,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { authRepository } from '../../../di/container';
 import { colors, fonts } from '../../theme';
 
 type Props = {
@@ -114,6 +116,8 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
   const [verClave, setVerClave] = useState(false);
   const [acepta, setAcepta] = useState(false);
   const [intento, setIntento] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 
   const telefonoValido = whatsapp.length === DIGITOS_TELEFONO;
   const telefonoIncompleto = whatsapp.length > 0 && !telefonoValido;
@@ -122,12 +126,28 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
   const claveValida = clave.length >= 6;
   const completo = nombreValido && telefonoValido && emailValido && claveValida && acepta;
 
-  const intentarRegistrar = () => {
+  const intentarRegistrar = async () => {
+    setErrorGeneral(null);
     if (!completo) {
       setIntento(true);
       return;
     }
-    onRegistrar();
+    setGuardando(true);
+    try {
+      await authRepository.registrar({
+        nombre: nombre.trim(),
+        email: email.trim(),
+        telefono: whatsapp.trim(),
+        zona,
+        clave,
+        recursos,
+      });
+      onRegistrar();
+    } catch (e: any) {
+      setErrorGeneral(e?.message || 'Error al crear la cuenta. Intente nuevamente.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const toggleRecurso = (id: string) =>
@@ -292,10 +312,23 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
             <Text style={[styles.error, { marginTop: -8 }]}>Tenés que aceptar los términos para crear la cuenta.</Text>
           ) : null}
 
+          {errorGeneral ? (
+            <View style={styles.errorBanner}>
+              <MaterialIcons name="error-outline" size={20} color={colors.urgente} />
+              <Text style={styles.errorBannerText}>{errorGeneral}</Text>
+            </View>
+          ) : null}
+
           <View style={styles.actions}>
-            <Pressable style={styles.cta} onPress={intentarRegistrar}>
-              <MaterialIcons name="person-add" size={18} color={colors.onPrimary} />
-              <Text style={styles.ctaText}>Crear cuenta de voluntario</Text>
+            <Pressable style={styles.cta} onPress={intentarRegistrar} disabled={guardando}>
+              {guardando ? (
+                <ActivityIndicator color={colors.onPrimary} />
+              ) : (
+                <>
+                  <MaterialIcons name="person-add" size={18} color={colors.onPrimary} />
+                  <Text style={styles.ctaText}>Crear cuenta de voluntario</Text>
+                </>
+              )}
             </Pressable>
             <View style={styles.loginRow}>
               <Text style={styles.loginText}>¿Ya sos voluntario registrado?</Text>
@@ -453,5 +486,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.28,
     color: colors.primary,
     textDecorationLine: 'underline',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.urgenteBg,
+    padding: 12,
+    borderRadius: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: colors.urgente,
   },
 });

@@ -136,7 +136,10 @@ export type TipoEvento =
   | 'CAMBIO_TRANSITO'
   | 'DESPARASITACION'
   | 'CIRUGIA'
-  | 'ADOPCION';
+  | 'ADOPCION'
+  | 'TRATAMIENTO'
+  | 'NOTA_CAMPO'
+  | 'VACUNACION';
 
 export interface EventoHistorial {
   id: string;
@@ -154,4 +157,7 @@ export const ETIQUETA_EVENTO: Record<TipoEvento, string> = {
   DESPARASITACION: 'Desparasitación',
   CIRUGIA: 'Cirugía',
   ADOPCION: 'Adopción',
+  TRATAMIENTO: 'Tratamiento médico',
+  NOTA_CAMPO: 'Evolución / Nota de campo',
+  VACUNACION: 'Vacunación',
 };

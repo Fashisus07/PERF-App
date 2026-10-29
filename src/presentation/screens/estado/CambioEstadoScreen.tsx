@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EstadoCaso, ETIQUETA_ESTADO } from '../../../domain/models/Caso';
 import { estadoRequiereDestino } from '../../../domain/usecases/CambiarEstadoCaso';
@@ -37,6 +37,7 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
   const [motivo, setMotivo] = useState('');
   const [notificar, setNotificar] = useState(true);
   const [guardando, setGuardando] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
 
   if (!caso) {
     return (
@@ -53,21 +54,27 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
   const confirmar = async () => {
     if (!elegido || !completo || guardando) return;
     setGuardando(true);
+    setErrorGuardado(null);
     const fecha = new Date();
-    await cambiarEstado.ejecutar(caso.id, {
-      estado: elegido,
-      motivo: motivo.trim(),
-      destino: destino.trim() || undefined,
-      sinConexion: !online,
-    });
-    navigation?.navigate?.('ConfirmacionCambio', {
-      casoId: caso.id,
-      anterior: actual,
-      nuevo: elegido,
-      destino: destino.trim() || undefined,
-      hora: `${String(fecha.getHours()).padStart(2, '0')}:${String(fecha.getMinutes()).padStart(2, '0')}`,
-      sinConexion: !online,
-    });
+    try {
+      await cambiarEstado.ejecutar(caso.id, {
+        estado: elegido,
+        motivo: motivo.trim(),
+        destino: destino.trim() || undefined,
+        sinConexion: !online,
+      });
+      navigation?.navigate?.('ConfirmacionCambio', {
+        casoId: caso.id,
+        anterior: actual,
+        nuevo: elegido,
+        destino: destino.trim() || undefined,
+        hora: `${String(fecha.getHours()).padStart(2, '0')}:${String(fecha.getMinutes()).padStart(2, '0')}`,
+        sinConexion: !online,
+      });
+    } catch (e: any) {
+      setErrorGuardado(e?.message || 'No se pudo actualizar el estado. Intentá nuevamente.');
+      setGuardando(false);
+    }
   };
 
   const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;
@@ -116,6 +123,13 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
             </View>
           </View>
         </View>
+
+        {errorGuardado ? (
+          <View style={styles.errorBanner}>
+            <MaterialIcons name="error-outline" size={20} color={colors.urgente} />
+            <Text style={styles.errorBannerText}>{errorGuardado}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.tituloRow}>
           <Text style={styles.titulo}>Seleccionar nuevo estado</Text>
@@ -236,8 +250,14 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
           onPress={confirmar}
           accessibilityState={{ disabled: !completo }}
         >
-          <MaterialIcons name="check-circle-outline" size={18} color="#fff" />
-          <Text style={styles.ctaText}>{elegido ? 'Confirmar cambio de estado' : 'Selecciona un nuevo estado'}</Text>
+          {guardando ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <MaterialIcons name="check-circle-outline" size={18} color="#fff" />
+              <Text style={styles.ctaText}>{elegido ? 'Confirmar cambio de estado' : 'Selecciona un nuevo estado'}</Text>
+            </>
+          )}
         </Pressable>
         <Pressable style={styles.cancelar} onPress={() => navigation?.goBack?.()}>
           <Text style={styles.cancelarText}>Cancelar y volver a la ficha de {caso.nombreProvisorio}</Text>
@@ -313,4 +333,18 @@ const styles = StyleSheet.create({
   ctaText: { fontFamily: fonts.semibold, fontSize: 15, color: '#fff' },
   cancelar: { height: 40, alignItems: 'center', justifyContent: 'center' },
   cancelarText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.primary },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.urgenteBg,
+    padding: 12,
+    borderRadius: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: colors.urgente,
+  },
 });

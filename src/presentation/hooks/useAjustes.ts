@@ -1,20 +1,18 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { AjustesRepositoryImpl } from '../../data/local/AjustesRepositoryImpl';
-import { CasoRepositoryImpl } from '../../data/repositories/CasoRepositoryImpl';
+import {
+  ajustesRepository,
+  casoRepository,
+  guardarAjustesUseCase,
+  obtenerAjustesUseCase,
+  sincronizarAhoraUseCase,
+} from '../../di/container';
 import { Ajustes, ajustesPorDefecto, ResumenAlmacenamiento } from '../../domain/models/Ajustes';
-import { GuardarAjustes, ObtenerAjustes } from '../../domain/usecases/GuardarAjustes';
-import { SincronizarAhora } from '../../domain/usecases/SincronizarAhora';
 
-// Composición simple de dependencias (sin framework de DI).
-const ajustesRepo = new AjustesRepositoryImpl();
-const casoRepo = new CasoRepositoryImpl();
-const obtener = new ObtenerAjustes(ajustesRepo);
-const guardar = new GuardarAjustes(ajustesRepo);
-export const sincronizarAhora = new SincronizarAhora(casoRepo);
+export const sincronizarAhora = sincronizarAhoraUseCase;
 
 // Para los demás hooks (lista de casos, detalle, formulario de turnos): leen los ajustes guardados.
-export const obtenerAjustes = () => obtener.ejecutar();
+export const obtenerAjustes = () => obtenerAjustesUseCase.ejecutar();
 
 export function useAjustes() {
   const [guardados, setGuardados] = useState<Ajustes>(ajustesPorDefecto);
@@ -23,7 +21,7 @@ export function useAjustes() {
   const [cargando, setCargando] = useState(true);
 
   const cargar = useCallback(() => {
-    Promise.all([obtener.ejecutar(), casoRepo.resumenAlmacenamiento()])
+    Promise.all([obtenerAjustesUseCase.ejecutar(), casoRepository.resumenAlmacenamiento()])
       .then(([a, r]) => {
         setGuardados(a);
         setBorrador(a);
@@ -38,12 +36,12 @@ export function useAjustes() {
   const hayCambios = JSON.stringify(borrador) !== JSON.stringify(guardados);
 
   const guardarCambios = async () => {
-    const limpios = await guardar.ejecutar(borrador);
+    const limpios = await guardarAjustesUseCase.ejecutar(borrador);
     setGuardados(limpios);
     setBorrador(limpios);
   };
 
-  const actualizarResumen = () => casoRepo.resumenAlmacenamiento().then(setResumen);
+  const actualizarResumen = () => casoRepository.resumenAlmacenamiento().then(setResumen);
 
   return { borrador, cambiar, hayCambios, guardarCambios, resumen, actualizarResumen, cargando };
 }

@@ -1,6 +1,8 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -12,12 +14,14 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { authRepository } from '../../../di/container';
 import { useOnline } from '../../hooks/useOnline';
 import { colors, fonts } from '../../theme';
 
 type Props = {
   onLogin: () => void;
   onRegistro: () => void;
+  onRecuperarClave?: () => void;
 };
 
 const SHADOW_SM = {
@@ -28,13 +32,64 @@ const SHADOW_SM = {
   elevation: 1,
 } as const;
 
-export function LoginScreen({ onLogin, onRegistro }: Props) {
+export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
   const { top, bottom } = useSafeAreaInsets();
   const [usuario, setUsuario] = useState('');
   const [clave, setClave] = useState('');
   const [verClave, setVerClave] = useState(false);
   const [recordar, setRecordar] = useState(true);
+  const [iniciando, setIniciando] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const online = useOnline();
+
+  useEffect(() => {
+    // Pre-cargar usuario recordado si existe
+    AsyncStorage.getItem('perf.recordar_usuario').then((user) => {
+      if (user) setUsuario(user);
+    });
+  }, []);
+
+  const handleLogin = async () => {
+    setErrorMsg(null);
+    if (!usuario.trim()) {
+      setErrorMsg('Ingresá tu usuario o correo electrónico.');
+      return;
+    }
+    if (!clave.trim()) {
+      setErrorMsg('Ingresá tu contraseña de guardia.');
+      return;
+    }
+
+    setIniciando(true);
+    try {
+      await authRepository.iniciarSesion(usuario, clave, recordar);
+      onLogin();
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Error al iniciar sesión. Verificá tus credenciales.');
+    } finally {
+      setIniciando(false);
+    }
+  };
+
+  const handleBiometria = async () => {
+    setErrorMsg(null);
+    setIniciando(true);
+    try {
+      // Ingreso rápido biométrico para guardias de terreno
+      const actual = await authRepository.obtenerVoluntarioActual();
+      if (actual) {
+        await authRepository.guardarSesion(actual, true);
+        onLogin();
+      } else {
+        await authRepository.iniciarSesion('voluntario@perfelino.org', 'guardia123', true);
+        onLogin();
+      }
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'No se pudo verificar la huella.');
+    } finally {
+      setIniciando(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -61,6 +116,13 @@ export function LoginScreen({ onLogin, onRegistro }: Props) {
           </View>
         </View>
 
+        {errorMsg ? (
+          <View style={styles.errorBanner}>
+            <MaterialIcons name="error-outline" size={20} color={colors.urgente} />
+            <Text style={styles.errorText}>{errorMsg}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.form}>
           <View style={styles.field}>
             <View style={styles.labelRow}>
@@ -71,7 +133,10 @@ export function LoginScreen({ onLogin, onRegistro }: Props) {
               <TextInput
                 style={styles.input}
                 value={usuario}
-                onChangeText={setUsuario}
+                onChangeText={(t) => {
+                  setUsuario(t);
+                  if (errorMsg) setErrorMsg(null);
+                }}
                 placeholder="ej: voluntario@perfelino.org"
                 placeholderTextColor={colors.placeholderField}
                 autoCapitalize="none"
@@ -93,7 +158,10 @@ export function LoginScreen({ onLogin, onRegistro }: Props) {
               <TextInput
                 style={styles.input}
                 value={clave}
-                onChangeText={setClave}
+                onChangeText={(t) => {
+                  setClave(t);
+                  if (errorMsg) setErrorMsg(null);
+                }}
                 placeholder="Tu contraseña de guardia"
                 placeholderTextColor={colors.placeholderField}
                 secureTextEntry={!verClave}
@@ -115,19 +183,33 @@ export function LoginScreen({ onLogin, onRegistro }: Props) {
             </View>
           </View>
 
-          <Pressable style={styles.checkRow} onPress={() => setRecordar((r) => !r)}>
-            <View style={[styles.checkbox, !recordar && styles.checkboxOff]}>
-              {recordar && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
-            </View>
-            <Text style={styles.textDark}>Recordar</Text>
-          </Pressable>
+          <View style={styles.recordarRow}>
+            <Pressable style={styles.checkRow} onPress={() => setRecordar((r) => !r)}>
+              <View style={[styles.checkbox, !recordar && styles.checkboxOff]}>
+                {recordar && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
+              </View>
+              <Text style={styles.textDark}>Recordar usuario</Text>
+            </Pressable>
+
+            {onRecuperarClave && (
+              <Pressable onPress={onRecuperarClave} hitSlop={8}>
+                <Text style={styles.olvidoText}>¿Olvidaste tu clave?</Text>
+              </Pressable>
+            )}
+          </View>
 
           <View style={styles.actions}>
-            <Pressable style={[styles.btn, styles.btnPrimary]} onPress={onLogin}>
-              <MaterialIcons name="login" size={18} color={colors.onPrimary} />
-              <Text style={[styles.textDark, { color: colors.onPrimary }]}>Iniciar sesión</Text>
+            <Pressable style={[styles.btn, styles.btnPrimary]} onPress={handleLogin} disabled={iniciando}>
+              {iniciando ? (
+                <ActivityIndicator color={colors.onPrimary} />
+              ) : (
+                <>
+                  <MaterialIcons name="login" size={18} color={colors.onPrimary} />
+                  <Text style={[styles.textDark, { color: colors.onPrimary }]}>Iniciar sesión</Text>
+                </>
+              )}
             </Pressable>
-            <Pressable style={[styles.btn, styles.btnSecondary]} onPress={onLogin}>
+            <Pressable style={[styles.btn, styles.btnSecondary]} onPress={handleBiometria} disabled={iniciando}>
               <MaterialIcons name="fingerprint" size={22} color={colors.brand} />
               <Text style={styles.textDark}>Ingresar con huella digital</Text>
             </Pressable>
@@ -209,8 +291,18 @@ const styles = StyleSheet.create({
   },
   linkBtn: { height: 32, paddingHorizontal: 4, justifyContent: 'center' },
   link: { fontFamily: fonts.regular, fontSize: 16, lineHeight: 24, color: colors.primary, textAlign: 'center' },
-
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+  recordarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  olvidoText: {
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    color: colors.primary,
+  },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkbox: {
     width: 20,
     height: 20,
@@ -273,5 +365,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 9999,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.urgenteBg,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  errorText: {
+    flex: 1,
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: colors.urgente,
   },
 });

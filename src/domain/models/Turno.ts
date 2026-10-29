@@ -37,6 +37,7 @@ export interface CentroVeterinario {
   distancia?: string; // ej: "A 12 cuadras de la base"
   abierto: boolean;
   tipo: 'consultorio' | 'hospital' | 'quirurgico';
+  horarios?: string[];
 }
 
 export type Clinica = CentroVeterinario;

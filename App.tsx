@@ -7,7 +7,7 @@ import {
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ACCION_LLAMAR, configurarNotificaciones } from './src/data/local/RecordatoriosNotificaciones';
 import { AppNavigator } from './src/presentation/navigation/AppNavigator';
@@ -21,7 +21,8 @@ export default function App() {
 
   // Notificaciones de turnos: configuración inicial y botón "Llamar al centro".
   useEffect(() => {
-    configurarNotificaciones();
+    if (Platform.OS === 'web') return;
+    configurarNotificaciones().catch(() => {});
     const sub = Notifications.addNotificationResponseReceivedListener((r) => {
       const telefono = r.notification.request.content.data?.telefono;
       if (r.actionIdentifier === ACCION_LLAMAR && typeof telefono === 'string') Linking.openURL(`tel:${telefono}`);

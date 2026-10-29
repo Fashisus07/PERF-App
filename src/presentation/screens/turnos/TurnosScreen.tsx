@@ -1,6 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { turnoRepository } from '../../../di/container';
 import { Caso } from '../../../domain/models/Caso';
 import { Clinica, horaDe, mismoDia, nombreDia, Turno } from '../../../domain/models/Turno';
 import { AppHeader } from '../../components/AppHeader';
@@ -16,26 +17,59 @@ export function TurnosScreen({ navigation }: { navigation?: any }) {
   const online = useOnline();
   const { turnos, clinicas, casosPorId, cargando, recargar } = useTurnos();
   const [cancelando, setCancelando] = useState(false);
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!feedbackToast) return;
+    const timer = setTimeout(() => setFeedbackToast(null), 2500);
+    return () => clearTimeout(timer);
+  }, [feedbackToast]);
 
   const ahora = new Date();
   const deHoy = turnos.filter((t) => mismoDia(new Date(t.fechaHora), ahora));
   const proximos = turnos.filter((t) => !mismoDia(new Date(t.fechaHora), ahora));
   const clinica = (t: Turno) => clinicas.find((c) => c.id === (t.centroVeterinarioId || (t as any).clinicaId)) || clinicas[0];
 
-  const menu = (t: Turno) =>
-    Alert.alert('Turno', `${casosPorId[t.casoId]?.nombreProvisorio || 'Animal'} · ${t.motivo}`, [
+  const toggleCumplido = async (t: Turno) => {
+    try {
+      await turnoRepository.marcarCumplido(t.id);
+      setFeedbackToast(t.cumplido ? 'Turno marcado como pendiente' : '¡Turno marcado como cumplido!');
+      recargar();
+    } catch {
+      setFeedbackToast('Error al actualizar el turno');
+    }
+  };
+
+  const menu = (t: Turno) => {
+    const caso = casosPorId[t.casoId];
+    Alert.alert('Opciones del Turno', `${caso?.nombreProvisorio || 'Animal'} · ${t.motivo}`, [
+      {
+        text: 'Ver ficha del animal',
+        onPress: () => navigation?.navigate?.('DetalleCaso', { casoId: t.casoId }),
+      },
+      {
+        text: t.cumplido ? 'Marcar como pendiente' : 'Marcar como cumplido',
+        onPress: () => toggleCumplido(t),
+      },
       {
         text: 'Cancelar turno',
         style: 'destructive',
         onPress: async () => {
           setCancelando(true);
-          await cancelarTurno.ejecutar(t.id);
-          recargar();
-          setCancelando(false);
+          try {
+            await cancelarTurno.ejecutar(t.id);
+            setFeedbackToast('Turno cancelado exitosamente');
+            recargar();
+          } catch {
+            setFeedbackToast('Error al cancelar el turno');
+          } finally {
+            setCancelando(false);
+          }
         },
       },
-      { text: 'Cerrar', style: 'cancel' },
+      { text: 'Volver', style: 'cancel' },
     ]);
+  };
 
   return (
     <View style={styles.screen}>
@@ -62,6 +96,23 @@ export function TurnosScreen({ navigation }: { navigation?: any }) {
                 </View>
               </View>
             </View>
+
+            <Pressable
+              style={styles.directorioBanner}
+              onPress={() => navigation?.navigate?.('DirectorioClinicas')}
+              accessibilityLabel="Directorio veterinario y guardias 24 hs"
+            >
+              <View style={styles.directorioIcono}>
+                <MaterialIcons name="local-hospital" size={24} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.directorioTitulo}>Directorio Veterinario y Guardias</Text>
+                <Text style={styles.directorioTexto}>
+                  Centros amigos, guardias 24 hs, cirugías y llamadas directas
+                </Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={22} color={colors.textSubtle} />
+            </Pressable>
 
             {deHoy.length > 0 && (
               <View style={styles.traslados}>
@@ -124,6 +175,13 @@ export function TurnosScreen({ navigation }: { navigation?: any }) {
               <Text style={styles.agendarText}>Agendar turno</Text>
             </Pressable>
           </View>
+
+          {feedbackToast ? (
+            <View style={styles.toast} pointerEvents="none">
+              <MaterialIcons name="check-circle" size={20} color={colors.toastIcon} />
+              <Text style={styles.toastText}>{feedbackToast}</Text>
+            </View>
+          ) : null}
         </>
       )}
     </View>
@@ -141,27 +199,29 @@ function TarjetaTurno({ turno: t, caso, clinica, hoy, navigation, onMenu }: Tarj
   return (
     <View style={styles.card}>
       <View style={styles.cardTop}>
-        <Image source={fotoCaso} style={styles.foto} />
-        <View style={{ flex: 1, gap: 3 }}>
-          <View style={styles.nombreRow}>
-            <Text style={styles.nombre}>{caso.nombreProvisorio}</Text>
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{caso.especie} · {caso.edadEstimada}</Text>
+        <Pressable
+          style={styles.cardHeaderPressable}
+          onPress={() => navigation?.navigate?.('DetalleCaso', { casoId: caso.id })}
+        >
+          <Image source={fotoCaso} style={styles.foto} />
+          <View style={{ flex: 1, gap: 3 }}>
+            <View style={styles.nombreRow}>
+              <Text style={styles.nombre}>{caso.nombreProvisorio}</Text>
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{caso.especie} · {caso.edadEstimada}</Text>
+              </View>
+            </View>
+            <View style={styles.cuando}>
+              <MaterialIcons name={hoy ? 'schedule' : 'event'} size={15} color={colors.atencion} />
+              <Text style={styles.cuandoText}>
+                {hoy ? `${horaDe(fecha)} hs` : `${nombreDia(fecha)} · ${horaDe(fecha)} hs`}
+              </Text>
             </View>
           </View>
-          <View style={styles.cuando}>
-            <MaterialIcons name={hoy ? 'schedule' : 'event'} size={15} color={colors.atencion} />
-            <Text style={styles.cuandoText}>
-              {hoy ? `${horaDe(fecha)} hs` : `${nombreDia(fecha)} · ${horaDe(fecha)} hs`}
-            </Text>
-          </View>
-        </View>
-        <View style={[styles.estado, t.cumplido ? styles.estadoOk : styles.estadoPend]}>
-          <MaterialIcons name={t.cumplido ? 'check-circle' : 'schedule'} size={14} color={t.cumplido ? colors.aldiaText : colors.atencion} />
-          <Text style={[styles.estadoText, { color: t.cumplido ? colors.aldiaText : colors.atencion }]}>
-            {t.cumplido ? 'Cumplido' : 'Pendiente'}
-          </Text>
-        </View>
+        </Pressable>
+        <Pressable style={styles.menuTopBtn} onPress={() => onMenu(t)} accessibilityLabel="Opciones">
+          <MaterialIcons name="more-vert" size={22} color={colors.textMuted} />
+        </Pressable>
       </View>
 
       <View style={styles.detalle}>
@@ -178,33 +238,31 @@ function TarjetaTurno({ turno: t, caso, clinica, hoy, navigation, onMenu }: Tarj
         </View>
       </View>
 
-      {hoy ? (
-        <View style={styles.botones}>
-          <Pressable style={[styles.btn, styles.btnPrimario]} onPress={() => llamar(clinica)}>
-            <MaterialIcons name="call" size={18} color="#fff" />
-            <Text style={styles.btnPrimarioText}>Llamar centro</Text>
-          </Pressable>
-          <Pressable style={[styles.btn, styles.btnSecundario]} onPress={() => abrirMapa(clinica)}>
-            <MaterialIcons name="directions" size={18} color={colors.primary} />
-            <Text style={styles.btnSecundarioText}>Ver dirección</Text>
-          </Pressable>
-        </View>
-      ) : !t.cumplido ? (
-        <Pressable style={[styles.btn, styles.btnPrimario]} onPress={() => llamar(clinica)}>
-          <MaterialIcons name="call" size={18} color="#fff" />
-          <Text style={styles.btnPrimarioText}>Confirmar turno con la clínica</Text>
+      <View style={styles.cardActionsRow}>
+        <Pressable
+          style={[styles.estadoPill, t.cumplido ? styles.estadoOk : styles.estadoPend]}
+          onPress={() => onMenu(t)}
+        >
+          <MaterialIcons name={t.cumplido ? 'check-circle' : 'schedule'} size={14} color={t.cumplido ? colors.aldiaText : colors.atencion} />
+          <Text style={[styles.estadoText, { color: t.cumplido ? colors.aldiaText : colors.atencion }]}>
+            {t.cumplido ? 'Cumplido' : 'Pendiente'}
+          </Text>
         </Pressable>
-      ) : (
-        <View style={styles.pieCard}>
-          <Pressable style={styles.historia} onPress={() => navigation?.navigate?.('DetalleCaso', { casoId: caso.id })}>
-            <MaterialIcons name="history-edu" size={18} color={colors.primary} />
-            <Text style={styles.historiaText}>Ver historia clínica</Text>
-          </Pressable>
-          <Pressable style={styles.menu} onPress={() => onMenu(t)} accessibilityLabel="Más opciones">
-            <MaterialIcons name="more-vert" size={20} color={colors.textMuted} />
-          </Pressable>
-        </View>
-      )}
+
+        <Pressable style={styles.historiaLink} onPress={() => navigation?.navigate?.('DetalleCaso', { casoId: caso.id })}>
+          <MaterialIcons name="pets" size={16} color={colors.primary} />
+          <Text style={styles.historiaLinkText}>Ficha</Text>
+        </Pressable>
+
+        <Pressable style={styles.callBtn} onPress={() => llamar(clinica)}>
+          <MaterialIcons name="call" size={16} color="#fff" />
+          <Text style={styles.callBtnText}>Llamar</Text>
+        </Pressable>
+
+        <Pressable style={styles.mapBtn} onPress={() => abrirMapa(clinica)}>
+          <MaterialIcons name="directions" size={16} color={colors.primary} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -271,4 +329,49 @@ const styles = StyleSheet.create({
   pie: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14, backgroundColor: 'rgba(252,249,244,0.96)' },
   agendar: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 9999, backgroundColor: colors.primary },
   agendarText: { fontFamily: fonts.semibold, fontSize: 16, color: '#fff' },
+
+  cardHeaderPressable: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  menuTopBtn: { width: 36, height: 36, borderRadius: 9999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceChip },
+  cardActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  estadoPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999 },
+  historiaLink: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999, backgroundColor: colors.surfaceChip },
+  historiaLinkText: { fontFamily: fonts.bold, fontSize: 13, color: colors.primary },
+  callBtn: { flex: 1, height: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 9999, backgroundColor: colors.primary },
+  callBtnText: { fontFamily: fonts.bold, fontSize: 13, color: '#fff' },
+  mapBtn: { width: 36, height: 36, borderRadius: 9999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceChip },
+
+  toast: {
+    position: 'absolute',
+    bottom: 84,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.toastBg,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 30,
+    elevation: 6,
+  },
+  toastText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.toastText },
+  directorioBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surfaceCard,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  directorioIcono: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  directorioTitulo: { fontFamily: fonts.bold, fontSize: 14, color: colors.text },
+  directorioTexto: { fontFamily: fonts.regular, fontSize: 12, color: colors.textMuted, marginTop: 2, lineHeight: 16 },
 });

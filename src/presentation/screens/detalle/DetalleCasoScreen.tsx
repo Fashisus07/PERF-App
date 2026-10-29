@@ -57,9 +57,24 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
         {header}
         <View style={styles.centro}>
           {cargando ? (
-            <ActivityIndicator size="large" color={colors.primary} />
+            <>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.vacio, { marginTop: 12 }]}>Cargando ficha operativa...</Text>
+            </>
           ) : (
-            <Text style={styles.vacio}>No encontramos este caso en la base de datos local.</Text>
+            <View style={styles.errorBox}>
+              <View style={styles.errorCircle}>
+                <MaterialIcons name="pets" size={48} color={colors.textMuted} />
+              </View>
+              <Text style={styles.errorTitle}>Caso no encontrado</Text>
+              <Text style={styles.errorSub}>
+                No se encontró este caso en la base de datos local o fue removido.
+              </Text>
+              <Pressable style={styles.btnVolver} onPress={() => navigation?.goBack?.()}>
+                <MaterialIcons name="arrow-back" size={18} color="#fff" />
+                <Text style={styles.btnVolverText}>Volver al listado</Text>
+              </Pressable>
+            </View>
           )}
         </View>
       </View>
@@ -69,6 +84,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
   const urgencia = calcularUrgencia(caso, 10);
   const dias = diasEnEspera(caso);
   const estadoActual = caso.estadoCaso ?? 'EN_TRANSITO';
+  const esArchivado = estadoActual === 'ADOPTADO' || estadoActual === 'FALLECIDO';
   const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;
   const fechaRescateTexto = new Date(caso.fechaRescate).toLocaleDateString('es-AR', {
     day: '2-digit',
@@ -195,6 +211,14 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               <MaterialIcons name="medical-services" size={22} color={colors.primary} />
               <Text style={styles.seccionTitulo}>Ficha Sanitaria</Text>
             </View>
+            <Pressable
+              style={styles.btnEditarSanidad}
+              onPress={() => navigation?.navigate?.('EditarSanidad', { casoId: caso.id })}
+              accessibilityLabel="Editar ficha sanitaria"
+            >
+              <MaterialIcons name="edit" size={16} color={colors.primary} />
+              <Text style={styles.btnEditarText}>Editar sanidad</Text>
+            </Pressable>
           </View>
 
           <View style={styles.sanidadGrid}>
@@ -296,8 +320,8 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
         )}
 
         {/* Historial de Eventos (SQLite) */}
-        {historial.length > 0 && (
-          <View style={[styles.card, { gap: 16 }]}>
+        <View style={[styles.card, { gap: 16 }]}>
+          <View style={styles.cardHeader}>
             <View>
               <View style={styles.cardTitulo}>
                 <MaterialIcons name="history" size={22} color={colors.primary} />
@@ -307,7 +331,17 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
                 {historial.length} {historial.length === 1 ? 'evento registrado' : 'eventos registrados'}
               </Text>
             </View>
+            <Pressable
+              style={styles.btnEditarSanidad}
+              onPress={() => navigation?.navigate?.('NuevaNotaHistorial', { casoId: caso.id })}
+              accessibilityLabel="Agregar nota"
+            >
+              <MaterialIcons name="add-comment" size={16} color={colors.primary} />
+              <Text style={styles.btnEditarText}>+ Nota</Text>
+            </Pressable>
+          </View>
 
+          {historial.length > 0 ? (
             <View>
               {historial.map((ev, i) => (
                 <ItemHistorial
@@ -318,26 +352,54 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
                 />
               ))}
             </View>
-          </View>
-        )}
+          ) : (
+            <View style={styles.historialVacio}>
+              <MaterialIcons name="info-outline" size={20} color={colors.textSubtle} />
+              <Text style={styles.historialVacioTexto}>
+                Aún no hay notas o eventos clínicos registrados.
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* Acciones principales */}
         <View style={styles.acciones}>
-          <Pressable
-            style={styles.btnTurno}
-            onPress={() => navigation?.navigate?.('AgendarTurno', { casoId: caso.id })}
-          >
-            <MaterialIcons name="event-available" size={22} color="#fff" />
-            <Text style={styles.btnTurnoText}>Agendar turno veterinario</Text>
-          </Pressable>
+          {esArchivado ? (
+            <View style={styles.archivadoBox}>
+              <View style={styles.archivadoHeader}>
+                <MaterialIcons name="archive" size={22} color={colors.primary} />
+                <Text style={styles.archivadoTitulo}>Caso en Archivo Histórico</Text>
+              </View>
+              <Text style={styles.archivadoDesc}>
+                Este animal completó su ciclo de rescate ({ETIQUETA_ESTADO[estadoActual]}). La ficha permanece para consulta histórica.
+              </Text>
+              <Pressable
+                style={styles.btnEstado}
+                onPress={() => navigation?.navigate?.('CambioEstado', { casoId: caso.id })}
+              >
+                <MaterialIcons name="swap-horiz" size={20} color={colors.primary} />
+                <Text style={styles.btnEstadoText}>Cambiar estado o reactivar caso</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              <Pressable
+                style={styles.btnTurno}
+                onPress={() => navigation?.navigate?.('AgendarTurno', { casoId: caso.id })}
+              >
+                <MaterialIcons name="event-available" size={22} color="#fff" />
+                <Text style={styles.btnTurnoText}>Agendar turno veterinario</Text>
+              </Pressable>
 
-          <Pressable
-            style={styles.btnEstado}
-            onPress={() => navigation?.navigate?.('CambioEstado', { casoId: caso.id })}
-          >
-            <MaterialIcons name="swap-horiz" size={20} color={colors.primary} />
-            <Text style={styles.btnEstadoText}>Actualizar estado del caso</Text>
-          </Pressable>
+              <Pressable
+                style={styles.btnEstado}
+                onPress={() => navigation?.navigate?.('CambioEstado', { casoId: caso.id })}
+              >
+                <MaterialIcons name="swap-horiz" size={20} color={colors.primary} />
+                <Text style={styles.btnEstadoText}>Actualizar estado del caso</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </ScrollView>
 
@@ -578,4 +640,71 @@ const styles = StyleSheet.create({
     borderRadius: 30,
   },
   toastText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.toastText },
+  errorBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 12,
+  },
+  errorCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 9999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceChip,
+  },
+  errorTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.text },
+  errorSub: { fontFamily: fonts.regular, fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
+  btnVolver: {
+    marginTop: 8,
+    height: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
+    borderRadius: 9999,
+  },
+  btnVolverText: { fontFamily: fonts.semibold, fontSize: 14, color: '#fff' },
+
+  archivadoBox: {
+    backgroundColor: colors.surface,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  archivadoHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  archivadoTitulo: { fontFamily: fonts.bold, fontSize: 16, color: colors.primary },
+  archivadoDesc: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: colors.textMuted },
+  btnEditarSanidad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: colors.primarySoft,
+  },
+  btnEditarText: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.primary,
+  },
+  historialVacio: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surfaceChip,
+    padding: 12,
+    borderRadius: 10,
+  },
+  historialVacioTexto: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.textSubtle,
+    flex: 1,
+  },
 });

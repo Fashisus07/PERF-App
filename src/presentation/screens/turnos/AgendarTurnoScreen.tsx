@@ -48,6 +48,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
   const [notas, setNotas] = useState('');
   const [avisos, setAvisos] = useState<AvisoTurno[]>(['1dia', '2horas']);
   const [guardando, setGuardando] = useState(false);
+  const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 
   useEffect(() => {
     obtenerClinicas().then(setClinicas);
@@ -84,6 +85,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
   const confirmar = async () => {
     if (!caso || !hora || !clinica || guardando) return;
     setGuardando(true);
+    setErrorGeneral(null);
     const fechaTurno = conHora(fechaDia, hora);
     const solicitud: SolicitudTurno = {
       casoId: caso.id,
@@ -95,12 +97,14 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
     try {
       const r = await agendarTurno.ejecutar(solicitud, caso);
       navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id, avisosProgramados: avisos });
-    } catch (e) {
+    } catch (e: any) {
       if (e instanceof CupoNoDisponible) {
         navigation?.replace?.('TurnoNoDisponible', {
           solicitud: { ...solicitud, clinicaId, fecha: fechaTurno.toISOString(), avisos },
           opciones: e.opciones.map((o) => ({ fecha: o.fecha.toISOString(), espera: o.espera })),
         });
+      } else {
+        setErrorGeneral(e?.message || 'Error al agendar el turno. Por favor revisá los datos e intentá nuevamente.');
       }
       setGuardando(false);
     }
@@ -112,6 +116,12 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
     <View style={styles.screen}>
       <StackHeader titulo="Agendar Turno" onBack={() => navigation?.goBack?.()} derecha={<AvatarPerfil />} />
       <ScrollView contentContainerStyle={[styles.main, { paddingBottom: 120 + bottom }]} keyboardShouldPersistTaps="handled">
+        {errorGeneral ? (
+          <View style={styles.errorBanner}>
+            <MaterialIcons name="error-outline" size={20} color={colors.urgente} />
+            <Text style={styles.errorText}>{errorGeneral}</Text>
+          </View>
+        ) : null}
         {caso ? (
           <View style={styles.card}>
             <View style={styles.casoRow}>
@@ -366,4 +376,19 @@ const styles = StyleSheet.create({
   cta: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 9999, backgroundColor: colors.primary },
   ctaGris: { opacity: 0.45 },
   ctaText: { fontFamily: fonts.semibold, fontSize: 16, color: '#fff' },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.urgenteBg,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  errorText: {
+    flex: 1,
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: colors.urgente,
+  },
 });

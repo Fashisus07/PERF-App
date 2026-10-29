@@ -11,6 +11,34 @@ export class TurnoRepositoryImpl implements TurnoRepository {
   private async asegurarSemilla(): Promise<void> {
     if (this.seeded) return;
     const db = await getDatabase();
+
+    // Poblar centros veterinarios si no existen
+    const centrosCount = await db.getFirstAsync<{ count: number }>(
+      'SELECT COUNT(*) as count FROM centros_veterinarios;'
+    );
+    if (!centrosCount || centrosCount.count === 0) {
+      for (const c of clinicasMock) {
+        await db.runAsync(
+          `INSERT INTO centros_veterinarios (
+            id, nombre, medico, barrio, direccion, telefono, detalle, distancia, abierto, tipo, horarios
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+          [
+            c.id,
+            c.nombre,
+            c.medico ?? null,
+            c.barrio,
+            c.direccion,
+            c.telefono,
+            c.detalle ?? null,
+            c.distancia ?? null,
+            c.abierto ? 1 : 0,
+            c.tipo,
+            JSON.stringify(c.horarios ?? ['09:00', '10:30', '11:15', '12:15', '16:00', '18:30']),
+          ]
+        );
+      }
+    }
+
     const countResult = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM turnos;'
     );
@@ -49,7 +77,37 @@ export class TurnoRepositoryImpl implements TurnoRepository {
   }
 
   async obtenerClinicas(): Promise<Clinica[]> {
-    return clinicasMock;
+    await this.asegurarSemilla();
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<{
+      id: string;
+      nombre: string;
+      medico: string | null;
+      barrio: string;
+      direccion: string;
+      telefono: string;
+      detalle: string | null;
+      distancia: string | null;
+      abierto: number;
+      tipo: 'consultorio' | 'hospital' | 'quirurgico';
+      horarios: string;
+    }>('SELECT * FROM centros_veterinarios ORDER BY nombre ASC;');
+
+    if (rows.length === 0) return clinicasMock;
+
+    return rows.map((r) => ({
+      id: r.id,
+      nombre: r.nombre,
+      medico: r.medico || undefined,
+      barrio: r.barrio,
+      direccion: r.direccion,
+      telefono: r.telefono,
+      detalle: r.detalle || undefined,
+      distancia: r.distancia || undefined,
+      abierto: Boolean(r.abierto),
+      tipo: r.tipo,
+      horarios: r.horarios ? JSON.parse(r.horarios) : undefined,
+    }));
   }
 
   async horariosOcupados(clinicaId: string): Promise<Date[]> {

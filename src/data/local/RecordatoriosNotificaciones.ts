@@ -8,31 +8,41 @@ export const CATEGORIA = 'turno';
 export const ACCION_LLAMAR = 'llamar';
 
 export async function configurarNotificaciones() {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(CANAL, {
-      name: 'Turnos veterinarios',
-      importance: Notifications.AndroidImportance.HIGH,
+  if (Platform.OS === 'web') return;
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
     });
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync(CANAL, {
+        name: 'Turnos veterinarios',
+        importance: Notifications.AndroidImportance.HIGH,
+      });
+    }
+    await Notifications.setNotificationCategoryAsync(CATEGORIA, [
+      { identifier: 'ver', buttonTitle: 'Ver en la app', options: { opensAppToForeground: true } },
+      { identifier: ACCION_LLAMAR, buttonTitle: 'Llamar al centro', options: { opensAppToForeground: true } },
+    ]);
+  } catch (err) {
+    console.warn('No se pudo inicializar las notificaciones:', err);
   }
-  await Notifications.setNotificationCategoryAsync(CATEGORIA, [
-    { identifier: 'ver', buttonTitle: 'Ver en la app', options: { opensAppToForeground: true } },
-    { identifier: ACCION_LLAMAR, buttonTitle: 'Llamar al centro', options: { opensAppToForeground: true } },
-  ]);
 }
 
 async function pedirPermiso() {
-  const actual = await Notifications.getPermissionsAsync();
-  if (actual.granted) return true;
-  if (!actual.canAskAgain) return false;
-  return (await Notifications.requestPermissionsAsync()).granted;
+  if (Platform.OS === 'web') return false;
+  try {
+    const actual = await Notifications.getPermissionsAsync();
+    if (actual.granted) return true;
+    if (!actual.canAskAgain) return false;
+    return (await Notifications.requestPermissionsAsync()).granted;
+  } catch {
+    return false;
+  }
 }
 
 export class RecordatoriosNotificaciones implements RecordatorioTurnos {

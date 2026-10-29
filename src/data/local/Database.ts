@@ -1,4 +1,6 @@
 import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
+import { getWebDatabase } from './WebDatabase';
 
 const DB_NAME = 'perf.db';
 
@@ -9,10 +11,20 @@ let _db: SQLite.SQLiteDatabase | null = null;
  * Se abre una sola vez y se reutiliza en toda la app.
  */
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+  if (Platform.OS === 'web') {
+    const webDb = getWebDatabase();
+    await crearTablas(webDb as unknown as SQLite.SQLiteDatabase);
+    return webDb as unknown as SQLite.SQLiteDatabase;
+  }
+
   if (_db) return _db;
   _db = await SQLite.openDatabaseAsync(DB_NAME);
-  await _db.execAsync('PRAGMA journal_mode = WAL;');
-  await _db.execAsync('PRAGMA foreign_keys = ON;');
+  try {
+    await _db.execAsync('PRAGMA journal_mode = WAL;');
+  } catch {}
+  try {
+    await _db.execAsync('PRAGMA foreign_keys = ON;');
+  } catch {}
   await crearTablas(_db);
   return _db;
 }
@@ -80,6 +92,32 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
       operacion  TEXT    NOT NULL,
       payload    TEXT    NOT NULL,
       reintentos INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS centros_veterinarios (
+      id         TEXT    PRIMARY KEY NOT NULL,
+      nombre     TEXT    NOT NULL,
+      medico     TEXT,
+      barrio     TEXT    NOT NULL,
+      direccion  TEXT    NOT NULL,
+      telefono   TEXT    NOT NULL,
+      detalle    TEXT,
+      distancia  TEXT,
+      abierto    INTEGER NOT NULL DEFAULT 1,
+      tipo       TEXT    NOT NULL,
+      horarios   TEXT    NOT NULL DEFAULT '["09:00","10:30","11:15","12:15","16:00","18:30"]'
+    );
+
+    CREATE TABLE IF NOT EXISTS voluntarios (
+      id         TEXT    PRIMARY KEY NOT NULL,
+      nombre     TEXT    NOT NULL,
+      email      TEXT    NOT NULL UNIQUE,
+      telefono   TEXT    NOT NULL,
+      brigada    TEXT    NOT NULL,
+      zona       TEXT    NOT NULL,
+      clave      TEXT    NOT NULL,
+      recursos   TEXT,
       created_at INTEGER NOT NULL
     );
   `);

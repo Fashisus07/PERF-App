@@ -2,8 +2,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { ReactNode, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Image, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { UMBRAL_MAX, UMBRAL_MIN } from '../../../domain/models/Ajustes';
-import { voluntarioActual } from '../../../data/mock/voluntarioMock';
+import { UMBRAL_MAX, UMBRAL_MIN, Voluntario } from '../../../domain/models/Ajustes';
+import { authRepository } from '../../../di/container';
 import { useAjustes, sincronizarAhora } from '../../hooks/useAjustes';
 import { useOnline } from '../../hooks/useOnline';
 import { colors, fonts } from '../../theme';
@@ -20,6 +20,16 @@ export function AjustesScreen({ navigation }: Props) {
   const [sincronizando, setSincronizando] = useState(false);
   const [mensajeSync, setMensajeSync] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [voluntario, setVoluntario] = useState<Voluntario | null>(null);
+
+  useEffect(() => {
+    authRepository.obtenerVoluntarioActual().then(setVoluntario);
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      authRepository.obtenerVoluntarioActual().then(setVoluntario);
+      actualizarResumen();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // El aviso ("Cambios guardados") desaparece solo.
   useEffect(() => {
@@ -52,7 +62,10 @@ export function AjustesScreen({ navigation }: Props) {
     setSincronizando(false);
   };
 
-  const cerrarSesion = () => navigation?.reset?.({ index: 0, routes: [{ name: 'Login' }] });
+  const cerrarSesion = async () => {
+    await authRepository.cerrarSesion();
+    navigation?.reset?.({ index: 0, routes: [{ name: 'Login' }] });
+  };
   const porcentaje = resumen ? Math.min(100, (resumen.megabytes / resumen.capacidadMegabytes) * 100) : 0;
 
   return (
@@ -145,10 +158,19 @@ export function AjustesScreen({ navigation }: Props) {
                   </View>
                 </View>
               )}
-              <Pressable style={styles.sincronizar} onPress={sincronizar} disabled={sincronizando}>
-                {sincronizando ? <ActivityIndicator color={colors.primary} /> : <MaterialIcons name="sync" size={18} color={colors.primary} />}
-                <Text style={styles.sincronizarText}>Forzar sincronización ahora</Text>
-              </Pressable>
+              <View style={styles.syncActionsRow}>
+                <Pressable style={styles.sincronizar} onPress={sincronizar} disabled={sincronizando}>
+                  {sincronizando ? <ActivityIndicator color={colors.primary} /> : <MaterialIcons name="sync" size={18} color={colors.primary} />}
+                  <Text style={styles.sincronizarText}>Forzar sincronización</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.btnVerCola}
+                  onPress={() => navigation?.navigate?.('ColaSincronizacion')}
+                >
+                  <MaterialIcons name="queue" size={18} color={colors.primary} />
+                  <Text style={styles.btnVerColaText}>Ver cola offline</Text>
+                </Pressable>
+              </View>
               {!!mensajeSync && <Text style={styles.mensajeSync}>{mensajeSync}</Text>}
             </Tarjeta>
 
@@ -186,13 +208,21 @@ export function AjustesScreen({ navigation }: Props) {
                 </View>
               </View>
               <View style={styles.linea} />
-              <View style={styles.sesion}>
-                <MaterialIcons name="badge" size={20} color={colors.textMuted} />
-                <View>
+              <Pressable
+                style={styles.sesion}
+                onPress={() => navigation?.navigate?.('PerfilVoluntario')}
+                accessibilityLabel="Editar perfil del voluntario"
+              >
+                <MaterialIcons name="badge" size={22} color={colors.primary} />
+                <View style={{ flex: 1 }}>
                   <Text style={styles.sesionLabel}>Sesión activa como</Text>
-                  <Text style={styles.sesionNombre}>{voluntarioActual.nombre} · {voluntarioActual.brigada}</Text>
+                  <Text style={styles.sesionNombre}>
+                    {voluntario?.nombre || 'Mariana Gomez'} · {voluntario?.brigada || 'Brigada Caballito'}
+                  </Text>
+                  <Text style={styles.sesionEditar}>Toca para editar tus datos o equipamiento</Text>
                 </View>
-              </View>
+                <MaterialIcons name="chevron-right" size={22} color={colors.textSubtle} />
+              </Pressable>
               <Pressable style={styles.cerrar} onPress={cerrarSesion}>
                 <MaterialIcons name="logout" size={18} color={colors.urgente} />
                 <Text style={styles.cerrarText}>Cerrar sesión o cambiar voluntario</Text>
@@ -322,8 +352,11 @@ const styles = StyleSheet.create({
   memoriaPie: { flexDirection: 'row', justifyContent: 'space-between' },
   memoriaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   memoriaItemText: { fontFamily: fonts.regular, fontSize: 14, color: colors.textMuted },
-  sincronizar: { height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 9999, backgroundColor: colors.surfaceChip },
-  sincronizarText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.primary },
+  sincronizar: { flex: 1, height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, backgroundColor: colors.surfaceChip },
+  sincronizarText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
+  syncActionsRow: { flexDirection: 'row', gap: 8 },
+  btnVerCola: { flex: 1, height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, backgroundColor: colors.primarySoft },
+  btnVerColaText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
   mensajeSync: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted, textAlign: 'center' },
 
   info: { flexDirection: 'row', gap: 8, padding: 12, borderRadius: 12, backgroundColor: colors.surfaceCard },
@@ -338,8 +371,9 @@ const styles = StyleSheet.create({
   acercaSub: { fontFamily: fonts.regular, fontSize: 14, color: colors.textMuted },
   linea: { height: 1, backgroundColor: colors.border },
   sesion: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, backgroundColor: colors.surfaceCard },
-  sesionLabel: { fontFamily: fonts.regular, fontSize: 13, color: colors.textMuted },
+  sesionLabel: { fontFamily: fonts.regular, fontSize: 12, color: colors.textMuted },
   sesionNombre: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
+  sesionEditar: { fontFamily: fonts.regular, fontSize: 11, color: colors.primary, marginTop: 2 },
   cerrar: { height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, backgroundColor: colors.urgenteBg },
   cerrarText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.urgente },
 

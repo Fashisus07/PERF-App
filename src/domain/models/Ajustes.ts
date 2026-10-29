@@ -22,4 +22,12 @@ export type ResumenAlmacenamiento = {
   capacidadMegabytes: number;
 };
 
-export type Voluntario = { nombre: string; brigada: string };
+export type Voluntario = {
+  id?: string;
+  nombre: string;
+  brigada: string;
+  email?: string;
+  telefono?: string;
+  zona?: string;
+  recursos?: string[];
+};

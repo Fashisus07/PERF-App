@@ -5,9 +5,11 @@ import {
   diasEnEspera,
   EstadoCaso,
   EventoHistorial,
+  TipoEvento,
   Urgencia,
 } from '../../domain/models/Caso';
 import { BorradorRescate } from '../../domain/models/Rescate';
+import { generarUUID } from '../../data/local/uuid';
 import {
   casoRepository,
   listarCasosPorUrgencia,
@@ -32,6 +34,8 @@ interface CasoState {
   cargarDetalleCaso: (id: string) => Promise<Caso | undefined>;
   registrarRescate: (borrador: BorradorRescate, sinConexion?: boolean) => Promise<Caso>;
   cambiarEstado: (id: string, nuevoEstado: EstadoCaso, motivo: string, destino?: string) => Promise<Caso>;
+  actualizarCaso: (caso: Caso) => Promise<Caso>;
+  agregarEventoHistorial: (casoId: string, tipo: TipoEvento, descripcion: string) => Promise<void>;
   sincronizar: () => Promise<number>;
   setFiltroUrgencia: (filtro: FiltroUrgencia) => void;
   setBusqueda: (busqueda: string) => void;
@@ -104,6 +108,41 @@ export const useCasoStore = create<CasoState>((set, get) => ({
       return actualizado;
     } catch (e: any) {
       set({ cargando: false, error: e?.message || 'Error al cambiar estado' });
+      throw e;
+    }
+  },
+
+  actualizarCaso: async (caso: Caso) => {
+    set({ cargando: true, error: null });
+    try {
+      const actualizado = await casoRepository.actualizar(caso);
+      set((state) => ({
+        casoSeleccionado: state.casoSeleccionado?.id === caso.id ? actualizado : state.casoSeleccionado,
+        casos: state.casos.map((c) => (c.id === caso.id ? actualizado : c)),
+        cargando: false,
+      }));
+      return actualizado;
+    } catch (e: any) {
+      set({ cargando: false, error: e?.message || 'Error al actualizar caso' });
+      throw e;
+    }
+  },
+
+  agregarEventoHistorial: async (casoId: string, tipo: TipoEvento, descripcion: string) => {
+    try {
+      const nuevoEvento: EventoHistorial = {
+        id: generarUUID(),
+        casoId,
+        tipo,
+        descripcion,
+        fecha: Date.now(),
+        syncStatus: 'PENDING',
+      };
+      await casoRepository.agregarEvento(nuevoEvento);
+      const historial = await casoRepository.obtenerHistorial(casoId);
+      set({ historial });
+    } catch (e: any) {
+      set({ error: e?.message || 'Error al agregar evento al historial' });
       throw e;
     }
   },
