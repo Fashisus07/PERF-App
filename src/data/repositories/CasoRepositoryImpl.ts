@@ -12,6 +12,7 @@ import {
   EventoHistorialRow,
 } from '../mappers/CasoMapper';
 import { casosMock } from '../mock/casosMock';
+import { sincronizarConSupabase } from '../remote/sincronizacion/SincronizadorSupabase';
 
 export class CasoRepositoryImpl implements CasoRepository {
   private seeded = false;
@@ -253,20 +254,11 @@ export class CasoRepositoryImpl implements CasoRepository {
   }
 
   async sincronizar(): Promise<number> {
-    const db = await getDatabase();
-    const pendientes = await db.getAllAsync<{ id: number; entidad: string; payload: string }>(
-      'SELECT * FROM operaciones_pendientes ORDER BY id ASC;'
-    );
-
-    if (pendientes.length === 0) return 0;
-
-    // Marcamos todas las tablas locales como SYNCED
-    await db.runAsync(`UPDATE casos SET sync_status = 'SYNCED';`);
-    await db.runAsync(`UPDATE turnos SET sync_status = 'SYNCED';`);
-    await db.runAsync(`UPDATE eventos_historial SET sync_status = 'SYNCED';`);
-    await db.runAsync('DELETE FROM operaciones_pendientes;');
-
-    return pendientes.length;
+    // Sube la cola a Supabase operación por operación y baja los cambios de los demás voluntarios.
+    const { enviadas, conflictos, fallidas } = await sincronizarConSupabase();
+    if (conflictos.length > 0) console.warn(`[sync] ${conflictos.length} campo(s) con conflicto:`, conflictos);
+    if (fallidas > 0) console.warn(`[sync] ${fallidas} operación(es) quedaron en cola para reintentar.`);
+    return enviadas;
   }
 
   async obtenerOperacionesPendientes(): Promise<OperacionPendiente[]> {

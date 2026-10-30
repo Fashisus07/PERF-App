@@ -141,6 +141,13 @@ create policy adopciones_coordinador on public.adopciones
 -- Permisos de la Data API (como en el esquema inicial: solo con sesión).
 -- Las políticas RLS de arriba restringen además qué filas puede tocar cada uno.
 -- ─────────────────────────────────────────────────────────────
+-- La app puede cancelar un turno (la cola local envía el borrado): lo borra quien lo creó o un coordinador.
+create policy turnos_borrar on public.turnos
+  for delete to authenticated
+  using (public.es_voluntario_activo() and (creado_por = auth.uid() or public.es_coordinador()));
+
+grant delete on public.turnos to authenticated;
+
 grant select, insert, update on public.animales   to authenticated;
 grant select, insert, update on public.pendientes  to authenticated;
 grant select, insert, update on public.adopciones  to authenticated;
