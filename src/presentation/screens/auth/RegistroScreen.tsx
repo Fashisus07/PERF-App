@@ -118,6 +118,7 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
   const [intento, setIntento] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
+  const [cuentaCreada, setCuentaCreada] = useState<string | null>(null);
 
   const telefonoValido = whatsapp.length === DIGITOS_TELEFONO;
   const telefonoIncompleto = whatsapp.length > 0 && !telefonoValido;
@@ -134,7 +135,7 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
     }
     setGuardando(true);
     try {
-      await authRepository.registrar({
+      const resultado = await authRepository.registrar({
         nombre: nombre.trim(),
         email: email.trim(),
         telefono: whatsapp.trim(),
@@ -142,7 +143,11 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
         clave,
         recursos,
       });
-      onRegistrar();
+      if (resultado.pendienteDeAprobacion) {
+        setCuentaCreada(resultado.mensaje);
+      } else {
+        onRegistrar();
+      }
     } catch (e: any) {
       setErrorGeneral(e?.message || 'Error al crear la cuenta. Intente nuevamente.');
     } finally {
@@ -319,14 +324,25 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
             </View>
           ) : null}
 
+          {cuentaCreada ? (
+            <View style={styles.okBanner}>
+              <MaterialIcons name="check-circle" size={20} color={colors.primary} />
+              <Text style={styles.okBannerText}>Cuenta creada. {cuentaCreada}</Text>
+            </View>
+          ) : null}
+
           <View style={styles.actions}>
-            <Pressable style={styles.cta} onPress={intentarRegistrar} disabled={guardando}>
+            <Pressable
+              style={styles.cta}
+              onPress={cuentaCreada ? onLogin : intentarRegistrar}
+              disabled={guardando}
+            >
               {guardando ? (
                 <ActivityIndicator color={colors.onPrimary} />
               ) : (
                 <>
-                  <MaterialIcons name="person-add" size={18} color={colors.onPrimary} />
-                  <Text style={styles.ctaText}>Crear cuenta de voluntario</Text>
+                  <MaterialIcons name={cuentaCreada ? 'login' : 'person-add'} size={18} color={colors.onPrimary} />
+                  <Text style={styles.ctaText}>{cuentaCreada ? 'Volver a iniciar sesión' : 'Crear cuenta de voluntario'}</Text>
                 </>
               )}
             </Pressable>
@@ -494,6 +510,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.urgenteBg,
     padding: 12,
     borderRadius: 12,
+  },
+  okBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surface,
+    padding: 12,
+    borderRadius: 12,
+  },
+  okBannerText: {
+    flex: 1,
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: colors.primary,
   },
   errorBannerText: {
     flex: 1,

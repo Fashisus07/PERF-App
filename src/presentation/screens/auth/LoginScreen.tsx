@@ -62,7 +62,10 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
 
     setIniciando(true);
     try {
-      await authRepository.iniciarSesion(usuario, clave, recordar);
+      await authRepository.iniciarSesion(usuario, clave);
+      // "Recordar usuario" solo guarda el correo para precompletarlo; la sesión la mantiene Supabase.
+      if (recordar) await AsyncStorage.setItem('perf.recordar_usuario', usuario.trim().toLowerCase());
+      else await AsyncStorage.removeItem('perf.recordar_usuario');
       onLogin();
     } catch (e: any) {
       setErrorMsg(e?.message || 'Error al iniciar sesión. Verificá tus credenciales.');
@@ -75,15 +78,12 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
     setErrorMsg(null);
     setIniciando(true);
     try {
-      // Ingreso rápido biométrico para guardias de terreno
+      // Ingreso rápido: solo reutiliza una sesión ya iniciada con correo y contraseña.
       const actual = await authRepository.obtenerVoluntarioActual();
-      if (actual) {
-        await authRepository.guardarSesion(actual, true);
-        onLogin();
-      } else {
-        await authRepository.iniciarSesion('voluntario@perfelino.org', 'guardia123', true);
-        onLogin();
+      if (!actual) {
+        throw new Error('Primero iniciá sesión con tu correo y contraseña.');
       }
+      onLogin();
     } catch (e: any) {
       setErrorMsg(e?.message || 'No se pudo verificar la huella.');
     } finally {

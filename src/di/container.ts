@@ -1,7 +1,7 @@
 import { CasoRepositoryImpl } from '../data/repositories/CasoRepositoryImpl';
 import { TurnoRepositoryImpl } from '../data/repositories/TurnoRepositoryImpl';
 import { AjustesRepositoryImpl } from '../data/local/AjustesRepositoryImpl';
-import { AuthRepositoryImpl } from '../data/local/AuthRepositoryImpl';
+import { SupabaseAuthRepository } from '../data/remote/SupabaseAuthRepository';
 import { RecordatoriosNotificaciones } from '../data/local/RecordatoriosNotificaciones';
 
 import { ListarCasosPorUrgencia } from '../domain/usecases/ListarCasosPorUrgencia';
@@ -17,7 +17,7 @@ import { SincronizarAhora } from '../domain/usecases/SincronizarAhora';
 export const casoRepository = new CasoRepositoryImpl();
 export const turnoRepository = new TurnoRepositoryImpl();
 export const ajustesRepository = new AjustesRepositoryImpl();
-export const authRepository = new AuthRepositoryImpl();
+export const authRepository = new SupabaseAuthRepository();
 export const recordatorioService = new RecordatoriosNotificaciones();
 
 // Casos de uso

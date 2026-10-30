@@ -114,6 +114,77 @@ PERF-App/
 
 ---
 
+## ☁️ Backend Remoto: Supabase
+
+> **Estado: en desarrollo (rama `feature/supabase-backend`).** El esquema del servidor está creado y verificado; el cliente de la app todavía **no** sincroniza datos reales (sigue usando `MockRemoteApiClient` y el login local). Lo que está hecho y lo que falta figura en la sección "Estado" de más abajo.
+
+### Qué es y por qué Supabase
+Supabase es una base **PostgreSQL en la nube** que ya incluye una API, autenticación (Supabase Auth) y almacenamiento de archivos (Storage). Es open source y el plan gratuito alcanza para un refugio. La app se instala en los teléfonos de los voluntarios; no hay un servidor propio que mantener.
+
+Se eligió sobre las alternativas porque:
+- **JSON/archivo compartido:** no resuelve accesos concurrentes, permisos ni fotos.
+- **API propia (Node, etc.):** habría que programar, hostear y mantener login, permisos y almacenamiento.
+- **Firebase:** su base NoSQL complica las relaciones caso → turnos → historial y los permisos por fila.
+
+### Qué guarda cada base
+| | SQLite (en el teléfono) | Supabase (en la nube) |
+|---|---|---|
+| Rol | Copia de trabajo: la app funciona sin señal | Fuente compartida entre voluntarios |
+| Quién la ve | Solo ese teléfono | Todos los voluntarios **aprobados** |
+| Cola `operaciones_pendientes` | Sí: cambios hechos sin conexión | No: es de cada dispositivo |
+| Auth | — | Supabase Auth (reemplaza el login local con clave en texto plano) |
+| Fotos | Ruta local (`foto_uri`) | Storage privado, bucket `fotos-casos` |
+
+```
+Teléfono A ──(SQLite + cola)──┐                       ┌── Teléfono B
+                              ├──►  Supabase (RLS) ◄──┤
+Teléfono C ──(SQLite + cola)──┘   Postgres · Auth · Storage
+```
+
+### Esquema del servidor
+Está en [`supabase/migrations/20261030000000_esquema_inicial.sql`](supabase/migrations/20261030000000_esquema_inicial.sql). Tablas: `perfiles`, `casos`, `conflictos`, `eventos_historial`, `fotos_caso`, `centros_veterinarios` y `turnos`.
+
+### Respuesta a la devolución de la preentrega
+| Observación | Cómo se resuelve |
+|---|---|
+| **Urgencia solo por días** | El campo `gravedad` (`critico` / `urgente` / `estable`) se carga al ingresar el caso y reemplaza al criterio por días. *Pendiente:* validar los criterios con el refugio y adaptar la app. |
+| **"Última modificación gana" pierde datos** | La función `aplicar_cambios_caso()` fusiona **campo por campo** (cada campo guarda cuándo se modificó por última vez). Si dos voluntarios cambian el mismo campo, gana el más reciente y el valor descartado queda registrado en la tabla `conflictos` para revisarlo. |
+| **Duplicaciones** | Todos los ids son UUID generados en el teléfono: reenviar una operación no crea un registro nuevo. |
+| **Historial** | `eventos_historial` es de solo-agregar (no se edita ni se borra), por lo que no puede haber conflictos. |
+| **Fotos** | Cada foto es una fila nueva con ruta única en un bucket privado (máx. 5 MB; jpg, png o webp). Se sube con su propia cola de reintentos. |
+| **Seguridad y acceso** | Todas las tablas tienen RLS. Un registro nuevo queda **pendiente** hasta que un **coordinador lo aprueba**; solo los aprobados ven casos, fotos y ubicaciones. Nadie puede aprobarse ni cambiarse el rol a sí mismo (lo bloquea un trigger). El usuario sin sesión no accede a nada. |
+| **Integración real** | *Pendiente:* cliente de Supabase en la app y prueba entre dos dispositivos reales. |
+
+### Límites conocidos
+- El orden de los cambios depende del **reloj de cada teléfono**: uno con la hora mal podría ganar un conflicto que no debería.
+- Los casos no se editan directo en la tabla: no hay política de `UPDATE`/`DELETE`, todo cambio pasa por `aplicar_cambios_caso()`.
+- El primer coordinador se crea a mano desde el SQL Editor (nadie puede aprobar al primero).
+- La clave `sb_publishable_...` del cliente es pública por diseño; la seguridad la dan las políticas RLS. La clave `secret`/`service_role` **nunca** va en la app ni en el repositorio.
+
+### Estado
+- [x] Proyecto de Supabase creado (región São Paulo) y esquema aplicado
+- [x] Tablas, RLS, permisos y bucket de fotos verificados con consultas sin sesión
+- [x] Cliente instalado (`src/data/remote/supabaseClient.ts`, sesión guardada en AsyncStorage)
+- [x] Login y registro con Supabase Auth (`SupabaseAuthRepository`; reemplaza al login local con clave en texto plano). *Falta probarlo en el emulador/dispositivo.* Las cuentas nuevas quedan pendientes y no pueden entrar hasta que un coordinador las apruebe
+- [ ] Pantalla de aprobación de voluntarios para coordinadores
+- [ ] `sincronizar()` real: subir la cola, bajar cambios, manejar conflictos
+- [ ] Subida de fotos a Storage con reintentos
+- [ ] Criterio de urgencia por gravedad en la app
+- [ ] Prueba del circuito completo en dos dispositivos reales (incluidos los recordatorios)
+- [ ] Eliminar `data/mock/` y el `MockRemoteApiClient`
+
+### Cómo reproducir el backend
+1. Crear un proyecto en [supabase.com](https://supabase.com) (región South America – São Paulo).
+2. En **SQL Editor**, pegar el **contenido** de `supabase/migrations/20261030000000_esquema_inicial.sql` y ejecutarlo.
+3. En **Authentication → Sign In / Providers → Email**, desactivar *Confirm email* mientras se prueba.
+4. Aprobar un voluntario (la primera vez, a mano, desde el SQL Editor; después lo hace un coordinador desde la app):
+   ```sql
+   update public.perfiles set aprobado = true, rol = 'coordinador' where email = 'tu-correo@ejemplo.com';
+   ```
+5. Copiar la *Project URL* y la clave *publishable* en `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` (o en `src/data/remote/supabaseClient.ts`).
+
+---
+
 ## 📱 Módulos y Pantallas
 
 ### 1. Autenticación (`presentation/screens/auth/`)
