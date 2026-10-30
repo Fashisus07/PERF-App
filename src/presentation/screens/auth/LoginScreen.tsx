@@ -52,11 +52,11 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
   const handleLogin = async () => {
     setErrorMsg(null);
     if (!usuario.trim()) {
-      setErrorMsg('Ingresá tu usuario o correo electrónico.');
+      setErrorMsg('Ingresá tu correo electrónico.');
       return;
     }
     if (!clave.trim()) {
-      setErrorMsg('Ingresá tu contraseña de guardia.');
+      setErrorMsg('Ingresá tu contraseña.');
       return;
     }
 
@@ -126,8 +126,8 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
         <View style={styles.form}>
           <View style={styles.field}>
             <View style={styles.labelRow}>
-              <Text style={styles.textDark}>Usuario o correo</Text>
-              <Text style={styles.text}>Email o DNI</Text>
+              <Text style={styles.textDark}>Correo electrónico</Text>
+              <Text style={styles.text}>Tu cuenta de voluntario</Text>
             </View>
             <View>
               <TextInput
@@ -162,7 +162,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
                   setClave(t);
                   if (errorMsg) setErrorMsg(null);
                 }}
-                placeholder="Tu contraseña de guardia"
+                placeholder="Tu contraseña"
                 placeholderTextColor={colors.placeholderField}
                 secureTextEntry={!verClave}
                 autoCapitalize="none"
