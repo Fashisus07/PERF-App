@@ -3,8 +3,10 @@ import { Turno } from '../../../domain/models/Turno';
 import { getDatabase } from '../../local/Database';
 import {
   CasoRow,
+  EventoHistorialRow,
   casoFromRow,
   casoToParams,
+  eventoFromRow,
   eventoToParams,
   turnoToParams,
 } from '../../mappers/CasoMapper';
@@ -91,6 +93,19 @@ export const almacenSqlite: AlmacenLocal = {
       eventoToParams(evento)
     );
     await db.runAsync(`UPDATE eventos_historial SET sync_status = 'SYNCED' WHERE id = ?;`, [evento.id]);
+  },
+
+  async leerEventosPendientes() {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<EventoHistorialRow>(
+      `SELECT * FROM eventos_historial WHERE sync_status = 'PENDING' ORDER BY fecha ASC;`
+    );
+    return rows.map(eventoFromRow);
+  },
+
+  async marcarEventoSincronizado(id: string) {
+    const db = await getDatabase();
+    await db.runAsync(`UPDATE eventos_historial SET sync_status = 'SYNCED' WHERE id = ?;`, [id]);
   },
 
   async guardarTurno(turno: Turno) {

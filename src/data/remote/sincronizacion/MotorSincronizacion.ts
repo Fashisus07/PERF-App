@@ -64,6 +64,9 @@ export interface AlmacenLocal {
   guardarCaso(caso: Caso): Promise<void>;
   guardarEvento(evento: EventoHistorial): Promise<void>;
   guardarTurno(turno: Turno): Promise<void>;
+  /** Eventos del historial creados en este teléfono que todavía no se subieron (no siempre pasan por la cola). */
+  leerEventosPendientes(): Promise<EventoHistorial[]>;
+  marcarEventoSincronizado(id: string): Promise<void>;
 }
 
 export interface EstadoSync {
@@ -79,6 +82,8 @@ export interface ResultadoSync {
   /** "casoId:campo" de cada campo que otro voluntario también había cambiado. */
   conflictos: string[];
   fallidas: number;
+  /** Eventos del historial subidos fuera de la cola (llegada de un caso, cambios de estado). */
+  eventos: number;
 }
 
 export interface Dependencias {
@@ -94,7 +99,7 @@ export async function sincronizar({ servidor, almacen, estado, ahora = Date.now 
   const inicio = ahora();
   const bases = await estado.leerBases();
   const ultimaSync = (await estado.leerUltimaSync()) ?? 0;
-  const resultado: ResultadoSync = { enviadas: 0, descargadas: 0, conflictos: [], fallidas: 0 };
+  const resultado: ResultadoSync = { enviadas: 0, descargadas: 0, conflictos: [], fallidas: 0, eventos: 0 };
 
   // ── 1. Subir la cola, en orden. Cada operación se saca de la cola recién cuando el servidor la aceptó. ──
   const centros = await servidor.idsCentros();
@@ -111,6 +116,22 @@ export async function sincronizar({ servidor, almacen, estado, ahora = Date.now 
       resultado.fallidas++;
       await almacen.registrarFallo(op.id);
       console.warn(`[sync] ${op.entidad} ${op.operacion} #${op.id} falló:`, (e as Error).message);
+    }
+  }
+
+  // ── 1b. Historial que se guardó localmente sin encolar: se sube después de los casos (clave foránea). ──
+  for (const evento of await almacen.leerEventosPendientes()) {
+    try {
+      await servidor.insertarEvento(filaEventoParaServidor(evento));
+      await almacen.marcarEventoSincronizado(evento.id);
+      resultado.eventos++;
+    } catch (e) {
+      if (e instanceof ErrorDeRed) {
+        await estado.guardarBases(bases);
+        throw e;
+      }
+      resultado.fallidas++;
+      console.warn(`[sync] evento ${evento.id} (${evento.tipo}) falló:`, (e as Error).message);
     }
   }
 
