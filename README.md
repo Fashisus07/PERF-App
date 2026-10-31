@@ -195,7 +195,7 @@ El motor está en `src/data/remote/sincronizacion/` y no depende de React Native
 - `src/domain/services/PrioridadCaso.ts`: `calcularPrioridad()` combina gravedad y pendientes sin resolver; la espera larga en adopción solo desempata. **Los pesos son una propuesta y hay que validarlos con el refugio.** Todavía no está conectada a la app.
 
 ### Límites conocidos
-- Las **fotos todavía no se sincronizan** (la ruta `foto_uri` es local).
+- **Fotos:** la foto principal se sube a Storage y los demás teléfonos reciben un enlace firmado (vence a los 7 días y se renueva en cada sincronización); sin señal esa foto no se ve en los teléfonos que no la sacaron. Implementado en `SincronizacionFotos.ts` y **sin probar todavía en dispositivo**.
 - Los centros veterinarios de la app son locales y no existen en el servidor: los turnos suben sin el centro.
 - Lo que se borra o se cancela en otro dispositivo no se elimina del teléfono al sincronizar; solo se agregan y actualizan filas.
 - Los casos de demostración (`data/mock/`) siguen apareciendo en cada teléfono nuevo.
@@ -218,7 +218,7 @@ El motor está en `src/data/remote/sincronizacion/` y no depende de React Native
 - [ ] Aplicar esa migración en Supabase y conectar `Caso.ts`, `CasoMapper` y `Database.ts` a los animales y pendientes
 - [ ] Criterio de urgencia por gravedad en la app (`calcularPrioridad()` ya existe, falta conectarla y validar los pesos con el refugio)
 - [ ] Pantalla de aprobación de voluntarios para coordinadores
-- [ ] Subida de fotos a Storage con reintentos
+- [x] Subida de fotos a Storage con reintentos (código listo, falta probarlo en el emulador)
 - [ ] Prueba del circuito completo en dos dispositivos reales (incluidos los recordatorios)
 - [ ] Eliminar `data/mock/` y el `MockRemoteApiClient`
 
