@@ -188,11 +188,20 @@ El motor está en `src/data/remote/sincronizacion/` y no depende de React Native
 - Con señal, `RegistrarRescate` guarda el caso y su evento como `SYNCED` sin haberlos enviado, y `agregar()`/`actualizarEstado()` no encolan el evento: el historial nunca llegaba al servidor. El motor ahora sube los eventos de un caso junto con su creación y los eventos `PENDING`.
 - La app arrancaba siempre en el login, aunque hubiera sesión guardada, y sin conexión no se podía entrar.
 
-**Modelo por animal y prioridad** (migración `supabase/migrations/20261031000000_animales_pendientes_adopciones.sql`, *todavía no aplicada* en Supabase)
+**Modelo por animal y prioridad** (migración `supabase/migrations/20261031000000_animales_pendientes_adopciones.sql`, **ya aplicada** en el proyecto `perf-app` el 31/10/2026; las tablas están vacías y la app todavía no las usa)
 - `animales`: castración, virales, peso, embarazo y desparasitaciones **por animal** (la planilla del refugio los maneja así: "Jade ya castrada, falta Kai").
 - `pendientes`: castrar, estudio, cirugía, especialista.
 - `adopciones`: una fila por adopción; si el animal vuelve queda el registro anterior. Los datos del adoptante solo los ven los coordinadores.
 - `src/domain/services/PrioridadCaso.ts`: `calcularPrioridad()` combina gravedad y pendientes sin resolver; la espera larga en adopción solo desempata. **Los pesos son una propuesta y hay que validarlos con el refugio.** Todavía no está conectada a la app.
+
+### Para el equipo: qué hay que saber antes de tocar esto
+- **Una sola base compartida:** el proyecto `perf-app` de Supabase es de **producción** y lo usan todos. No borrar ni migrar sin avisar. Las cuentas y casos de prueba hay que borrarlos al terminar (ya se limpiaron los de las pruebas del 31/10).
+- **Código nuevo (no pisa nada del equipo):** `src/data/remote/sincronizacion/` (motor, mapeo, adaptadores y fotos), `src/data/local/CandadoApp.ts`, `PantallaCandado.tsx`, `src/domain/models/Animal.ts`, `src/domain/services/PrioridadCaso.ts` y `supabase/`.
+- **Archivos del equipo con un cambio mínimo:** `CasoRepositoryImpl.sincronizar()` (ahora llama al motor), `AppNavigator.tsx` (sesión recordada y candado), `AjustesScreen.tsx` (opción Seguridad) y `SupabaseAuthRepository` (modo sin conexión).
+- **Sin tocar todavía (a coordinar):** `Caso.ts`, `CasoMapper`, `Database.ts`, `WebDatabase.ts`, `EditarSanidadScreen` y `PasoDatos`, que son los que habría que conectar al modelo por animal.
+- **Los pesos de `calcularPrioridad()` son una propuesta.** Los criterios de urgencia los define el refugio: hay que validarlos con ellos antes de usarlos.
+- **Datos personales:** la planilla del refugio tiene datos reales de adoptantes y tránsitos. No copiarla al repositorio.
+- **Probar en el emulador:** hace falta el build nativo (`npx expo run:android`, JDK 17); Expo Go no sirve por `expo-notifications`. Las contraseñas las escribe cada persona.
 
 ### Límites conocidos
 - **Fotos:** la foto principal se sube a Storage y los demás teléfonos reciben un enlace firmado (vence a los 7 días y se renueva en cada sincronización); sin señal esa foto no se ve en los teléfonos que no la sacaron. Implementado en `SincronizacionFotos.ts` y **sin probar todavía en dispositivo**.
@@ -215,7 +224,8 @@ El motor está en `src/data/remote/sincronizacion/` y no depende de React Native
 - [x] `sincronizar()` real: sube la cola, baja cambios y maneja conflictos (ver "Sincronización")
 - [x] Prueba contra la base real: alta, descarga, edición sin conexión y conflicto del mismo campo
 - [x] Migración del modelo por animal, pendientes y adopciones escrita y probada contra Postgres (24 comprobaciones del motor + RLS)
-- [ ] Aplicar esa migración en Supabase y conectar `Caso.ts`, `CasoMapper` y `Database.ts` a los animales y pendientes
+- [x] Migración aplicada en Supabase (31/10/2026). Pendiente: quitar el acceso del rol `anon` con `revoke all on public.animales, public.pendientes, public.adopciones from anon;` (hoy contestan vacío sin login porque RLS filtra todo, pero conviene cerrarlo igual)
+- [ ] Conectar `Caso.ts`, `CasoMapper` y `Database.ts` a los animales y pendientes (son archivos del equipo: **coordinar antes de tocarlos**)
 - [ ] Criterio de urgencia por gravedad en la app (`calcularPrioridad()` ya existe, falta conectarla y validar los pesos con el refugio)
 - [ ] Pantalla de aprobación de voluntarios para coordinadores
 - [x] Subida de fotos a Storage con reintentos (código listo, falta probarlo en el emulador)
@@ -224,7 +234,7 @@ El motor está en `src/data/remote/sincronizacion/` y no depende de React Native
 
 ### Cómo reproducir el backend
 1. Crear un proyecto en [supabase.com](https://supabase.com) (región South America – São Paulo).
-2. En **SQL Editor**, pegar el **contenido** de `supabase/migrations/20261030000000_esquema_inicial.sql` y ejecutarlo.
+2. En **SQL Editor**, pegar el **contenido** de cada archivo de `supabase/migrations/` **en orden** (`20261030...esquema_inicial.sql`, después `20261031...animales_pendientes_adopciones.sql`) y ejecutarlos. Después correr el `revoke ... from anon` de arriba.
 3. En **Authentication → Sign In / Providers → Email**, desactivar *Confirm email* mientras se prueba.
 4. Aprobar un voluntario (la primera vez, a mano, desde el SQL Editor; después lo hace un coordinador desde la app):
    ```sql
