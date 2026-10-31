@@ -116,7 +116,7 @@ PERF-App/
 
 ## ☁️ Backend Remoto: Supabase
 
-> **Estado: en desarrollo (rama `feature/supabase-backend`).** El esquema del servidor está creado y verificado; el cliente de la app todavía **no** sincroniza datos reales (sigue usando `MockRemoteApiClient` y el login local). Lo que está hecho y lo que falta figura en la sección "Estado" de más abajo.
+> **Estado: en desarrollo (rama `feature/modelo-por-animal`).** El esquema del servidor está creado, el login usa Supabase Auth y la app **ya sincroniza datos reales**: sube la cola, baja los cambios de otros voluntarios y no pierde información cuando dos editan el mismo caso (ver "Sincronización" más abajo). Lo que está hecho y lo que falta figura en la sección "Estado".
 
 ### Qué es y por qué Supabase
 Supabase es una base **PostgreSQL en la nube** que ya incluye una API, autenticación (Supabase Auth) y almacenamiento de archivos (Storage). Es open source y el plan gratuito alcanza para un refugio. La app se instala en los teléfonos de los voluntarios; no hay un servidor propio que mantener.
@@ -153,9 +153,53 @@ Está en [`supabase/migrations/20261030000000_esquema_inicial.sql`](supabase/mig
 | **Historial** | `eventos_historial` es de solo-agregar (no se edita ni se borra), por lo que no puede haber conflictos. |
 | **Fotos** | Cada foto es una fila nueva con ruta única en un bucket privado (máx. 5 MB; jpg, png o webp). Se sube con su propia cola de reintentos. |
 | **Seguridad y acceso** | Todas las tablas tienen RLS. Un registro nuevo queda **pendiente** hasta que un **coordinador lo aprueba**; solo los aprobados ven casos, fotos y ubicaciones. Nadie puede aprobarse ni cambiarse el rol a sí mismo (lo bloquea un trigger). El usuario sin sesión no accede a nada. |
-| **Integración real** | *Pendiente:* cliente de Supabase en la app y prueba entre dos dispositivos reales. |
+| **Integración real** | Cliente de Supabase en la app y motor de sincronización funcionando (ver "Sincronización"). Probado contra la base real con un emulador y un segundo "voluntario" editando desde el panel de Supabase. *Pendiente:* prueba con dos dispositivos físicos y los recordatorios en dispositivo real. |
+
+### Sincronización
+El motor está en `src/data/remote/sincronizacion/` y no depende de React Native ni de Supabase (recibe el servidor, el almacenamiento local y el estado como dependencias), por lo que se prueba con Node contra un Postgres real.
+
+| Archivo | Rol |
+|---|---|
+| `MotorSincronizacion.ts` | Algoritmo: sube la cola, sube el historial, baja el estado del servidor |
+| `mapeo.ts` | Conversión modelo local ↔ filas del servidor y cálculo de qué campos cambiaron |
+| `ServidorSupabase.ts` | Implementación con `supabase-js` (RLS aplica en el servidor) |
+| `AlmacenSqlite.ts` | Lectura y escritura en la base SQLite de la app |
+| `SincronizadorSupabase.ts` | Une las piezas; evita dos sincronizaciones a la vez (botón manual + auto-sync) |
+
+`CasoRepositoryImpl.sincronizar()` delega en el motor. Antes marcaba todo como `SYNCED` y borraba la cola **sin enviar nada** al servidor.
+
+**Cómo evita perder datos**
+1. **Solo se envían los campos que cambiaron**, comparados contra la última versión conocida del servidor. Mandar el caso completo haría que un campo viejo que el voluntario no tocó pisara el cambio de otro.
+2. Cada cambio viaja con la hora en que se hizo; el servidor fusiona **campo por campo** con `aplicar_cambios_caso()`.
+3. Si dos voluntarios cambian el **mismo campo**, gana el más reciente y el valor descartado queda en la tabla `conflictos`; la app lo informa en el log (`[sync] N campo(s) con conflicto`).
+4. Una operación sale de la cola recién cuando el servidor la aceptó. Un corte de red a mitad no pierde nada y los reintentos no duplican (ids UUID).
+5. Con conexión recuperada, `useAutoSync` sincroniza solo.
+
+**Qué se probó**
+- **Motor contra Postgres real (PGlite, dos teléfonos simulados):** 24 comprobaciones, en `supabase/tests/motor-sincronizacion.test.mjs` (las instrucciones para correrlas están al principio del archivo). Campos distintos conservan los dos cambios; el mismo campo gana el más reciente y queda registrado; un campo viejo no pisa al ajeno; corte de red; reintentos sin duplicar; operación inválida que no bloquea al resto; historial que sube con su caso.
+- **En un emulador Android, contra Supabase real:**
+  - Un caso creado en la app llegó a `casos`, y su evento de llegada a `eventos_historial`.
+  - En un teléfono recién instalado, el caso apareció al sincronizar (descarga).
+  - **Sin conexión**, la app cambió la castración y los virales de un caso; mientras tanto otro voluntario cambió la personalidad en el servidor. Al volver la red quedaron **los dos cambios**.
+  - **Mismo campo desde los dos lados** (estado del caso): quedó el más reciente (`EN_ADOPCION`) y el valor perdido (`EN_CLINICA`) figura en `conflictos`.
+- La sesión se recuerda al reabrir la app (`AppNavigator` consulta `obtenerVoluntarioActual()`); sin conexión usa los datos de la sesión guardada, que solo existe si la cuenta ya estaba aprobada.
+
+**Errores que aparecieron al probar y se corrigieron**
+- Con señal, `RegistrarRescate` guarda el caso y su evento como `SYNCED` sin haberlos enviado, y `agregar()`/`actualizarEstado()` no encolan el evento: el historial nunca llegaba al servidor. El motor ahora sube los eventos de un caso junto con su creación y los eventos `PENDING`.
+- La app arrancaba siempre en el login, aunque hubiera sesión guardada, y sin conexión no se podía entrar.
+
+**Modelo por animal y prioridad** (migración `supabase/migrations/20261031000000_animales_pendientes_adopciones.sql`, *todavía no aplicada* en Supabase)
+- `animales`: castración, virales, peso, embarazo y desparasitaciones **por animal** (la planilla del refugio los maneja así: "Jade ya castrada, falta Kai").
+- `pendientes`: castrar, estudio, cirugía, especialista.
+- `adopciones`: una fila por adopción; si el animal vuelve queda el registro anterior. Los datos del adoptante solo los ven los coordinadores.
+- `src/domain/services/PrioridadCaso.ts`: `calcularPrioridad()` combina gravedad y pendientes sin resolver; la espera larga en adopción solo desempata. **Los pesos son una propuesta y hay que validarlos con el refugio.** Todavía no está conectada a la app.
 
 ### Límites conocidos
+- Las **fotos todavía no se sincronizan** (la ruta `foto_uri` es local).
+- Los centros veterinarios de la app son locales y no existen en el servidor: los turnos suben sin el centro.
+- Lo que se borra o se cancela en otro dispositivo no se elimina del teléfono al sincronizar; solo se agregan y actualizan filas.
+- Los casos de demostración (`data/mock/`) siguen apareciendo en cada teléfono nuevo.
+- La app guarda `esUrgente` (sí/no) y el servidor `gravedad` (tres niveles): hasta conectar la prioridad nueva, `esUrgente` se traduce a `urgente`/`estable`.
 - El orden de los cambios depende del **reloj de cada teléfono**: uno con la hora mal podría ganar un conflicto que no debería.
 - Los casos no se editan directo en la tabla: no hay política de `UPDATE`/`DELETE`, todo cambio pasa por `aplicar_cambios_caso()`.
 - El primer coordinador se crea a mano desde el SQL Editor (nadie puede aprobar al primero).
@@ -165,11 +209,15 @@ Está en [`supabase/migrations/20261030000000_esquema_inicial.sql`](supabase/mig
 - [x] Proyecto de Supabase creado (región São Paulo) y esquema aplicado
 - [x] Tablas, RLS, permisos y bucket de fotos verificados con consultas sin sesión
 - [x] Cliente instalado (`src/data/remote/supabaseClient.ts`, sesión guardada en AsyncStorage)
-- [x] Login y registro con Supabase Auth (`SupabaseAuthRepository`; reemplaza al login local con clave en texto plano). *Falta probarlo en el emulador/dispositivo.* Las cuentas nuevas quedan pendientes y no pueden entrar hasta que un coordinador las apruebe
+- [x] Login y registro con Supabase Auth (`SupabaseAuthRepository`; reemplaza al login local con clave en texto plano). Probado en el emulador. Las cuentas nuevas quedan pendientes y no pueden entrar hasta que un coordinador las apruebe
+- [x] Sesión recordada al reabrir la app (también sin conexión)
+- [x] `sincronizar()` real: sube la cola, baja cambios y maneja conflictos (ver "Sincronización")
+- [x] Prueba contra la base real: alta, descarga, edición sin conexión y conflicto del mismo campo
+- [x] Migración del modelo por animal, pendientes y adopciones escrita y probada contra Postgres (24 comprobaciones del motor + RLS)
+- [ ] Aplicar esa migración en Supabase y conectar `Caso.ts`, `CasoMapper` y `Database.ts` a los animales y pendientes
+- [ ] Criterio de urgencia por gravedad en la app (`calcularPrioridad()` ya existe, falta conectarla y validar los pesos con el refugio)
 - [ ] Pantalla de aprobación de voluntarios para coordinadores
-- [ ] `sincronizar()` real: subir la cola, bajar cambios, manejar conflictos
 - [ ] Subida de fotos a Storage con reintentos
-- [ ] Criterio de urgencia por gravedad en la app
 - [ ] Prueba del circuito completo en dos dispositivos reales (incluidos los recordatorios)
 - [ ] Eliminar `data/mock/` y el `MockRemoteApiClient`
 
