@@ -104,7 +104,19 @@ export class SupabaseAuthRepository implements AuthRepository {
       const perfil = await this.leerPerfil(data.session.user.id);
       return perfil?.aprobado ? aVoluntario(perfil) : null;
     } catch {
-      return null; // sin conexión: la sesión sigue guardada, pero no podemos leer el perfil
+      // Sin conexión no se puede leer el perfil. La sesión solo queda guardada si la cuenta ya estaba
+      // aprobada (iniciarSesion cierra la sesión si no), así que se entra con los datos de la sesión.
+      const u = data.session.user;
+      const m = u.user_metadata ?? {};
+      return {
+        id: u.id,
+        nombre: m.nombre ?? '',
+        brigada: m.brigada ?? '',
+        email: u.email ?? '',
+        telefono: m.telefono ?? '',
+        zona: m.zona ?? '',
+        recursos: [],
+      };
     }
   }
 

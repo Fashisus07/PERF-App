@@ -211,6 +211,7 @@ El motor está en `src/data/remote/sincronizacion/` y no depende de React Native
 - [x] Cliente instalado (`src/data/remote/supabaseClient.ts`, sesión guardada en AsyncStorage)
 - [x] Login y registro con Supabase Auth (`SupabaseAuthRepository`; reemplaza al login local con clave en texto plano). Probado en el emulador. Las cuentas nuevas quedan pendientes y no pueden entrar hasta que un coordinador las apruebe
 - [x] Sesión recordada al reabrir la app (también sin conexión)
+- [x] Candado al abrir la app: pide huella, o el PIN o patrón del celular (`expo-local-authentication`). No se guarda ninguna contraseña: se recuerda la sesión y el candado la protege. Viene activado y se apaga en **Ajustes → Seguridad**; si el celular no tiene ningún bloqueo configurado, entra directo. Probado que el pedido aparece en el emulador; el desbloqueo exitoso lo verifica una persona (la pantalla del sistema no se puede automatizar ni capturar)
 - [x] `sincronizar()` real: sube la cola, baja cambios y maneja conflictos (ver "Sincronización")
 - [x] Prueba contra la base real: alta, descarga, edición sin conexión y conflicto del mismo campo
 - [x] Migración del modelo por animal, pendientes y adopciones escrita y probada contra Postgres (24 comprobaciones del motor + RLS)

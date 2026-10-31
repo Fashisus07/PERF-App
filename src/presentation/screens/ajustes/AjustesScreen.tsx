@@ -3,6 +3,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Image, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UMBRAL_MAX, UMBRAL_MIN, Voluntario } from '../../../domain/models/Ajustes';
+import { candadoActivado, celularTieneBloqueo, guardarCandado } from '../../../data/local/CandadoApp';
 import { authRepository } from '../../../di/container';
 import { useAjustes, sincronizarAhora } from '../../hooks/useAjustes';
 import { useOnline } from '../../hooks/useOnline';
@@ -21,6 +22,13 @@ export function AjustesScreen({ navigation }: Props) {
   const [mensajeSync, setMensajeSync] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [voluntario, setVoluntario] = useState<Voluntario | null>(null);
+  const [candado, setCandado] = useState(true);
+  const [tieneBloqueo, setTieneBloqueo] = useState(true);
+
+  useEffect(() => {
+    candadoActivado().then(setCandado);
+    celularTieneBloqueo().then(setTieneBloqueo);
+  }, []);
 
   useEffect(() => {
     authRepository.obtenerVoluntarioActual().then(setVoluntario);
@@ -128,6 +136,18 @@ export function AjustesScreen({ navigation }: Props) {
                   </Text>
                 </View>
               </View>
+            </Tarjeta>
+
+            <Tarjeta icono="lock" fondo="#cfe4e2" color={colors.primary} titulo="Seguridad" sub="Protegé el acceso a los casos">
+              <FilaToggle
+                titulo="Pedir huella al abrir"
+                texto={tieneBloqueo ? 'Usa tu huella o el PIN del celular' : 'Configurá un bloqueo de pantalla en el celular para usarlo'}
+                valor={candado}
+                onChange={(v) => {
+                  setCandado(v);
+                  guardarCandado(v).catch(() => {});
+                }}
+              />
             </Tarjeta>
 
             <Tarjeta icono="sync" fondo="#cfe4e2" color={colors.primary} titulo="Almacenamiento y Sincronización" sub="Operatividad en zonas sin cobertura">

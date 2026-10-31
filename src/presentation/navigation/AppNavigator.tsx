@@ -2,13 +2,17 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { BottomTabBarProps, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { candadoRequerido } from '../../data/local/CandadoApp';
+import { authRepository } from '../../di/container';
 import { AjustesScreen } from '../screens/ajustes/AjustesScreen';
 import { ColaSincronizacionScreen } from '../screens/ajustes/ColaSincronizacionScreen';
 import { PerfilVoluntarioScreen } from '../screens/ajustes/PerfilVoluntarioScreen';
 import { ArchivoScreen } from '../screens/archivo/ArchivoScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
+import { PantallaCandado } from '../screens/auth/PantallaCandado';
 import { RecuperarClaveScreen } from '../screens/auth/RecuperarClaveScreen';
 import { RegistroScreen } from '../screens/auth/RegistroScreen';
 import { DetalleCasoScreen } from '../screens/detalle/DetalleCasoScreen';
@@ -69,9 +73,34 @@ function MainTabs() {
 }
 
 export function AppNavigator() {
+  // Con la sesión guardada se entra directo (también sin conexión); si no hay, se pide el login.
+  const [rutaInicial, setRutaInicial] = useState<'Login' | 'Main' | null>(null);
+  const [bloqueado, setBloqueado] = useState(false);
+  useEffect(() => {
+    (async () => {
+      const voluntario = await authRepository.obtenerVoluntarioActual();
+      if (!voluntario) return setRutaInicial('Login');
+      setBloqueado(await candadoRequerido()); // huella o PIN del celular antes de mostrar los casos
+      setRutaInicial('Main');
+    })().catch(() => setRutaInicial('Login'));
+  }, []);
+  if (!rutaInicial) return null;
+  if (bloqueado) {
+    return (
+      <PantallaCandado
+        onDesbloqueado={() => setBloqueado(false)}
+        onOtraCuenta={async () => {
+          await authRepository.cerrarSesion();
+          setRutaInicial('Login');
+          setBloqueado(false);
+        }}
+      />
+    );
+  }
+
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
+      <Stack.Navigator initialRouteName={rutaInicial} screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Login">
           {({ navigation }) => (
             <LoginScreen
