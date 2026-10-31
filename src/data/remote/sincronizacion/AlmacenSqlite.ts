@@ -103,6 +103,15 @@ export const almacenSqlite: AlmacenLocal = {
     return rows.map(eventoFromRow);
   },
 
+  async leerEventosDeCaso(casoId: string) {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<EventoHistorialRow>(
+      `SELECT * FROM eventos_historial WHERE caso_id = ? ORDER BY fecha ASC;`,
+      [casoId]
+    );
+    return rows.map(eventoFromRow);
+  },
+
   async marcarEventoSincronizado(id: string) {
     const db = await getDatabase();
     await db.runAsync(`UPDATE eventos_historial SET sync_status = 'SYNCED' WHERE id = ?;`, [id]);

@@ -66,6 +66,8 @@ export interface AlmacenLocal {
   guardarTurno(turno: Turno): Promise<void>;
   /** Eventos del historial creados en este teléfono que todavía no se subieron (no siempre pasan por la cola). */
   leerEventosPendientes(): Promise<EventoHistorial[]>;
+  /** Todos los eventos locales de un caso, sin mirar su marca: con señal la app los guarda como SYNCED sin enviarlos. */
+  leerEventosDeCaso(casoId: string): Promise<EventoHistorial[]>;
   marcarEventoSincronizado(id: string): Promise<void>;
 }
 
@@ -184,6 +186,13 @@ async function subirOperacion(op: OperacionCola, ctx: ContextoSubida): Promise<v
     case 'CASO:CREATE': {
       const caso = payload as Caso;
       await servidor.insertarCaso(filaCasoParaServidor(caso)); // 'existia' = reintento ya aplicado
+      // El historial de un caso recién creado (su llegada) no pasa por la cola y con señal figura como SYNCED:
+      // se sube junto con el caso. Reenviar uno que ya está es inofensivo (mismo UUID).
+      for (const evento of await almacen.leerEventosDeCaso(caso.id)) {
+        await servidor.insertarEvento(filaEventoParaServidor(evento));
+        await almacen.marcarEventoSincronizado(evento.id);
+        resultado.eventos++;
+      }
       bases[caso.id] = camposComparables(caso);
       return;
     }
