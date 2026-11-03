@@ -127,7 +127,7 @@ export function ColaSincronizacionScreen({ navigation }: Props) {
               <Text style={styles.conexionDesc}>
                 {online
                   ? 'La app tiene acceso al servidor y sincroniza en segundo plano.'
-                  : 'Las operaciones se registran localmente en SQLite y se enviarán al recuperar la red.'}
+                  : 'Los cambios se guardan en tu celular y se enviarán cuando vuelva la conexión.'}
               </Text>
             </View>
           </View>
@@ -159,7 +159,7 @@ export function ColaSincronizacionScreen({ navigation }: Props) {
             </View>
           ) : (
             <View style={styles.listaSection}>
-              <Text style={styles.seccionTitulo}>Operaciones pendientes en SQLite</Text>
+              <Text style={styles.seccionTitulo}>Cambios pendientes de enviar</Text>
               {operaciones.map((op) => (
                 <View key={op.id} style={styles.opCard}>
                   <View style={styles.opHeader}>

@@ -145,8 +145,8 @@ export function PasoConfirmar({ borrador: b, sinConexion, guardando, onVolver, o
             />
             <Text style={styles.offlineText}>
               {sinConexion
-                ? 'Modo sin conexión activo: se guardará de forma local en SQLite.'
-                : 'Conectado a la red: se guardará en SQLite y encolará sincronización.'}
+                ? 'Sin conexión: la ficha se guarda en tu celular y se sube cuando vuelva internet.'
+                : 'Con conexión: la ficha se guarda y se comparte con el resto del equipo.'}
             </Text>
           </View>
         </View>
@@ -158,7 +158,7 @@ export function PasoConfirmar({ borrador: b, sinConexion, guardando, onVolver, o
         ) : (
           <>
             <MaterialIcons name="save" size={20} color={colors.onPrimary} />
-            <Text style={styles.btnGuardarText}>Guardar Ficha en SQLite</Text>
+            <Text style={styles.btnGuardarText}>Guardar ficha</Text>
           </>
         )}
       </Pressable>
