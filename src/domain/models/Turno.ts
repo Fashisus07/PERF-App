@@ -72,6 +72,9 @@ export const OPCIONES_RECORDATORIO = [
 export const HORARIOS_CLINICA = ['09:00', '10:30', '11:15', '12:15', '16:00', '18:30'];
 export const HORARIOS_FORMULARIO = ['10:30', '11:15', '16:00', '18:30'];
 
+/** Lo que dura cada turno: dos turnos a menos de esto de distancia se superponen (45 min = separación mínima entre horarios). */
+export const DURACION_TURNO_MIN = 45;
+
 // ─── Helpers de fecha ───
 
 const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];

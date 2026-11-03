@@ -1,7 +1,9 @@
 import {
   Clinica,
   conHora,
+  DURACION_TURNO_MIN,
   ETIQUETA_MOTIVO,
+  formatoTurnoCorto,
   HORARIOS_CLINICA,
   SolicitudTurno,
   sumarDias,
@@ -48,6 +50,18 @@ export class AgendarTurno {
     const ts = typeof s.fechaHora === 'number' ? s.fechaHora : ((s as any).fecha ? (s as any).fecha.getTime() : 0);
     if (ts <= ahora.getTime()) {
       throw new Error('El horario elegido ya pasó');
+    }
+
+    // La agenda no se puede superponer: ni con otro turno a la misma hora, ni en otra clínica.
+    const agendados = await this.repo.obtenerTurnos();
+    const choque = agendados.find(
+      (t) => !t.cumplido && Math.abs(t.fechaHora - ts) < DURACION_TURNO_MIN * 60_000,
+    );
+    if (choque) {
+      throw new Error(
+        `Ya tenés un turno el ${formatoTurnoCorto(choque.fechaHora)} (${choque.motivo}). ` +
+          'Elegí otro horario para que no se superpongan.',
+      );
     }
 
     const clinicaId = s.centroVeterinarioId || (s as any).clinicaId;
