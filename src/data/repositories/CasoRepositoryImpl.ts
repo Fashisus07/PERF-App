@@ -16,9 +16,19 @@ import { sincronizarConSupabase } from '../remote/sincronizacion/SincronizadorSu
 
 export class CasoRepositoryImpl implements CasoRepository {
   private seeded = false;
+  private siembra: Promise<void> | null = null;
 
-  private async asegurarSemilla(): Promise<void> {
-    if (this.seeded) return;
+  // Varias pantallas la llaman a la vez: compartimos una sola siembra para no insertar dos veces.
+  private asegurarSemilla(): Promise<void> {
+    if (this.seeded) return Promise.resolve();
+    this.siembra ??= this.sembrar().catch((e) => {
+      this.siembra = null; // permitir reintentar si falló
+      throw e;
+    });
+    return this.siembra;
+  }
+
+  private async sembrar(): Promise<void> {
     const db = await getDatabase();
     const countResult = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM casos;'
