@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authRepository } from '../../../di/container';
-import { Voluntario } from '../../../domain/models/Ajustes';
+import { ETIQUETA_ROL, Voluntario, zonasATexto, zonasDesdeTexto } from '../../../domain/models/Ajustes';
+import { SelectorZonas } from '../../components/SelectorZonas';
 import { StackHeader } from '../../components/StackHeader';
 import { colors, fonts } from '../../theme';
 
@@ -39,7 +40,7 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
   // Form states
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
-  const [zona, setZona] = useState('');
+  const [zonas, setZonas] = useState<string[]>([]);
   const [brigada, setBrigada] = useState('');
   const [recursos, setRecursos] = useState<string[]>([]);
 
@@ -51,7 +52,7 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
           setVoluntario(v);
           setNombre(v.nombre);
           setTelefono(v.telefono ?? '');
-          setZona(v.zona ?? '');
+          setZonas(zonasDesdeTexto(v.zona));
           setBrigada(v.brigada);
           setRecursos(v.recursos ?? []);
         }
@@ -71,6 +72,10 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
       setErrorMsg('El nombre del voluntario no puede estar vacío');
       return;
     }
+    if (zonas.length === 0) {
+      setErrorMsg('Elegí al menos una zona donde puedas actuar.');
+      return;
+    }
     setGuardando(true);
     setErrorMsg(null);
     try {
@@ -79,8 +84,8 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
         id: voluntario?.id || 'voluntario-1',
         nombre: nombre.trim(),
         telefono: telefono.trim(),
-        zona: zona.trim(),
-        brigada: brigada.trim() || `Brigada ${zona.trim() || 'Central'}`,
+        zona: zonasATexto(zonas),
+        brigada: brigada.trim() || `Brigada ${zonas[0] || 'Central'}`,
         recursos,
         email: voluntario?.email,
       };
@@ -134,7 +139,7 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
             <Text style={styles.avatarEmail}>{voluntario?.email || 'voluntario@perfelino.org'}</Text>
             <View style={styles.rolBadge}>
               <MaterialIcons name="verified" size={14} color={colors.primary} />
-              <Text style={styles.rolText}>Voluntario Activo · PERF</Text>
+              <Text style={styles.rolText}>{ETIQUETA_ROL[voluntario?.rol ?? 'voluntario']} · PERF</Text>
             </View>
           </View>
         </View>
@@ -180,14 +185,8 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Zona habitual de rescate</Text>
-            <TextInput
-              style={styles.input}
-              value={zona}
-              onChangeText={setZona}
-              placeholder="ej: Caballito, Almagro, Flores..."
-              placeholderTextColor={colors.placeholderField}
-            />
+            <Text style={styles.label}>Zonas que cubrís</Text>
+            <SelectorZonas value={zonas} onChange={setZonas} />
           </View>
 
           <View style={styles.field}>

@@ -24,4 +24,7 @@ export interface AuthRepository {
   cerrarSesion(): Promise<void>;
   actualizarVoluntario(voluntario: Voluntario): Promise<Voluntario>;
   recuperarClave(email: string): Promise<boolean>;
+  /** Voluntarios aprobados de la red (para las vistas de perfiles). */
+  listarVoluntarios(): Promise<Voluntario[]>;
+  obtenerVoluntario(id: string): Promise<Voluntario | null>;
 }

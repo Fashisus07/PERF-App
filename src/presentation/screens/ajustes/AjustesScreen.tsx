@@ -1,16 +1,14 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { ReactNode, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { UMBRAL_MAX, UMBRAL_MIN, Voluntario } from '../../../domain/models/Ajustes';
+import { UMBRAL_MAX, UMBRAL_MIN } from '../../../domain/models/Ajustes';
 import { candadoActivado, celularTieneBloqueo, guardarCandado } from '../../../data/local/CandadoApp';
-import { authRepository } from '../../../di/container';
 import { useAjustes, sincronizarAhora } from '../../hooks/useAjustes';
 import { useOnline } from '../../hooks/useOnline';
 import { colors, fonts } from '../../theme';
 import { AvatarPerfil } from '../rescate/BarraRescate';
 
-const VERSION: string = require('../../../../app.json').expo.version;
 
 type Props = { navigation?: any };
 
@@ -21,7 +19,6 @@ export function AjustesScreen({ navigation }: Props) {
   const [sincronizando, setSincronizando] = useState(false);
   const [mensajeSync, setMensajeSync] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [voluntario, setVoluntario] = useState<Voluntario | null>(null);
   const [candado, setCandado] = useState(true);
   const [tieneBloqueo, setTieneBloqueo] = useState(true);
 
@@ -31,9 +28,7 @@ export function AjustesScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    authRepository.obtenerVoluntarioActual().then(setVoluntario);
     const unsubscribe = navigation?.addListener?.('focus', () => {
-      authRepository.obtenerVoluntarioActual().then(setVoluntario);
       actualizarResumen();
     });
     return unsubscribe;
@@ -70,10 +65,6 @@ export function AjustesScreen({ navigation }: Props) {
     setSincronizando(false);
   };
 
-  const cerrarSesion = async () => {
-    await authRepository.cerrarSesion();
-    navigation?.reset?.({ index: 0, routes: [{ name: 'Login' }] });
-  };
   const porcentaje = resumen ? Math.min(100, (resumen.megabytes / resumen.capacidadMegabytes) * 100) : 0;
 
   return (
@@ -215,39 +206,6 @@ export function AjustesScreen({ navigation }: Props) {
                 <Text style={styles.infoText}>Las notificaciones se envían al dispositivo si tenés la app activa o en segundo plano.</Text>
               </View>
             </Tarjeta>
-
-            <View style={styles.acerca}>
-              <View style={styles.acercaTop}>
-                <View style={styles.logo}>
-                  <Image source={require('../../../../assets/images/logo.png')} style={styles.logoImg} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.acercaNombre}>PERF Móvil</Text>
-                  <Text style={styles.acercaVersion}>Versión {VERSION}</Text>
-                  <Text style={styles.acercaSub}>Para voluntarios de rescate animal</Text>
-                </View>
-              </View>
-              <View style={styles.linea} />
-              <Pressable
-                style={styles.sesion}
-                onPress={() => navigation?.navigate?.('PerfilVoluntario')}
-                accessibilityLabel="Editar perfil del voluntario"
-              >
-                <MaterialIcons name="badge" size={22} color={colors.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sesionLabel}>Sesión activa como</Text>
-                  <Text style={styles.sesionNombre}>
-                    {voluntario?.nombre || 'Mariana Gomez'} · {voluntario?.brigada || 'Brigada Caballito'}
-                  </Text>
-                  <Text style={styles.sesionEditar}>Toca para editar tus datos o equipamiento</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={22} color={colors.textSubtle} />
-              </Pressable>
-              <Pressable style={styles.cerrar} onPress={cerrarSesion}>
-                <MaterialIcons name="logout" size={18} color={colors.urgente} />
-                <Text style={styles.cerrarText}>Cerrar sesión o cambiar voluntario</Text>
-              </Pressable>
-            </View>
           </ScrollView>
 
           <View style={[styles.pie, { paddingBottom: 14 + bottom }]}>

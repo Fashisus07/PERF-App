@@ -9,6 +9,8 @@ import { candadoRequerido } from '../../data/local/CandadoApp';
 import { authRepository } from '../../di/container';
 import { AjustesScreen } from '../screens/ajustes/AjustesScreen';
 import { ColaSincronizacionScreen } from '../screens/ajustes/ColaSincronizacionScreen';
+import { PerfilDetalleScreen } from '../screens/ajustes/PerfilDetalleScreen';
+import { PerfilesScreen } from '../screens/ajustes/PerfilesScreen';
 import { PerfilVoluntarioScreen } from '../screens/ajustes/PerfilVoluntarioScreen';
 import { ArchivoScreen } from '../screens/archivo/ArchivoScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
@@ -122,6 +124,8 @@ export function AppNavigator() {
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Ajustes" component={AjustesScreen} />
         <Stack.Screen name="PerfilVoluntario" component={PerfilVoluntarioScreen} />
+        <Stack.Screen name="Perfiles" component={PerfilesScreen} />
+        <Stack.Screen name="PerfilDetalle" component={PerfilDetalleScreen} />
         <Stack.Screen name="ColaSincronizacion" component={ColaSincronizacionScreen} />
         <Stack.Screen name="DetalleCaso" component={DetalleCasoScreen} />
         <Stack.Screen name="EditarSanidad" component={EditarSanidadScreen} />

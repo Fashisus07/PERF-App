@@ -1,4 +1,4 @@
-import { Voluntario } from '../../domain/models/Ajustes';
+import { RolUsuario, Voluntario } from '../../domain/models/Ajustes';
 import {
   AuthRepository,
   CredencialesRegistro,
@@ -14,11 +14,19 @@ interface PerfilRow {
   brigada: string;
   zona: string | null;
   recursos: string[] | null;
+  rol: string | null;
   aprobado: boolean;
 }
 
+const COLUMNAS_PERFIL = 'id, nombre, email, telefono, brigada, zona, recursos, rol, aprobado';
+
 const MENSAJE_PENDIENTE =
   'Tu cuenta todavía no fue aprobada. Un coordinador de PERF tiene que habilitarla para que puedas ver los casos.';
+
+/** En la base todavía puede figurar el rol viejo 'coordinador': se muestra como administrador. */
+function aRol(rol: string | null): RolUsuario {
+  return rol === 'administrador' || rol === 'coordinador' ? 'administrador' : 'voluntario';
+}
 
 function aVoluntario(p: PerfilRow): Voluntario {
   return {
@@ -29,6 +37,7 @@ function aVoluntario(p: PerfilRow): Voluntario {
     telefono: p.telefono ?? '',
     zona: p.zona ?? '',
     recursos: p.recursos ?? [],
+    rol: aRol(p.rol),
   };
 }
 
@@ -47,7 +56,7 @@ export class SupabaseAuthRepository implements AuthRepository {
   private async leerPerfil(userId: string): Promise<PerfilRow | null> {
     const { data, error } = await supabase
       .from('perfiles')
-      .select('id, nombre, email, telefono, brigada, zona, recursos, aprobado')
+      .select(COLUMNAS_PERFIL)
       .eq('id', userId)
       .maybeSingle();
     if (error) throw traducirError(error);
@@ -116,6 +125,7 @@ export class SupabaseAuthRepository implements AuthRepository {
         telefono: m.telefono ?? '',
         zona: m.zona ?? '',
         recursos: [],
+        rol: 'voluntario',
       };
     }
   }
@@ -138,6 +148,23 @@ export class SupabaseAuthRepository implements AuthRepository {
       .eq('id', voluntario.id);
     if (error) throw traducirError(error);
     return voluntario;
+  }
+
+  async listarVoluntarios(): Promise<Voluntario[]> {
+    const { data, error } = await supabase
+      .from('perfiles')
+      .select(COLUMNAS_PERFIL)
+      .eq('aprobado', true)
+      .order('nombre', { ascending: true });
+    if (error) throw traducirError(error);
+    const lista = ((data ?? []) as PerfilRow[]).map(aVoluntario);
+    // El administrador primero, después el resto por orden alfabético.
+    return lista.sort((a, b) => Number(b.rol === 'administrador') - Number(a.rol === 'administrador'));
+  }
+
+  async obtenerVoluntario(id: string): Promise<Voluntario | null> {
+    const perfil = await this.leerPerfil(id);
+    return perfil ? aVoluntario(perfil) : null;
   }
 
   async recuperarClave(email: string): Promise<boolean> {
