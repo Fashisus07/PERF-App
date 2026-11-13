@@ -11,6 +11,7 @@ import { colors, fonts } from '../../theme';
 import { CasosCargando } from './CasosCargando';
 import { CasosError } from './CasosError';
 import { CasosVacio } from './CasosVacio';
+import { FiltrosCasosModal } from './FiltrosCasosModal';
 
 const TABS: { key: FiltroUrgencia; label: string; dot?: string }[] = [
   { key: 'todos', label: 'Todos' },
@@ -24,7 +25,12 @@ function horaLocal(d: Date) {
 }
 
 export function CasosScreen({ navigation }: { navigation?: any }) {
-  const { visibles, casos, conteo, cargando, error, recargar, busqueda, setBusqueda, filtro, setFiltro } = useCasos();
+  const {
+    visibles, casos, conteo, cargando, error, recargar, busqueda, setBusqueda, filtro, setFiltro,
+    soloMios, setSoloMios, cantidadMios, sesionIniciada,
+    orden, setOrden, estadoFiltro, setEstadoFiltro, estadosDisponibles, limpiarFiltros, filtrosActivos,
+  } = useCasos();
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
   const online = useOnline();
   const [ultimaSync, setUltimaSync] = useState<Date | null>(null);
   useEffect(() => {
@@ -63,19 +69,50 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
     );
   }
 
+  // Arriba: Todos | Mis casos. Abajo: filtros de urgencia (tocar de nuevo para quitarlos).
+  const vista = sesionIniciada ? (
+    <View style={styles.vista} accessibilityRole="tablist">
+      <Pressable
+        style={[styles.vistaOpcion, !soloMios && styles.vistaOpcionActiva]}
+        onPress={() => setSoloMios(false)}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: !soloMios }}
+      >
+        <MaterialIcons name="pets" size={16} color={!soloMios ? colors.onPrimary : colors.textMuted} />
+        <Text style={[styles.vistaTexto, !soloMios && styles.vistaTextoActivo]}>Todos ({casos.length})</Text>
+      </Pressable>
+      <Pressable
+        style={[styles.vistaOpcion, soloMios && styles.vistaOpcionActiva]}
+        onPress={() => setSoloMios(true)}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: soloMios }}
+      >
+        <MaterialIcons name="person" size={16} color={soloMios ? colors.onPrimary : colors.textMuted} />
+        <Text style={[styles.vistaTexto, soloMios && styles.vistaTextoActivo]}>Mis casos ({cantidadMios})</Text>
+      </Pressable>
+    </View>
+  ) : null;
+
   const tabs = (
-    <View style={styles.tabs}>
-      {TABS.map((t) => {
-        const activo = filtro === t.key;
-        return (
-          <Pressable key={t.key} onPress={() => setFiltro(t.key)} style={[styles.tab, activo && styles.tabActive]}>
-            {t.dot && !activo && <View style={[styles.tabDot, { backgroundColor: t.dot }]} />}
-            <Text style={[styles.tabText, activo && styles.tabTextActive]}>
-              {t.label} ({conteo[t.key]})
-            </Text>
-          </Pressable>
-        );
-      })}
+    <View>
+      {vista}
+      <View style={styles.tabs}>
+        {TABS.filter((t) => t.key !== 'todos').map((t) => {
+          const activo = filtro === t.key;
+          return (
+            <Pressable
+              key={t.key}
+              onPress={() => setFiltro(activo ? 'todos' : t.key)}
+              style={[styles.tab, activo && styles.tabActive]}
+            >
+              {t.dot && !activo && <View style={[styles.tabDot, { backgroundColor: t.dot }]} />}
+              <Text style={[styles.tabText, activo && styles.tabTextActive]}>
+                {t.label} ({conteo[t.key]})
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 
@@ -88,9 +125,15 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
           <Text style={styles.summarySep}>•</Text>
           <Text style={styles.summaryActive}>{conteo.todos} activos</Text>
         </View>
-        <Pressable style={styles.filterBtn}>
-          <MaterialIcons name="tune" size={18} color={colors.textMuted} />
-          <Text style={styles.filterText}>Filtrar</Text>
+        <Pressable
+          style={[styles.filterBtn, filtrosActivos > 0 && styles.filterBtnActivo]}
+          onPress={() => setFiltrosAbiertos(true)}
+          accessibilityLabel="Filtrar y ordenar casos"
+        >
+          <MaterialIcons name="tune" size={18} color={filtrosActivos > 0 ? colors.onPrimary : colors.textMuted} />
+          <Text style={[styles.filterText, filtrosActivos > 0 && { color: colors.onPrimary }]}>
+            Filtrar{filtrosActivos > 0 ? ` (${filtrosActivos})` : ''}
+          </Text>
         </Pressable>
       </View>
       <View style={styles.search}>
@@ -179,6 +222,16 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
         }
       />
       <NuevoRescateFab onPress={nuevoRescate} />
+      <FiltrosCasosModal
+        visible={filtrosAbiertos}
+        onClose={() => setFiltrosAbiertos(false)}
+        orden={orden}
+        onOrden={setOrden}
+        estado={estadoFiltro}
+        onEstado={setEstadoFiltro}
+        estadosDisponibles={estadosDisponibles}
+        onLimpiar={limpiarFiltros}
+      />
     </View>
   );
 }
@@ -193,12 +246,18 @@ const styles = StyleSheet.create({
   summarySep: { fontFamily: fonts.regular, fontSize: 15, color: colors.urgenteSoft },
   summaryActive: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
   filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceChip, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999 },
+  filterBtnActivo: { backgroundColor: colors.primary },
   filterText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
   search: { height: 56, backgroundColor: colors.surface, borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingLeft: 14, gap: 8 },
   searchInput: { flex: 1, height: 56, fontFamily: fonts.regular, fontSize: 16, color: colors.text, paddingRight: 40 },
-  tabs: { flexDirection: 'row', gap: 8, paddingVertical: 8, marginBottom: 4 },
+  vista: { flexDirection: 'row', backgroundColor: colors.surfaceChip, borderRadius: 9999, padding: 4, marginTop: 4 },
+  vistaOpcion: { flex: 1, height: 40, borderRadius: 9999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  vistaOpcionActiva: { backgroundColor: colors.primary },
+  vistaTexto: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
+  vistaTextoActivo: { color: colors.onPrimary },
+  tabs: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, paddingVertical: 8, marginBottom: 4 },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999, backgroundColor: colors.surfaceChip },
-  tabActive: { backgroundColor: colors.primary, paddingHorizontal: 16 },
+  tabActive: { backgroundColor: colors.primary },
   tabDot: { width: 8, height: 8, borderRadius: 9999 },
   tabText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
   tabTextActive: { color: colors.onPrimary },
