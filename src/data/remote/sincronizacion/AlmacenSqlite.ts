@@ -4,10 +4,12 @@ import { getDatabase } from '../../local/Database';
 import {
   CasoRow,
   EventoHistorialRow,
+  TurnoRow,
   casoFromRow,
   casoToParams,
   eventoFromRow,
   eventoToParams,
+  turnoFromRow,
   turnoToParams,
 } from '../../mappers/CasoMapper';
 import { AlmacenLocal, OperacionCola } from './MotorSincronizacion';
@@ -17,7 +19,7 @@ export const almacenSqlite: AlmacenLocal = {
   async leerCola() {
     const db = await getDatabase();
     return db.getAllAsync<OperacionCola>(
-      `SELECT id, entidad, operacion, payload, reintentos, created_at AS createdAt
+      `SELECT id, idempotency_key AS idempotencyKey, entidad, operacion, payload, reintentos, created_at AS createdAt
          FROM operaciones_pendientes ORDER BY id ASC;`
     );
   },
@@ -38,24 +40,30 @@ export const almacenSqlite: AlmacenLocal = {
     return row ? casoFromRow(row) : undefined;
   },
 
-  // Lo que baja del servidor reemplaza la fila local, pero la foto es local y se conserva.
+  // Lo que baja del servidor reemplaza la fila local, pero la foto local se conserva.
   async guardarCaso(caso: Caso) {
     const db = await getDatabase();
     await db.runAsync(
       `INSERT INTO casos (
          id, nombre_provisorio, cantidad_animales, especie, edad_estimada,
          historia_origen, personalidad, estado_visible, barrio, latitud,
-         longitud, foto_uri, fecha_rescate, quien_sigue_caso, transito_nombre,
+         longitud, foto_uri, foto_local_uri, foto_remote_path, foto_sync_status,
+         fecha_rescate, quien_sigue_caso, transito_nombre,
          transito_telefono, transito_correo, castrado, virales_vif_vilef,
          fecha_primera_desparasitacion, fecha_segunda_desparasitacion,
-         estado_caso, es_urgente, sync_status, updated_at
+         estado_caso, gravedad_clinica, vulnerabilidad, nivel_prioridad,
+         motivo_urgencia, puntaje_prioridad, creado_por_user_id, modificado_por_user_id,
+         es_urgente, sync_status, updated_at
        ) VALUES (
          $id, $nombre_provisorio, $cantidad_animales, $especie, $edad_estimada,
          $historia_origen, $personalidad, $estado_visible, $barrio, $latitud,
-         $longitud, $foto_uri, $fecha_rescate, $quien_sigue_caso, $transito_nombre,
+         $longitud, $foto_uri, $foto_local_uri, $foto_remote_path, $foto_sync_status,
+         $fecha_rescate, $quien_sigue_caso, $transito_nombre,
          $transito_telefono, $transito_correo, $castrado, $virales_vif_vilef,
          $fecha_primera_desparasitacion, $fecha_segunda_desparasitacion,
-         $estado_caso, $es_urgente, $sync_status, $updated_at
+         $estado_caso, $gravedad_clinica, $vulnerabilidad, $nivel_prioridad,
+         $motivo_urgencia, $puntaje_prioridad, $creado_por_user_id, $modificado_por_user_id,
+         $es_urgente, $sync_status, $updated_at
        )
        ON CONFLICT(id) DO UPDATE SET
          nombre_provisorio = excluded.nombre_provisorio,
@@ -68,6 +76,7 @@ export const almacenSqlite: AlmacenLocal = {
          barrio = excluded.barrio,
          latitud = excluded.latitud,
          longitud = excluded.longitud,
+         foto_remote_path = coalesce(excluded.foto_remote_path, casos.foto_remote_path),
          fecha_rescate = excluded.fecha_rescate,
          quien_sigue_caso = excluded.quien_sigue_caso,
          transito_nombre = excluded.transito_nombre,
@@ -78,6 +87,12 @@ export const almacenSqlite: AlmacenLocal = {
          fecha_primera_desparasitacion = excluded.fecha_primera_desparasitacion,
          fecha_segunda_desparasitacion = excluded.fecha_segunda_desparasitacion,
          estado_caso = excluded.estado_caso,
+         gravedad_clinica = excluded.gravedad_clinica,
+         vulnerabilidad = excluded.vulnerabilidad,
+         nivel_prioridad = excluded.nivel_prioridad,
+         motivo_urgencia = excluded.motivo_urgencia,
+         puntaje_prioridad = excluded.puntaje_prioridad,
+         modificado_por_user_id = excluded.modificado_por_user_id,
          es_urgente = excluded.es_urgente,
          sync_status = 'SYNCED',
          updated_at = excluded.updated_at;`,
@@ -120,14 +135,21 @@ export const almacenSqlite: AlmacenLocal = {
   async guardarTurno(turno: Turno) {
     const db = await getDatabase();
     await db.runAsync(
-      `INSERT INTO turnos (id, caso_id, centro_veterinario_id, fecha_hora, motivo, recordatorio_minutos, cumplido, sync_status, updated_at)
-       VALUES ($id, $caso_id, $centro_veterinario_id, $fecha_hora, $motivo, $recordatorio_minutos, $cumplido, $sync_status, $updated_at)
+      `INSERT INTO turnos (
+         id, caso_id, centro_veterinario_id, fecha_hora, motivo,
+         recordatorio_minutos, cumplido, notification_id, sync_status, updated_at
+       ) VALUES (
+         $id, $caso_id, $centro_veterinario_id, $fecha_hora, $motivo,
+         $recordatorio_minutos, $cumplido, $notification_id, $sync_status, $updated_at
+       )
        ON CONFLICT(id) DO UPDATE SET
+         caso_id = excluded.caso_id,
+         centro_veterinario_id = excluded.centro_veterinario_id,
          fecha_hora = excluded.fecha_hora,
          motivo = excluded.motivo,
          recordatorio_minutos = excluded.recordatorio_minutos,
          cumplido = excluded.cumplido,
-         centro_veterinario_id = COALESCE(excluded.centro_veterinario_id, turnos.centro_veterinario_id),
+         notification_id = coalesce(excluded.notification_id, turnos.notification_id),
          sync_status = 'SYNCED',
          updated_at = excluded.updated_at;`,
       turnoToParams(turno)

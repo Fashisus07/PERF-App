@@ -17,14 +17,17 @@ import {
   ETIQUETA_CASTRACION,
   ETIQUETA_ESTADO,
   ETIQUETA_EVENTO,
+  ETIQUETA_GRAVEDAD,
   ETIQUETA_VIRALES,
+  ETIQUETA_VULNERABILIDAD,
   EventoHistorial,
+  nivelAUrgencia,
 } from '../../../domain/models/Caso';
 import { StackHeader } from '../../components/StackHeader';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { useCaso } from '../../hooks/useCaso';
 import { colors, fonts } from '../../theme';
-import { ESTADOS_CASO } from '../estado/estadosCaso';
+import { ESTADOS_CASO, infoEstado } from '../estado/estadosCaso';
 
 const FOTO_DEFAULT = require('../../../../assets/images/casos/misho.jpg');
 const COLOR_PUNTO = [colors.primary, colors.atencion, '#bdc9c6'];
@@ -81,7 +84,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
     );
   }
 
-  const urgencia = calcularUrgencia(caso, 10);
+  const urgencia = caso.nivelPrioridad ? nivelAUrgencia(caso.nivelPrioridad) : calcularUrgencia(caso, 15);
   const dias = diasEnEspera(caso);
   const estadoActual = caso.estadoCaso ?? 'EN_TRANSITO';
   const esArchivado = estadoActual === 'ADOPTADO' || estadoActual === 'FALLECIDO';
@@ -113,7 +116,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
         <View style={styles.hero}>
           <Image source={fotoSource} style={styles.heroImg} resizeMode="cover" />
           <View style={styles.badgesRow}>
-            <UrgenciaBadge urgencia={urgencia} grande />
+            <UrgenciaBadge urgencia={urgencia} motivo={caso.motivoUrgencia} grande />
             <View style={styles.badgeEspera}>
               <Text style={styles.badgeEsperaText}>
                 {dias} {dias === 1 ? 'día' : 'días'} en espera
@@ -186,21 +189,95 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
         <View style={styles.estadoSection}>
           <View style={styles.estadoHeader}>
             <Text style={styles.seccionTitulo}>Estado Operativo</Text>
-            <Pressable onPress={() => navigation?.navigate?.('CambioEstado', { casoId: caso.id })}>
-              <Text style={styles.link}>Cambiar estado</Text>
-            </Pressable>
+            {!esArchivado && (
+              <Pressable
+                onPress={() => navigation?.navigate?.('CambioEstado', { casoId: caso.id })}
+                hitSlop={8}
+                accessibilityLabel="Cambiar estado del caso"
+              >
+                <Text style={styles.link}>Cambiar estado</Text>
+              </Pressable>
+            )}
           </View>
-          <View style={styles.chips}>
-            {ESTADOS_CASO.map((e) => {
-              const activo = e.key === estadoActual;
-              const color = activo ? colors.onPrimary : colors.textMuted;
-              return (
-                <View key={e.key} style={[styles.chip, activo && styles.chipActivo]}>
-                  <Text style={[styles.chipText, { color }]}>{ETIQUETA_ESTADO[e.key]}</Text>
-                  <MaterialIcons name={e.iconoChip} size={16} color={color} />
-                </View>
-              );
-            })}
+          <View style={styles.estadoActualBox}>
+            <View style={[styles.chipActualSolo, esArchivado && styles.chipArchivado]}>
+              <MaterialIcons
+                name={infoEstado(estadoActual).iconoChip}
+                size={18}
+                color={esArchivado ? colors.text : colors.onPrimary}
+              />
+              <Text
+                style={[
+                  styles.chipActualTexto,
+                  { color: esArchivado ? colors.text : colors.onPrimary },
+                ]}
+              >
+                {ETIQUETA_ESTADO[estadoActual]}
+              </Text>
+            </View>
+            <Text style={styles.estadoActualDesc}>
+              {infoEstado(estadoActual).descripcion}
+            </Text>
+          </View>
+        </View>
+
+        {/* Evaluación de Triaje y Prioridad Multicriterio */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitulo}>
+              <MaterialIcons name="health-and-safety" size={22} color={colors.primary} />
+              <Text style={styles.seccionTitulo}>Triaje y Priorización Multicriterio</Text>
+            </View>
+            <View
+              style={[
+                styles.badgePrioridadMini,
+                {
+                  backgroundColor:
+                    urgencia === 'urgente'
+                      ? colors.urgenteBg
+                      : urgencia === 'atencion'
+                      ? colors.atencionBg
+                      : colors.aldiaBg,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.badgePrioridadMiniTexto,
+                  {
+                    color:
+                      urgencia === 'urgente'
+                        ? colors.urgenteText
+                        : urgencia === 'atencion'
+                        ? colors.atencionText
+                        : colors.aldiaText,
+                  },
+                ]}
+              >
+                {caso.puntajePrioridad} pts
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.sanidadGrid}>
+            <View style={styles.sanidadItem}>
+              <Text style={styles.sanidadLabel}>Gravedad Clínica</Text>
+              <Text style={styles.sanidadValor}>
+                {caso.gravedadClinica ? ETIQUETA_GRAVEDAD[caso.gravedadClinica] : 'Moderada'}
+              </Text>
+            </View>
+            <View style={styles.sanidadItem}>
+              <Text style={styles.sanidadLabel}>Vulnerabilidad</Text>
+              <Text style={styles.sanidadValor}>
+                {caso.vulnerabilidad ? ETIQUETA_VULNERABILIDAD[caso.vulnerabilidad] : 'Estable'}
+              </Text>
+            </View>
+            <View style={[styles.sanidadItem, { width: '100%' }]}>
+              <Text style={styles.sanidadLabel}>Criterio de Urgencia</Text>
+              <Text style={[styles.sanidadValor, { fontFamily: fonts.bold, color: colors.primary }]}>
+                {caso.motivoUrgencia || 'Al día'}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -536,6 +613,34 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   estadoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  estadoActualBox: {
+    gap: 8,
+    paddingTop: 4,
+  },
+  chipActualSolo: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    minHeight: 44,
+  },
+  chipArchivado: {
+    backgroundColor: colors.surfaceChip,
+  },
+  chipActualTexto: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+  },
+  estadoActualDesc: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textMuted,
+  },
   seccionTitulo: { fontFamily: fonts.bold, fontSize: 16, color: colors.text },
   link: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -679,6 +784,15 @@ const styles = StyleSheet.create({
   archivadoHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   archivadoTitulo: { fontFamily: fonts.bold, fontSize: 16, color: colors.primary },
   archivadoDesc: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: colors.textMuted },
+  badgePrioridadMini: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  badgePrioridadMiniTexto: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+  },
   btnEditarSanidad: {
     flexDirection: 'row',
     alignItems: 'center',

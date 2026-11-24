@@ -5,7 +5,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -18,8 +17,11 @@ import {
   ETIQUETA_CASTRACION,
   ETIQUETA_ESPECIE,
   ETIQUETA_VIRALES,
+  GravedadClinica,
+  Vulnerabilidad,
 } from '../../../domain/models/Caso';
 import { BorradorRescate, faltantesDelRescate } from '../../../domain/models/Rescate';
+import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
 import { useUbicacion } from '../../hooks/useUbicacion';
 import { colors, fonts } from '../../theme';
 import { SegmentosPaso } from './BarraRescate';
@@ -46,6 +48,20 @@ const VIRALES_OPCIONES: EstadoVirales[] = [
   'AMBOS_POSITIVOS',
 ];
 
+const GRAVEDADES: { key: GravedadClinica; label: string; desc: string; icon: keyof typeof MaterialIcons.glyphMap }[] = [
+  { key: 'CRITICA', label: 'Crítica', desc: 'Atropellado, herido grave o viral agudo', icon: 'emergency' },
+  { key: 'MODERADA', label: 'Moderada', desc: 'Sintomático o con lesión leve', icon: 'healing' },
+  { key: 'LEVE', label: 'Leve', desc: 'Cuadro menor en observación', icon: 'visibility' },
+  { key: 'SANA', label: 'Sana', desc: 'Sin signos clínicos aparentes', icon: 'verified' },
+];
+
+const VULNERABILIDADES: { key: Vulnerabilidad; label: string; desc: string; icon: keyof typeof MaterialIcons.glyphMap }[] = [
+  { key: 'LACTANTE_SIN_MADRE', label: 'Lactante sin madre', desc: 'Requiere nodriza o mamadera', icon: 'child-care' },
+  { key: 'SIN_TRANSITO', label: 'Sin tránsito', desc: 'Riesgo inminente de calle', icon: 'home-work' },
+  { key: 'EN_TRATAMIENTO', label: 'En tratamiento', desc: 'Medicación o curaciones activas', icon: 'medication' },
+  { key: 'ESTABLE', label: 'Estable', desc: 'Hogar asignado y seguro', icon: 'shield' },
+];
+
 export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }: Props) {
   const gps = useUbicacion();
   const [intento, setIntento] = useState(false);
@@ -60,6 +76,13 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
       });
     }
   };
+
+  const prioridadVista = calcularPrioridadCasoUseCase.ejecutar({
+    estadoCaso: 'EN_TRANSITO',
+    gravedadClinica: b.gravedadClinica,
+    vulnerabilidad: b.vulnerabilidad,
+    fechaRescate: Date.now(),
+  });
 
   const continuar = () => {
     if (faltan.length) {
@@ -109,22 +132,22 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
         <View style={styles.campo}>
           <Text style={styles.campoLabel}>Cantidad de animales rescatados</Text>
           <View style={styles.contadorRow}>
-            {[1, 2, 3, 4, 5].map((num) => (
+            {[1, 2, 3, 4, 5].map((n) => (
               <Pressable
-                key={num}
+                key={n}
                 style={[
                   styles.contadorChip,
-                  b.cantidadAnimales === num && styles.chipActivo,
+                  b.cantidadAnimales === n && styles.chipActivo,
                 ]}
-                onPress={() => onCambio({ cantidadAnimales: num })}
+                onPress={() => onCambio({ cantidadAnimales: n })}
               >
                 <Text
                   style={[
                     styles.contadorChipText,
-                    b.cantidadAnimales === num && styles.chipActivoText,
+                    b.cantidadAnimales === n && styles.chipActivoText,
                   ]}
                 >
-                  {num === 5 ? '5+' : num}
+                  {n === 5 ? '5+' : n}
                 </Text>
               </Pressable>
             ))}
@@ -165,6 +188,148 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
             value={b.edadEstimada}
             onChangeText={(edadEstimada) => onCambio({ edadEstimada })}
           />
+        </View>
+      </View>
+
+      {/* Evaluación de Urgencia y Triaje Clínico */}
+      <View style={styles.card}>
+        <View style={styles.seccionHeader}>
+          <MaterialIcons name="medical-services" size={20} color={colors.primary} />
+          <Text style={styles.seccionTitulo}>Triaje y Priorización Multicriterio</Text>
+        </View>
+
+        {/* Banner de Prioridad Calculada en Vivo */}
+        <View
+          style={[
+            styles.bannerPrioridad,
+            prioridadVista.nivelPrioridad === 'URGENTE'
+              ? styles.bannerUrgente
+              : prioridadVista.nivelPrioridad === 'ATENCION'
+              ? styles.bannerAtencion
+              : styles.bannerAldia,
+          ]}
+        >
+          <MaterialIcons
+            name={
+              prioridadVista.nivelPrioridad === 'URGENTE'
+                ? 'error'
+                : prioridadVista.nivelPrioridad === 'ATENCION'
+                ? 'schedule'
+                : 'check-circle'
+            }
+            size={20}
+            color={
+              prioridadVista.nivelPrioridad === 'URGENTE'
+                ? colors.urgente
+                : prioridadVista.nivelPrioridad === 'ATENCION'
+                ? colors.atencion
+                : colors.aldia
+            }
+          />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={[
+                styles.bannerTitulo,
+                {
+                  color:
+                    prioridadVista.nivelPrioridad === 'URGENTE'
+                      ? colors.urgenteText
+                      : prioridadVista.nivelPrioridad === 'ATENCION'
+                      ? colors.atencionText
+                      : colors.aldiaText,
+                },
+              ]}
+            >
+              {prioridadVista.motivoUrgencia}
+            </Text>
+            <Text style={styles.bannerSub}>
+              Puntaje de ordenamiento: {prioridadVista.puntajePrioridad} pts
+            </Text>
+          </View>
+        </View>
+
+        {/* Gravedad Clínica */}
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Gravedad Clínica al ingreso *</Text>
+          <View style={styles.chipsColumna}>
+            {GRAVEDADES.map((g) => {
+              const seleccionado = b.gravedadClinica === g.key;
+              return (
+                <Pressable
+                  key={g.key}
+                  style={[styles.chipTactil, seleccionado && styles.chipTactilActivo]}
+                  onPress={() => onCambio({ gravedadClinica: g.key, esUrgente: g.key === 'CRITICA' })}
+                  accessibilityRole="button"
+                >
+                  <MaterialIcons
+                    name={g.icon}
+                    size={22}
+                    color={seleccionado ? colors.onPrimary : colors.primary}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.chipTactilTitulo,
+                        seleccionado && styles.chipTactilTituloActivo,
+                      ]}
+                    >
+                      {g.label}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.chipTactilSub,
+                        seleccionado && styles.chipTactilSubActivo,
+                      ]}
+                    >
+                      {g.desc}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Vulnerabilidad */}
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Condición de Vulnerabilidad *</Text>
+          <View style={styles.chipsColumna}>
+            {VULNERABILIDADES.map((v) => {
+              const seleccionado = b.vulnerabilidad === v.key;
+              return (
+                <Pressable
+                  key={v.key}
+                  style={[styles.chipTactil, seleccionado && styles.chipTactilActivo]}
+                  onPress={() => onCambio({ vulnerabilidad: v.key })}
+                  accessibilityRole="button"
+                >
+                  <MaterialIcons
+                    name={v.icon}
+                    size={22}
+                    color={seleccionado ? colors.onPrimary : colors.primary}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.chipTactilTitulo,
+                        seleccionado && styles.chipTactilTituloActivo,
+                      ]}
+                    >
+                      {v.label}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.chipTactilSub,
+                        seleccionado && styles.chipTactilSubActivo,
+                      ]}
+                    >
+                      {v.desc}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       </View>
 
@@ -252,7 +417,7 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
         </View>
 
         <View style={styles.campo}>
-          <Text style={styles.campoLabel}>Teléfono celular de contacto</Text>
+          <Text style={styles.campoLabel}>Teléfono del tránsito (WhatsApp)</Text>
           <TextInput
             style={styles.input}
             placeholder="Ej: +54 9 11 1234-5678"
@@ -262,30 +427,17 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
             onChangeText={(transitoTelefono) => onCambio({ transitoTelefono })}
           />
         </View>
-
-        <View style={styles.campo}>
-          <Text style={styles.campoLabel}>Correo electrónico (opcional)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="contacto@transito.com"
-            placeholderTextColor={colors.placeholder}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={b.transitoCorreo || ''}
-            onChangeText={(transitoCorreo) => onCambio({ transitoCorreo })}
-          />
-        </View>
       </View>
 
-      {/* Ficha Sanitaria */}
+      {/* Tarjeta Sanitaria Inicial */}
       <View style={styles.card}>
         <View style={styles.seccionHeader}>
-          <MaterialIcons name="medical-services" size={20} color={colors.primary} />
-          <Text style={styles.seccionTitulo}>Ficha Sanitaria Preliminar</Text>
+          <MaterialIcons name="healing" size={20} color={colors.primary} />
+          <Text style={styles.seccionTitulo}>Ficha Sanitaria Inicial</Text>
         </View>
 
         <View style={styles.campo}>
-          <Text style={styles.campoLabel}>¿Está castrado/a?</Text>
+          <Text style={styles.campoLabel}>Estado de Castración</Text>
           <View style={styles.chipsRow}>
             {CASTRACION_OPCIONES.map((opcion) => (
               <Pressable
@@ -307,8 +459,8 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
         </View>
 
         <View style={styles.campo}>
-          <Text style={styles.campoLabel}>Test Virales (VIF / ViLeF)</Text>
-          <View style={[styles.chipsRow, { flexWrap: 'wrap' }]}>
+          <Text style={styles.campoLabel}>Test VIF / ViLeF (Leucemia e Inmuno)</Text>
+          <View style={{ gap: 6 }}>
             {VIRALES_OPCIONES.map((opcion) => (
               <Pressable
                 key={opcion}
@@ -370,20 +522,6 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
             onChangeText={(estadoVisible) => onCambio({ estadoVisible })}
           />
         </View>
-
-        {/* Switch Urgencia */}
-        <View style={styles.switchRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.switchTitulo}>Marcar como caso urgente</Text>
-            <Text style={styles.switchSub}>Requiere atención médica o traslado prioritario</Text>
-          </View>
-          <Switch
-            value={b.esUrgente}
-            onValueChange={(esUrgente) => onCambio({ esUrgente })}
-            thumbColor={b.esUrgente ? colors.urgente : '#f4f3f4'}
-            trackColor={{ false: '#767577', true: colors.urgenteBg }}
-          />
-        </View>
       </View>
 
       {intento && faltan.length > 0 && (
@@ -443,10 +581,72 @@ const styles = StyleSheet.create({
   inputMultiline: { minHeight: 64, textAlignVertical: 'top' },
   inputError: { borderWidth: 1, borderColor: colors.urgente },
   chipsRow: { flexDirection: 'row', gap: 8 },
+  chipsColumna: { gap: 8 },
+  chipTactil: {
+    minHeight: 52, // Accesible > 48dp
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceChip,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  chipTactilActivo: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipTactilTitulo: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    color: colors.text,
+  },
+  chipTactilTituloActivo: {
+    color: colors.onPrimary,
+  },
+  chipTactilSub: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  chipTactilSubActivo: {
+    color: 'rgba(255, 255, 255, 0.85)',
+  },
+  bannerPrioridad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  bannerUrgente: {
+    backgroundColor: colors.urgenteBg,
+    borderColor: colors.urgente,
+  },
+  bannerAtencion: {
+    backgroundColor: colors.atencionBg,
+    borderColor: colors.atencion,
+  },
+  bannerAldia: {
+    backgroundColor: colors.aldiaBg,
+    borderColor: colors.aldia,
+  },
+  bannerTitulo: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+  },
+  bannerSub: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
   contadorRow: { flexDirection: 'row', gap: 8 },
   contadorChip: {
     flex: 1,
-    height: 40,
+    height: 48, // Accesible > 48dp
     borderRadius: 10,
     backgroundColor: colors.surfaceChip,
     alignItems: 'center',
@@ -455,7 +655,7 @@ const styles = StyleSheet.create({
   contadorChipText: { fontFamily: fonts.bold, fontSize: 14, color: colors.textMuted },
   chip: {
     flex: 1,
-    height: 42,
+    height: 48, // Accesible > 48dp
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -464,13 +664,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceChip,
   },
   chipSmall: {
+    minHeight: 48, // Accesible > 48dp
+    justifyContent: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 10,
     backgroundColor: colors.surfaceChip,
     marginBottom: 4,
   },
-  chipSmallText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.textMuted },
+  chipSmallText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted },
   chipEmoji: { fontSize: 16 },
   chipTexto: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted },
   chipActivo: { backgroundColor: colors.primary },
@@ -480,7 +682,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    height: 42,
+    minHeight: 48,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.primary,
@@ -490,14 +692,6 @@ const styles = StyleSheet.create({
   btnGpsText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
   coordenadasInfo: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center' },
   coordenadasTexto: { fontFamily: fonts.medium, fontSize: 12, color: colors.textMuted },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  switchTitulo: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
-  switchSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.textSubtle },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -512,7 +706,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    height: 50,
+    minHeight: 52,
     backgroundColor: colors.primary,
     borderRadius: 14,
     marginTop: 6,

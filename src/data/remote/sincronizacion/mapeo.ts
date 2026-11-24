@@ -1,5 +1,17 @@
-import type { Caso, EventoHistorial, Especie, EstadoCaso, EstadoCastracion, EstadoVirales, TipoEvento } from '../../../domain/models/Caso';
+import type {
+  Caso,
+  EventoHistorial,
+  Especie,
+  EstadoCaso,
+  EstadoCastracion,
+  EstadoVirales,
+  GravedadClinica,
+  Vulnerabilidad,
+  NivelPrioridad,
+  TipoEvento,
+} from '../../../domain/models/Caso';
 import type { Turno } from '../../../domain/models/Turno';
+import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
 
 // Conversión entre el modelo local (camelCase, fechas en ms) y las filas del servidor (snake_case, fechas ISO).
 // Sin dependencias de React Native: se puede probar con Node.
@@ -32,8 +44,14 @@ export function camposComparables(c: Caso): Comparable {
     fecha_primera_desparasitacion: c.sanidad.fechaPrimeraDesparasitacion ?? null,
     fecha_segunda_desparasitacion: c.sanidad.fechaSegundaDesparasitacion ?? null,
     estado_caso: c.estadoCaso,
-    // El servidor tiene tres niveles de gravedad; la app todavía un booleano.
-    gravedad: c.esUrgente ? 'urgente' : 'estable',
+    gravedad_clinica: c.gravedadClinica,
+    vulnerabilidad: c.vulnerabilidad,
+    nivel_prioridad: c.nivelPrioridad,
+    motivo_urgencia: c.motivoUrgencia || null,
+    puntaje_prioridad: c.puntajePrioridad,
+    creado_por_user_id: c.creadoPorUserId || null,
+    modificado_por_user_id: c.modificadoPorUserId || null,
+    foto_remote_path: c.fotoRemotePath || null,
   };
 }
 
@@ -61,7 +79,7 @@ export interface Diferencias {
 /**
  * Qué campos cambió esta operación respecto de la última versión conocida del servidor.
  * Mandar solo estos evita pisar lo que otro voluntario modificó en campos que no tocamos.
- * El payload puede ser el caso completo o un cambio parcial ({ id, estadoCaso }).
+ * El payload puede ser el caso completo o un cambio parcial.
  */
 export function diferenciasCaso(payload: any, base: Comparable, creadoEn: number): Diferencias {
   let actual: Comparable;
@@ -70,6 +88,15 @@ export function diferenciasCaso(payload: any, base: Comparable, creadoEn: number
   } else {
     actual = {};
     if (payload?.estadoCaso) actual.estado_caso = payload.estadoCaso;
+    if (payload?.transitoNombre) actual.transito_nombre = payload.transitoNombre;
+    if (payload?.gravedadClinica) actual.gravedad_clinica = payload.gravedadClinica;
+    if (payload?.vulnerabilidad) actual.vulnerabilidad = payload.vulnerabilidad;
+    // Campos planos recibidos en delta
+    for (const [k, v] of Object.entries(payload || {})) {
+      if (k !== 'id' && k !== 'updatedAt' && k !== 'updated_at') {
+        actual[k] = v as any;
+      }
+    }
   }
 
   const dif: Diferencias = { cambios: {}, camposTs: {}, nuevosValores: {} };
@@ -85,6 +112,24 @@ export function diferenciasCaso(payload: any, base: Comparable, creadoEn: number
 const aMs = (iso: string | null | undefined): number | null => (iso ? Date.parse(iso) : null);
 
 export function casoDesdeServidor(f: FilaServidor): Caso {
+  const fechaRescate = Date.parse(f.fecha_rescate);
+  const gravedadRaw = String(f.gravedad_clinica || f.gravedad || 'MODERADA').toUpperCase();
+  const gravedad: GravedadClinica = ['CRITICA', 'MODERADA', 'LEVE', 'SANA'].includes(gravedadRaw)
+    ? (gravedadRaw as GravedadClinica)
+    : 'MODERADA';
+  
+  const vulnRaw = String(f.vulnerabilidad || 'ESTABLE').toUpperCase();
+  const vulnerabilidad: Vulnerabilidad = ['LACTANTE_SIN_MADRE', 'SIN_TRANSITO', 'EN_TRATAMIENTO', 'ESTABLE'].includes(vulnRaw)
+    ? (vulnRaw as Vulnerabilidad)
+    : 'ESTABLE';
+
+  const calculo = calcularPrioridadCasoUseCase.ejecutar({
+    estadoCaso: f.estado_caso,
+    gravedadClinica: gravedad,
+    vulnerabilidad,
+    fechaRescate,
+  });
+
   return {
     id: f.id,
     nombreProvisorio: f.nombre_provisorio,
@@ -97,7 +142,10 @@ export function casoDesdeServidor(f: FilaServidor): Caso {
     barrio: f.barrio,
     coordenadas: f.latitud != null && f.longitud != null ? { latitud: f.latitud, longitud: f.longitud } : null,
     fotoUri: null, // las fotos se manejan aparte; al guardar se conserva la local
-    fechaRescate: Date.parse(f.fecha_rescate),
+    fotoLocalUri: null,
+    fotoRemotePath: f.foto_remote_path ?? null,
+    fotoSyncStatus: f.foto_remote_path ? 'SYNCED' : 'PENDING',
+    fechaRescate,
     quienSigueCaso: f.quien_sigue_caso ?? '',
     transito: {
       nombre: f.transito_nombre ?? '',
@@ -111,7 +159,14 @@ export function casoDesdeServidor(f: FilaServidor): Caso {
       fechaSegundaDesparasitacion: aMs(f.fecha_segunda_desparasitacion),
     },
     estadoCaso: f.estado_caso as EstadoCaso,
-    esUrgente: f.gravedad !== 'estable',
+    gravedadClinica: gravedad,
+    vulnerabilidad,
+    nivelPrioridad: (f.nivel_prioridad as NivelPrioridad) || calculo.nivelPrioridad,
+    motivoUrgencia: f.motivo_urgencia || calculo.motivoUrgencia,
+    puntajePrioridad: f.puntaje_prioridad ?? calculo.puntajePrioridad,
+    creadoPorUserId: f.creado_por ?? f.creado_por_user_id ?? undefined,
+    modificadoPorUserId: f.modificado_por_user_id ?? undefined,
+    esUrgente: calculo.esUrgente,
     syncStatus: 'SYNCED',
     updatedAt: Date.parse(f.updated_at),
   };
@@ -138,12 +193,11 @@ export function eventoDesdeServidor(f: FilaServidor): EventoHistorial {
   };
 }
 
-/** `centroConocido`: solo se envía el centro si existe en el servidor (la clave foránea lo exige). */
-export function filaTurnoParaServidor(t: Turno, centroConocido: boolean): FilaServidor {
+export function filaTurnoParaServidor(t: Turno, clinicaExiste: boolean = true): FilaServidor {
   return {
     id: t.id,
     caso_id: t.casoId,
-    centro_veterinario_id: centroConocido ? (t.centroVeterinarioId ?? null) : null,
+    centro_veterinario_id: clinicaExiste && t.centroVeterinarioId ? t.centroVeterinarioId : null,
     fecha_hora: new Date(t.fechaHora).toISOString(),
     motivo: t.motivo,
     recordatorio_minutos: t.recordatorioMinutos,
@@ -151,15 +205,15 @@ export function filaTurnoParaServidor(t: Turno, centroConocido: boolean): FilaSe
   };
 }
 
-export function turnoDesdeServidor(f: FilaServidor, centroLocal?: string): Turno {
+export function turnoDesdeServidor(f: FilaServidor): Turno {
   return {
     id: f.id,
     casoId: f.caso_id,
-    centroVeterinarioId: f.centro_veterinario_id ?? centroLocal ?? undefined,
+    centroVeterinarioId: f.centro_veterinario_id || undefined,
     fechaHora: Date.parse(f.fecha_hora),
     motivo: f.motivo,
     recordatorioMinutos: f.recordatorio_minutos,
-    cumplido: f.cumplido,
+    cumplido: Boolean(f.cumplido),
     syncStatus: 'SYNCED',
     updatedAt: Date.parse(f.updated_at),
   };

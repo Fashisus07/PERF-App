@@ -9,7 +9,7 @@ export const UMBRAL_MIN = 1;
 export const UMBRAL_MAX = 30;
 
 export const ajustesPorDefecto: Ajustes = {
-  umbralUrgenteDias: 7,
+  umbralUrgenteDias: 15,
   modoOfflineAutomatico: true,
   recordatorioUnDia: true,
   alertaDosHoras: true,
@@ -22,6 +22,8 @@ export type ResumenAlmacenamiento = {
   capacidadMegabytes: number;
 };
 
+export type RolVoluntario = 'voluntario' | 'coordinador';
+
 export type Voluntario = {
   id?: string;
   nombre: string;
@@ -30,4 +32,8 @@ export type Voluntario = {
   telefono?: string;
   zona?: string;
   recursos?: string[];
+  rol?: RolVoluntario;
+  aprobado?: boolean;
+  createdAt?: string;
+  tokenAprobacion?: string;
 };

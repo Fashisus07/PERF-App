@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useMemo, useRef } from 'react';
-import { calcularUrgencia, Caso } from '../../domain/models/Caso';
+import { calcularUrgencia, Caso, nivelAUrgencia } from '../../domain/models/Caso';
 import { useCasoStore, FiltroUrgencia } from '../stores/useCasoStore';
 import { obtenerAjustes } from './useAjustes';
 
@@ -21,7 +21,7 @@ export function useCasos() {
       const ajustes = await obtenerAjustes();
       await cargarCasos(ajustes.umbralUrgenteDias, silencioso);
     } catch {
-      await cargarCasos(10, silencioso);
+      await cargarCasos(15, silencioso);
     }
   }, [cargarCasos]);
 
@@ -36,9 +36,9 @@ export function useCasos() {
   const conteo = useMemo(
     () => ({
       todos: casos.length,
-      urgente: casos.filter((c) => calcularUrgencia(c, 10) === 'urgente').length,
-      atencion: casos.filter((c) => calcularUrgencia(c, 10) === 'atencion').length,
-      aldia: casos.filter((c) => calcularUrgencia(c, 10) === 'aldia').length,
+      urgente: casos.filter((c) => (c.nivelPrioridad ? nivelAUrgencia(c.nivelPrioridad) : calcularUrgencia(c, 15)) === 'urgente').length,
+      atencion: casos.filter((c) => (c.nivelPrioridad ? nivelAUrgencia(c.nivelPrioridad) : calcularUrgencia(c, 15)) === 'atencion').length,
+      aldia: casos.filter((c) => (c.nivelPrioridad ? nivelAUrgencia(c.nivelPrioridad) : calcularUrgencia(c, 15)) === 'aldia').length,
     }),
     [casos]
   );
@@ -46,7 +46,7 @@ export function useCasos() {
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return casos.filter((c) => {
-      const urg = calcularUrgencia(c, 10);
+      const urg = c.nivelPrioridad ? nivelAUrgencia(c.nivelPrioridad) : calcularUrgencia(c, 15);
       const cumpleFiltro = filtro === 'todos' || urg === filtro;
       const cumpleBusqueda =
         !q ||

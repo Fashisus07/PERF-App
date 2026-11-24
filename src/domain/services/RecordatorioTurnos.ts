@@ -6,5 +6,5 @@ import { Clinica, Turno } from '../models/Turno';
  */
 export interface RecordatorioTurnos {
   programar(turno: Turno, clinica?: Clinica, nombreCaso?: string): Promise<boolean>;
-  cancelar(turnoId: string): Promise<void>;
+  cancelar(turnoId: string, notificationId?: string | null): Promise<void>;
 }

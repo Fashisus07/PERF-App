@@ -2,15 +2,19 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { BottomTabBarProps, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { candadoRequerido } from '../../data/local/CandadoApp';
+import { supabase } from '../../data/remote/supabaseClient';
 import { authRepository } from '../../di/container';
 import { AjustesScreen } from '../screens/ajustes/AjustesScreen';
+import { AprobacionVoluntariosScreen } from '../screens/ajustes/AprobacionVoluntariosScreen';
 import { ColaSincronizacionScreen } from '../screens/ajustes/ColaSincronizacionScreen';
 import { PerfilVoluntarioScreen } from '../screens/ajustes/PerfilVoluntarioScreen';
+import { ProcesarSolicitudScreen } from '../screens/ajustes/ProcesarSolicitudScreen';
 import { ArchivoScreen } from '../screens/archivo/ArchivoScreen';
+import { CambiarClaveScreen } from '../screens/auth/CambiarClaveScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { PantallaCandado } from '../screens/auth/PantallaCandado';
 import { RecuperarClaveScreen } from '../screens/auth/RecuperarClaveScreen';
@@ -74,16 +78,52 @@ function MainTabs() {
 
 export function AppNavigator() {
   // Con la sesión guardada se entra directo (también sin conexión); si no hay, se pide el login.
-  const [rutaInicial, setRutaInicial] = useState<'Login' | 'Main' | null>(null);
+  const [rutaInicial, setRutaInicial] = useState<'Login' | 'Main' | 'CambiarClave' | 'ProcesarSolicitud' | null>(null);
   const [bloqueado, setBloqueado] = useState(false);
+  const navigationRef = useRef<any>(null);
+
   useEffect(() => {
+    // 1. Detectar si la URL proviene de una acción de aprobación/rechazo de coordinador o recuperación de Supabase
+    if (typeof window !== 'undefined' && window.location) {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      if (search.includes('accion=aprobar_voluntario') || search.includes('accion=rechazar_voluntario')) {
+        setRutaInicial('ProcesarSolicitud');
+        return;
+      }
+      if (hash.includes('type=recovery') || search.includes('type=recovery')) {
+        setRutaInicial('CambiarClave');
+        return;
+      }
+    }
+
+    // 2. Verificar voluntario autenticado
     (async () => {
       const voluntario = await authRepository.obtenerVoluntarioActual();
       if (!voluntario) return setRutaInicial('Login');
       setBloqueado(await candadoRequerido()); // huella o PIN del celular antes de mostrar los casos
       setRutaInicial('Main');
     })().catch(() => setRutaInicial('Login'));
+
+    // 3. Suscripción a eventos de Supabase Auth (ej. link de recuperación procesado)
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setRutaInicial('CambiarClave');
+        navigationRef.current?.navigate?.('CambiarClave');
+      } else if (event === 'SIGNED_IN' && session) {
+        const voluntario = await authRepository.obtenerVoluntarioActual();
+        if (voluntario) {
+          setRutaInicial('Main');
+          navigationRef.current?.reset?.({ index: 0, routes: [{ name: 'Main' }] });
+        }
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
   }, []);
+
   if (!rutaInicial) return null;
   if (bloqueado) {
     return (
@@ -99,7 +139,7 @@ export function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator initialRouteName={rutaInicial} screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Login">
           {({ navigation }) => (
@@ -119,8 +159,11 @@ export function AppNavigator() {
           )}
         </Stack.Screen>
         <Stack.Screen name="RecuperarClave" component={RecuperarClaveScreen} />
+        <Stack.Screen name="CambiarClave" component={CambiarClaveScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Ajustes" component={AjustesScreen} />
+        <Stack.Screen name="AprobacionVoluntarios" component={AprobacionVoluntariosScreen} />
+        <Stack.Screen name="ProcesarSolicitud" component={ProcesarSolicitudScreen} />
         <Stack.Screen name="PerfilVoluntario" component={PerfilVoluntarioScreen} />
         <Stack.Screen name="ColaSincronizacion" component={ColaSincronizacionScreen} />
         <Stack.Screen name="DetalleCaso" component={DetalleCasoScreen} />

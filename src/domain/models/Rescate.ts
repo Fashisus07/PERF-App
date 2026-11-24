@@ -2,7 +2,13 @@
 // Los datos provisorios se van completando en los pasos del asistente y
 // se convierten en un Caso al momento de persistir en SQLite.
 
-import { Especie, EstadoCastracion, EstadoVirales } from './Caso';
+import {
+  Especie,
+  EstadoCastracion,
+  EstadoVirales,
+  GravedadClinica,
+  Vulnerabilidad,
+} from './Caso';
 
 export type Coordenadas = { latitud: number; longitud: number };
 
@@ -25,6 +31,8 @@ export interface BorradorRescate {
   virales: EstadoVirales;
   fechaPrimeraDesparasitacion?: number | null;
   fechaSegundaDesparasitacion?: number | null;
+  gravedadClinica: GravedadClinica;
+  vulnerabilidad: Vulnerabilidad;
   esUrgente: boolean;
 }
 
@@ -47,6 +55,8 @@ export const borradorVacio = (): BorradorRescate => ({
   virales: 'PENDIENTE',
   fechaPrimeraDesparasitacion: null,
   fechaSegundaDesparasitacion: null,
+  gravedadClinica: 'MODERADA',
+  vulnerabilidad: 'ESTABLE',
   esUrgente: false,
 });
 
@@ -65,4 +75,3 @@ export function formatoFecha(d: Date): string {
 }
 
 export { ETIQUETA_ESPECIE } from './Caso';
-

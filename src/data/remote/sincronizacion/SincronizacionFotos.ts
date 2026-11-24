@@ -3,19 +3,18 @@ import { getDatabase } from '../../local/Database';
 import { generarUUID } from '../../local/uuid';
 import { supabase } from '../supabaseClient';
 
-// Fotos de los casos: la foto principal se sube a Storage (bucket privado) y se registra en
-// `fotos_caso`. Cada foto tiene ruta única, así que dos teléfonos nunca se pisan. Los teléfonos
-// que no la tienen bajan un enlace firmado. Corre después de la sincronización de datos y nunca
-// la rompe: si falla, la foto se reintenta en la próxima.
+// Sincronización de Fotografías en 2 Fases (Offline First):
+// - Fase A: Subir el binario local al bucket privado 'casos-fotos/{caso_id}/{uuid}.jpg' en Supabase Storage.
+// - Fase B: Obtener la ruta remota ('foto_remote_path'), registrarla en PostgreSQL y marcar 'foto_sync_status = SYNCED' en SQLite.
+// Si falla la subida de la imagen, el caso igual se sincroniza y la foto queda en cola de reintento.
 
-const BUCKET = 'fotos-casos';
+const BUCKET = 'casos-fotos';
 const CLAVE = 'perf.sync.fotos';
 const VIGENCIA_ENLACE_SEG = 7 * 24 * 3600;
 
 interface FotoSubida {
   uri: string;
   fotoId: string;
-  /** Ya está en Storage y registrada: no se vuelve a subir mientras la foto local no cambie. */
   lista: boolean;
 }
 
@@ -37,71 +36,118 @@ export async function sincronizarFotos(): Promise<ResultadoFotos> {
   const db = await getDatabase();
   const mapa = await leerMapa();
 
-  // ── Subir las fotos hechas en este teléfono ──
-  const locales = await db.getAllAsync<{ id: string; foto_uri: string }>(
-    `SELECT id, foto_uri FROM casos WHERE foto_uri LIKE 'file:%' OR foto_uri LIKE 'content:%';`
+  // ── 1. Subida en 2 Fases: fotos hechas en este teléfono ──
+  const pendientes = await db.getAllAsync<{
+    id: string;
+    foto_uri: string | null;
+    foto_local_uri: string | null;
+    foto_remote_path: string | null;
+    foto_sync_status: string | null;
+  }>(
+    `SELECT id, foto_uri, foto_local_uri, foto_remote_path, foto_sync_status
+       FROM casos
+      WHERE (foto_sync_status = 'PENDING' OR foto_sync_status IS NULL)
+        AND (
+          (foto_local_uri IS NOT NULL AND (foto_local_uri LIKE 'file:%' OR foto_local_uri LIKE 'content:%'))
+          OR (foto_uri IS NOT NULL AND (foto_uri LIKE 'file:%' OR foto_uri LIKE 'content:%'))
+        );`
   );
-  for (const caso of locales) {
-    const previa = mapa[caso.id];
-    if (previa?.lista && previa.uri === caso.foto_uri) continue;
 
-    // El id se guarda antes de subir: si se corta a la mitad, el reintento usa la misma ruta.
-    const fotoId = previa && previa.uri === caso.foto_uri ? previa.fotoId : generarUUID();
-    mapa[caso.id] = { uri: caso.foto_uri, fotoId, lista: false };
+  for (const caso of pendientes) {
+    const localUri = caso.foto_local_uri || caso.foto_uri;
+    if (!localUri) continue;
+
+    const previa = mapa[caso.id];
+    if (previa?.lista && previa.uri === localUri && caso.foto_sync_status === 'SYNCED') continue;
+
+    const fotoId = previa && previa.uri === localUri ? previa.fotoId : generarUUID();
+    mapa[caso.id] = { uri: localUri, fotoId, lista: false };
     await AsyncStorage.setItem(CLAVE, JSON.stringify(mapa));
 
     try {
       const ruta = `${caso.id}/${fotoId}.jpg`;
-      const bytes = await (await fetch(caso.foto_uri)).arrayBuffer();
-      const subida = await supabase.storage.from(BUCKET).upload(ruta, bytes, { contentType: 'image/jpeg' });
-      // "ya existe" = una subida anterior llegó a completarse: sigue con el registro.
-      if (subida.error && !/already exists|duplicate/i.test(subida.error.message)) throw subida.error;
 
-      const { error } = await supabase
+      // Fase A: Subir el binario al Storage
+      const respuestaFetch = await fetch(localUri);
+      const bytes = await respuestaFetch.arrayBuffer();
+      const subida = await supabase.storage.from(BUCKET).upload(ruta, bytes, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
+
+      if (subida.error && !/already exists|duplicate/i.test(subida.error.message)) {
+        throw subida.error;
+      }
+
+      // Fase B: Registrar metadatos y actualizar estado local
+      const { error: errInsert } = await supabase
         .from('fotos_caso')
-        .insert({ id: fotoId, caso_id: caso.id, ruta, principal: true });
-      if (error && error.code !== '23505') throw error;
+        .upsert({ id: fotoId, caso_id: caso.id, ruta, principal: true }, { onConflict: 'id' });
+      if (errInsert && errInsert.code !== '23505') throw errInsert;
+
+      // Actualizar columna foto_remote_path en casos remoto
+      await supabase
+        .from('casos')
+        .update({ foto_remote_path: ruta, updated_at: new Date().toISOString() })
+        .eq('id', caso.id);
+
+      // Marcar SYNCED en SQLite local
+      await db.runAsync(
+        `UPDATE casos SET foto_remote_path = ?, foto_sync_status = 'SYNCED' WHERE id = ?;`,
+        [ruta, caso.id]
+      );
 
       mapa[caso.id].lista = true;
       await AsyncStorage.setItem(CLAVE, JSON.stringify(mapa));
       resultado.subidas++;
     } catch (e) {
       resultado.fallidas++;
-      console.warn(`[sync] foto del caso ${caso.id} falló:`, (e as Error).message);
+      // Si falla, el caso igual se sincroniza y la foto queda en cola de reintento
+      await db.runAsync(
+        `UPDATE casos SET foto_sync_status = 'PENDING' WHERE id = ?;`,
+        [caso.id]
+      );
+      console.warn(`[sync] Foto del caso ${caso.id} falló en 2 fases:`, (e as Error).message);
     }
   }
 
-  // ── Bajar las fotos de casos que cargó otro voluntario ──
-  // Los casos sin foto, o con un enlace (que vence), reciben uno nuevo. Nunca se pisa una foto local.
-  const sinFoto = await db.getAllAsync<{ id: string; foto_uri: string | null }>(
-    `SELECT id, foto_uri FROM casos WHERE foto_uri IS NULL OR foto_uri = '' OR foto_uri LIKE 'http%';`
+  // ── 2. Descarga de enlaces firmados para fotos cargadas por otros voluntarios ──
+  const sinFotoLocal = await db.getAllAsync<{ id: string; foto_uri: string | null; foto_remote_path: string | null }>(
+    `SELECT id, foto_uri, foto_remote_path
+       FROM casos
+      WHERE (foto_uri IS NULL OR foto_uri = '' OR foto_uri LIKE 'http%')
+        AND (foto_local_uri IS NULL OR foto_local_uri NOT LIKE 'file:%');`
   );
-  if (sinFoto.length > 0) {
-    const { data, error } = await supabase
+
+  if (sinFotoLocal.length > 0) {
+    const { data: fotosRemotas, error: errFotos } = await supabase
       .from('fotos_caso')
       .select('caso_id, ruta')
       .eq('principal', true)
       .order('created_at', { ascending: false });
-    if (error) {
-      resultado.fallidas++;
-      console.warn('[sync] no se pudo listar fotos:', error.message);
-      return resultado;
-    }
-    const rutaPorCaso = new Map<string, string>();
-    for (const f of data ?? []) if (!rutaPorCaso.has(f.caso_id)) rutaPorCaso.set(f.caso_id, f.ruta);
 
-    for (const caso of sinFoto) {
-      const ruta = rutaPorCaso.get(caso.id);
-      if (!ruta || (!!caso.foto_uri && !esEnlaceRemoto(caso.foto_uri))) continue;
-      const { data: firmado, error: errFirma } = await supabase.storage
-        .from(BUCKET)
-        .createSignedUrl(ruta, VIGENCIA_ENLACE_SEG);
-      if (errFirma || !firmado) {
-        resultado.fallidas++;
-        continue;
+    if (!errFotos && fotosRemotas) {
+      const rutaPorCaso = new Map<string, string>();
+      for (const f of fotosRemotas) {
+        if (!rutaPorCaso.has(f.caso_id)) rutaPorCaso.set(f.caso_id, f.ruta);
       }
-      await db.runAsync('UPDATE casos SET foto_uri = ? WHERE id = ?;', [firmado.signedUrl, caso.id]);
-      resultado.descargadas++;
+
+      for (const caso of sinFotoLocal) {
+        const ruta = caso.foto_remote_path || rutaPorCaso.get(caso.id);
+        if (!ruta) continue;
+
+        const { data: firmado, error: errFirma } = await supabase.storage
+          .from(BUCKET)
+          .createSignedUrl(ruta, VIGENCIA_ENLACE_SEG);
+
+        if (!errFirma && firmado?.signedUrl) {
+          await db.runAsync(
+            `UPDATE casos SET foto_uri = ?, foto_remote_path = ?, foto_sync_status = 'SYNCED' WHERE id = ?;`,
+            [firmado.signedUrl, ruta, caso.id]
+          );
+          resultado.descargadas++;
+        }
+      }
     }
   }
 

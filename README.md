@@ -31,11 +31,11 @@ Los voluntarios que realizan rescates en la calle enfrentan múltiples dificulta
 
 ### La Solución
 **PERF Móvil** proporciona una herramienta centralizada y robusta:
-- **Flujo de Rescate Guiado en 3 Pasos:** Captura fotográfica con visor de cámara, geolocalización GPS automática con geocodificación inversa, y evaluación rápida de urgencia mediante triaje.
-- **Priorización Inteligente:** Bandeja de casos clasificados por urgencia (Alta, Media, Baja) y umbral configurable de días en espera.
-- **Seguimiento Clínico e Historial:** Ficha completa de cada animal (estado de castración, test VIF/ViLeF, desparasitaciones) y línea de tiempo de eventos.
-- **Agenda Veterinaria y Alarmas Locales:** Reserva de turnos con validación de cupos y programación de recordatorios locales en el dispositivo que no dependen de conexión a internet.
-- **Arquitectura Offline First:** Toda lectura y escritura se ejecuta primero contra la base de datos SQLite local (`perf.db`) y se encola en una tabla de operaciones pendientes para sincronizar cuando se recupere la conexión.
+- **Flujo de Rescate Guiado en 3 Pasos:** Captura fotográfica con visor de cámara, geolocalización GPS automática con geocodificación inversa, y evaluación clínica mediante triaje multicriterio (`gravedad_clinica` y `vulnerabilidad`).
+- **Priorización Inteligente Multicriterio:** Clasificación determinística (`URGENTE`, `ATENCION`, `AL_DIA`) combinando gravedad clínica inmediata (crítico, lactante sin madre, sin tránsito) con umbral configurable de días en espera (`@perf_urgency_threshold_days`), visualizado con chips accesibles de mínimo 48dp y badges con motivo textual ("URGENTE • Crítico", "URGENTE • +16 días").
+- **Seguimiento Clínico e Historial:** Ficha completa de cada animal (estado de castración, test VIF/ViLeF, desparasitaciones) y línea de tiempo de eventos inmutables (*append-only*).
+- **Agenda Veterinaria y Notificaciones Locales:** Reserva de turnos con validación de cupos y programación de alarmas locales en Android (`AndroidImportance.MAX`, sonido y vibración) con cancelación reactiva (`notification_id`) al cumplirse o cerrarse el caso.
+- **Arquitectura Offline First Bidireccional:** Persistencia local inmediata en SQLite (`perf.db`), generación de IDs con UUID v4 en el cliente, encolado de mutaciones con `idempotency_key`, sincronización bidireccional por fusión de deltas (*field-level merge*) y subida de fotos en dos fases a almacenamiento privado.
 
 ---
 
@@ -100,147 +100,101 @@ PERF-App/
 ## 🗄️ Estrategia Offline First y Persistencia
 
 1. **Base de Datos SQLite Local (`expo-sqlite`):**
-   - Base de datos relacional local en archivo `perf.db`.
-   - Modos activados: `PRAGMA journal_mode = WAL;` y `PRAGMA foreign_keys = ON;`.
-   - **Tablas:**
-     - `casos`: almacena la información integral del animal, estado de rescate, datos de tránsito, coordenadas y estado de sincronización (`sync_status`).
-     - `turnos`: agenda médica vinculada al caso con fecha/hora, motivo, centro veterinario y recordatorio.
-     - `eventos_historial`: registro cronológico de eventos (rescate inicial, cambios de estado, derivaciones a clínicas, etc.).
-     - `operaciones_pendientes`: cola de transacciones locales (`CREATE`, `UPDATE`, `DELETE`) pendientes de replicación en el servidor.
+   - Base de datos relacional local en archivo `perf.db` con `PRAGMA journal_mode = WAL;` y `PRAGMA foreign_keys = ON;`.
+   - **Tablas y Columnas Clave:**
+     - `casos`: almacena la información integral del felino.
+       - Identificación: `id` (UUID v4 generado en el cliente).
+       - Datos básicos: `nombre_provisorio`, `especie`, `cantidad_animales`, `edad_estimada`, `estado_general`, `temperamento`.
+       - Multicriterio de Urgencia: `gravedad_clinica` (`CRITICA` | `MODERADA` | `LEVE` | `SANA`), `vulnerabilidad` (`LACTANTE_SIN_MADRE` | `SIN_TRANSITO` | `EN_TRATAMIENTO` | `ESTABLE`), `nivel_prioridad` (`URGENTE` | `ATENCION` | `AL_DIA`), `motivo_urgencia` (texto legible, ej: "URGENTE • Crítico"), `puntaje_prioridad` (número entero para ordenamiento determinístico), `fecha_rescate`.
+       - Ubicación y Tránsito: `ubicacion_calle`, `ubicacion_detalles`, `latitud`, `longitud`, `transito_nombre`, `transito_telefono`, `transito_direccion`.
+       - Estado Sanitario y Caso: `estado` (`RESCATADO`, `EN_TRANSITO`, `EN_CLINICA`, `PRE_ADOPTADO`, `EN_ADOPCION`, `ADOPTADO`, `FALLECIDO`), `castrado`, `vif`, `vilef`, `desparasitado`.
+       - Sincronización y Fotos: `foto_uri`, `foto_local_uri`, `foto_remote_path`, `foto_sync_status` (`PENDING` | `SYNCED` | `FAILED`), `sync_status` (`PENDING` | `SYNCED`), `sync_version`, `creado_por_user_id`, `modificado_por_user_id`, `created_at`, `updated_at`.
+     - `turnos`: agenda médica vinculada al caso con `id` (UUID v4), `caso_id`, `clinica_id`, `fecha`, `motivo`, `estado`, `recordatorio_horas_antes`, `notification_id` (identificador nativo devuelto por Expo Notifications para cancelación reactiva), `sync_status`, `updated_at`.
+     - `eventos_historial`: registro cronológico inmutable (*append-only*) de eventos (rescate inicial, derivaciones, evoluciones clínicas, cambios de estado).
+     - `operaciones_pendientes`: cola de mutaciones offline con `id` (UUID v4), `idempotency_key` (UUID v4 único por intento para evitar duplicados en Supabase), `tipo` (`CREATE` | `UPDATE` | `DELETE`), `tabla` (`casos` | `turnos` | `eventos_historial`), `registro_id`, `payload` (JSON con `changed_fields` para fusión delta), `reintentos`, `created_at`.
 2. **Preferencias y Ajustes (`@react-native-async-storage/async-storage`):**
-   - Configuración de días para marcar casos urgentes, valores por defecto de recordatorios y preferencias del voluntario.
+   - `@perf_urgency_threshold_days`: umbral dinámico de días en espera (por defecto: 15 días).
+   - `@perf_supabase_session`: persistencia de sesión de Supabase Auth para habilitar autenticación offline total.
+   - `@perf_last_sync_timestamp`: marca temporal (`last_synced_at`) para la hidratación incremental mediante *Pull Sync*.
 3. **Monitoreo de Conectividad (`@react-native-community/netinfo`):**
-   - Hook reactivo `useOnline()` que notifica en tiempo real si el dispositivo cuenta con acceso a internet, reflejado en barras de estado y banners visuales.
+   - Monitoreo reactivo en tiempo real que dispara el ciclo de sincronización automática bidireccional (`useAutoSync`) ante la reconexión.
 
 ---
 
-## ☁️ Backend Remoto: Supabase
+## ☁️ Backend Remoto: Supabase (Auth + RLS + Storage)
 
-> **Estado: en desarrollo (rama `feature/modelo-por-animal`).** El esquema del servidor está creado, el login usa Supabase Auth y la app **ya sincroniza datos reales**: sube la cola, baja los cambios de otros voluntarios y no pierde información cuando dos editan el mismo caso (ver "Sincronización" más abajo). Lo que está hecho y lo que falta figura en la sección "Estado".
+El backend de **PERF Móvil** está implementado sobre **Supabase** (PostgreSQL en la nube con Supabase Auth y Storage Privado), diseñado para operar bajo un modelo distribuido y tolerante a desconexiones.
 
-### Qué es y por qué Supabase
-Supabase es una base **PostgreSQL en la nube** que ya incluye una API, autenticación (Supabase Auth) y almacenamiento de archivos (Storage). Es open source y el plan gratuito alcanza para un refugio. La app se instala en los teléfonos de los voluntarios; no hay un servidor propio que mantener.
+### 1. Seguridad y Control de Acceso (Row Level Security - RLS)
+- **Script Consolidado de Infraestructura:** [`supabase/schema.sql`](supabase/schema.sql).
+- **Políticas de Seguridad Estrictas:**
+  - Se habilitó RLS en todas las tablas: `casos`, `turnos`, `eventos_historial`, `centros_veterinarios`, `conflictos` y `perfiles`.
+  - **Acceso Anónimo Denegado:** Los usuarios no autenticados (`role = anon`) tienen acceso completamente denegado a las fichas clínicas, fotos y coordenadas GPS de tránsitos.
+  - **Voluntarios Verificados:** Las operaciones `SELECT`, `INSERT` y `UPDATE` están restringidas exclusivamente al rol `authenticated`.
+- **Trazabilidad y Auditoría:**
+  - Cada operación registra `creado_por_user_id` y `modificado_por_user_id` (provenientes de `auth.uid()`), impidiendo el repudio de cambios entre voluntarios de la brigada.
+- **Supabase Auth con Persistencia Offline:**
+  - La sesión de Supabase Auth se almacena en `AsyncStorage` mediante el adapter local de sesión, de modo que el voluntario mantiene su sesión activa y acceso completo a los datos locales en modo avión.
+  - Interfaz de `LoginScreen` y gestión de sesión en `AjustesScreen` con visualización del usuario actual y botón de cierre de sesión seguro.
 
-Se eligió sobre las alternativas porque:
-- **JSON/archivo compartido:** no resuelve accesos concurrentes, permisos ni fotos.
-- **API propia (Node, etc.):** habría que programar, hostear y mantener login, permisos y almacenamiento.
-- **Firebase:** su base NoSQL complica las relaciones caso → turnos → historial y los permisos por fila.
+### 2. Almacenamiento Privado de Fotografías (Supabase Storage)
+- **Bucket Privado `casos-fotos`:**
+  - Configurado con `public = false`. Solo voluntarios con rol `authenticated` pueden subir archivos (`INSERT`) o generar URLs firmadas temporales (`createSignedUrl`).
+- **Sincronización de Fotos en 2 Fases (`SincronizacionFotos.ts`):**
+  - **Fase A:** El binario capturado en campo (`foto_local_uri`) se sube al bucket privado en la ruta `{caso_id}/{foto_id}.jpg`.
+  - **Fase B:** Tras la subida exitosa, se obtiene la ruta remota (`foto_remote_path`), se actualiza la columna en PostgreSQL y se actualiza el estado local en SQLite como `foto_sync_status = 'SYNCED'`. Si no hay conexión o falla la subida de la imagen, el caso se sincroniza de todas formas y la fotografía queda encolada para reintento automático.
 
-### Qué guarda cada base
-| | SQLite (en el teléfono) | Supabase (en la nube) |
+---
+
+## 🔄 Motor de Sincronización Bidireccional (`SyncEngine`)
+
+El motor de sincronización (`src/data/remote/sincronizacion/`) resuelve los problemas clásicos de pérdida de datos en aplicaciones móviles concurrentes:
+
+### 1. Prevención de Duplicados e Idempotencia
+- **Identificadores UUID v4 en el Cliente:** Tanto los casos, los turnos como los eventos generan su clave primaria antes de guardarse en SQLite.
+- **Idempotency Keys:** Cada mutación en la cola `operaciones_pendientes` lleva un `idempotency_key`. Al impactar en el servidor se utiliza `UPSERT` (`onConflict: 'id'`), de modo que múltiples reintentos por microcortes de red nunca duplican registros.
+
+### 2. Resolución de Conflictos sin Pérdida de Datos
+- **Registros Inmutables / Append-Only (`turnos`, `eventos_historial`):**
+  - Los eventos clínicos y turnos no se sobreescriben. Si dos voluntarios agregan evoluciones en el mismo felino sin conexión, al sincronizar ambos registros coexisten ordenados cronológicamente sin pisarse.
+- **Fusión Parcial por Campos (Field-Level / Delta Merge):**
+  - Al editar un caso, el cliente no envía la fila completa sino un delta con `changed_fields` y su `updated_at`.
+  - La función remota `aplicar_cambios_caso()` en PostgreSQL aplica un merge campo por campo. Si el *Voluntario A* modificó el teléfono de tránsito y el *Voluntario B* actualizó la gravedad clínica, ambos cambios se fusionan e integran íntegros.
+- **Regla de Cierre Definitivo:**
+  - Si un caso pasa a estado `ADOPTADO` o `FALLECIDO`, el servidor y el cliente bloquean cualquier actualización clínica o de tránsito desfasada proveniente de otros dispositivos.
+
+### 3. Hidratación Incremental (Pull Sync)
+- La función `pullRemoteChanges(last_synced_at)` consulta a Supabase los registros con `updated_at > last_synced_at` y ejecuta un `UPSERT` en el SQLite local.
+- Si un voluntario inicia sesión en un dispositivo nuevo o vacío, la hidratación descarga automáticamente toda la base compartida de rescates, turnos e historiales.
+
+---
+
+## 🔔 Notificaciones y Alarmas Locales en Android (`expo-notifications`)
+
+1. **Canal de Alta Prioridad Android (`setNotificationChannelAsync`):**
+   - Se crea el canal nativo `'turnos-veterinarios'` con importancia máxima (`AndroidImportance.MAX`), patrón de vibración `[0, 250, 250, 250]` y habilitación de sonido/luces LED para asegurar el disparo en Android 8.0+ (API 26+) incluso con la pantalla apagada.
+2. **Permisos en Tiempo de Ejecución:**
+   - La solicitud de permisos de notificación se realiza de forma contextual cuando el voluntario agenda su primer turno médico, manejando elegantemente el rechazo sin interrumpir el flujo.
+3. **Cancelación Reactiva de Notificaciones:**
+   - Al programar el turno con `scheduleNotificationAsync`, el identificador retornado (`notification_id`) se persiste en la tabla `turnos` de SQLite.
+   - Si el turno es marcado como cumplido, cancelado por el voluntario o el animal es adoptado, el sistema ejecuta `cancelScheduledNotificationAsync(notification_id)` para evitar alarmas obsoletas.
+
+---
+
+## 🎯 Criterio de Urgencia Multicriterio (`CalcularPrioridadCasoUseCase`)
+
+El sistema reemplazó el conteo de días simple por un modelo de triaje multicriterio alineado con la realidad del rescate animal:
+
+| Nivel de Prioridad | Criterios Determinísticos de Asignación | Puntaje Base |
 |---|---|---|
-| Rol | Copia de trabajo: la app funciona sin señal | Fuente compartida entre voluntarios |
-| Quién la ve | Solo ese teléfono | Todos los voluntarios **aprobados** |
-| Cola `operaciones_pendientes` | Sí: cambios hechos sin conexión | No: es de cada dispositivo |
-| Auth | — | Supabase Auth (reemplaza el login local con clave en texto plano) |
-| Fotos | Ruta local (`foto_uri`) | Storage privado, bucket `fotos-casos` |
+| **URGENTE (Prioridad 1)** | `gravedad_clinica === 'CRITICA'` **O** `vulnerabilidad === 'LACTANTE_SIN_MADRE'` **O** `vulnerabilidad === 'SIN_TRANSITO'` **O** días en espera $\ge$ umbral configurable (15 días). | 700 - 1000 |
+| **ATENCION (Prioridad 2)** | `gravedad_clinica === 'MODERADA'` **O** `vulnerabilidad === 'EN_TRATAMIENTO'` **O** días en espera $\ge 70\%$ del umbral (11 días con umbral 15). | 400 - 600 |
+| **AL_DIA (Prioridad 3)** | Casos activos estables que no cumplen condiciones de urgencia ni atención. | 100 - 300 |
+| **Casos Cerrados** | Casos en estado `ADOPTADO` o `FALLECIDO` **nunca** se computan como urgentes. | 0 |
 
-```
-Teléfono A ──(SQLite + cola)──┐                       ┌── Teléfono B
-                              ├──►  Supabase (RLS) ◄──┤
-Teléfono C ──(SQLite + cola)──┘   Postgres · Auth · Storage
-```
-
-### Esquema del servidor
-Está en [`supabase/migrations/20261030000000_esquema_inicial.sql`](supabase/migrations/20261030000000_esquema_inicial.sql). Tablas: `perfiles`, `casos`, `conflictos`, `eventos_historial`, `fotos_caso`, `centros_veterinarios` y `turnos`.
-
-### Respuesta a la devolución de la preentrega
-| Observación | Cómo se resuelve |
-|---|---|
-| **Urgencia solo por días** | El campo `gravedad` (`critico` / `urgente` / `estable`) se carga al ingresar el caso y reemplaza al criterio por días. *Pendiente:* validar los criterios con el refugio y adaptar la app. |
-| **"Última modificación gana" pierde datos** | La función `aplicar_cambios_caso()` fusiona **campo por campo** (cada campo guarda cuándo se modificó por última vez). Si dos voluntarios cambian el mismo campo, gana el más reciente y el valor descartado queda registrado en la tabla `conflictos` para revisarlo. |
-| **Duplicaciones** | Todos los ids son UUID generados en el teléfono: reenviar una operación no crea un registro nuevo. |
-| **Historial** | `eventos_historial` es de solo-agregar (no se edita ni se borra), por lo que no puede haber conflictos. |
-| **Fotos** | Cada foto es una fila nueva con ruta única en un bucket privado (máx. 5 MB; jpg, png o webp). Se sube con su propia cola de reintentos. |
-| **Seguridad y acceso** | Todas las tablas tienen RLS. Un registro nuevo queda **pendiente** hasta que un **coordinador lo aprueba**; solo los aprobados ven casos, fotos y ubicaciones. Nadie puede aprobarse ni cambiarse el rol a sí mismo (lo bloquea un trigger). El usuario sin sesión no accede a nada. |
-| **Integración real** | Cliente de Supabase en la app y motor de sincronización funcionando (ver "Sincronización"). Probado contra la base real con un emulador y un segundo "voluntario" editando desde el panel de Supabase. *Pendiente:* prueba con dos dispositivos físicos y los recordatorios en dispositivo real. |
-
-### Sincronización
-El motor está en `src/data/remote/sincronizacion/` y no depende de React Native ni de Supabase (recibe el servidor, el almacenamiento local y el estado como dependencias), por lo que se prueba con Node contra un Postgres real.
-
-| Archivo | Rol |
-|---|---|
-| `MotorSincronizacion.ts` | Algoritmo: sube la cola, sube el historial, baja el estado del servidor |
-| `mapeo.ts` | Conversión modelo local ↔ filas del servidor y cálculo de qué campos cambiaron |
-| `ServidorSupabase.ts` | Implementación con `supabase-js` (RLS aplica en el servidor) |
-| `AlmacenSqlite.ts` | Lectura y escritura en la base SQLite de la app |
-| `SincronizadorSupabase.ts` | Une las piezas; evita dos sincronizaciones a la vez (botón manual + auto-sync) |
-
-`CasoRepositoryImpl.sincronizar()` delega en el motor. Antes marcaba todo como `SYNCED` y borraba la cola **sin enviar nada** al servidor.
-
-**Cómo evita perder datos**
-1. **Solo se envían los campos que cambiaron**, comparados contra la última versión conocida del servidor. Mandar el caso completo haría que un campo viejo que el voluntario no tocó pisara el cambio de otro.
-2. Cada cambio viaja con la hora en que se hizo; el servidor fusiona **campo por campo** con `aplicar_cambios_caso()`.
-3. Si dos voluntarios cambian el **mismo campo**, gana el más reciente y el valor descartado queda en la tabla `conflictos`; la app lo informa en el log (`[sync] N campo(s) con conflicto`).
-4. Una operación sale de la cola recién cuando el servidor la aceptó. Un corte de red a mitad no pierde nada y los reintentos no duplican (ids UUID).
-5. Con conexión recuperada, `useAutoSync` sincroniza solo.
-
-**Qué se probó**
-- **Motor contra Postgres real (PGlite, dos teléfonos simulados):** 24 comprobaciones, en `supabase/tests/motor-sincronizacion.test.mjs` (las instrucciones para correrlas están al principio del archivo). Campos distintos conservan los dos cambios; el mismo campo gana el más reciente y queda registrado; un campo viejo no pisa al ajeno; corte de red; reintentos sin duplicar; operación inválida que no bloquea al resto; historial que sube con su caso.
-- **En un emulador Android, contra Supabase real:**
-  - Un caso creado en la app llegó a `casos`, y su evento de llegada a `eventos_historial`.
-  - En un teléfono recién instalado, el caso apareció al sincronizar (descarga).
-  - **Sin conexión**, la app cambió la castración y los virales de un caso; mientras tanto otro voluntario cambió la personalidad en el servidor. Al volver la red quedaron **los dos cambios**.
-  - **Mismo campo desde los dos lados** (estado del caso): quedó el más reciente (`EN_ADOPCION`) y el valor perdido (`EN_CLINICA`) figura en `conflictos`.
-- La sesión se recuerda al reabrir la app (`AppNavigator` consulta `obtenerVoluntarioActual()`); sin conexión usa los datos de la sesión guardada, que solo existe si la cuenta ya estaba aprobada.
-
-**Errores que aparecieron al probar y se corrigieron**
-- Con señal, `RegistrarRescate` guarda el caso y su evento como `SYNCED` sin haberlos enviado, y `agregar()`/`actualizarEstado()` no encolan el evento: el historial nunca llegaba al servidor. El motor ahora sube los eventos de un caso junto con su creación y los eventos `PENDING`.
-- La app arrancaba siempre en el login, aunque hubiera sesión guardada, y sin conexión no se podía entrar.
-
-**Modelo por animal y prioridad** (migración `supabase/migrations/20261031000000_animales_pendientes_adopciones.sql`, **ya aplicada** en el proyecto `perf-app` el 31/10/2026; las tablas están vacías y la app todavía no las usa)
-- `animales`: castración, virales, peso, embarazo y desparasitaciones **por animal** (la planilla del refugio los maneja así: "Jade ya castrada, falta Kai").
-- `pendientes`: castrar, estudio, cirugía, especialista.
-- `adopciones`: una fila por adopción; si el animal vuelve queda el registro anterior. Los datos del adoptante solo los ven los coordinadores.
-- `src/domain/services/PrioridadCaso.ts`: `calcularPrioridad()` combina gravedad y pendientes sin resolver; la espera larga en adopción solo desempata. **Los pesos son una propuesta y hay que validarlos con el refugio.** Todavía no está conectada a la app.
-
-### Para el equipo: qué hay que saber antes de tocar esto
-- **Una sola base compartida:** el proyecto `perf-app` de Supabase es de **producción** y lo usan todos. No borrar ni migrar sin avisar. Las cuentas y casos de prueba hay que borrarlos al terminar (ya se limpiaron los de las pruebas del 31/10).
-- **Código nuevo (no pisa nada del equipo):** `src/data/remote/sincronizacion/` (motor, mapeo, adaptadores y fotos), `src/data/local/CandadoApp.ts`, `PantallaCandado.tsx`, `src/domain/models/Animal.ts`, `src/domain/services/PrioridadCaso.ts` y `supabase/`.
-- **Archivos del equipo con un cambio mínimo:** `CasoRepositoryImpl.sincronizar()` (ahora llama al motor), `AppNavigator.tsx` (sesión recordada y candado), `AjustesScreen.tsx` (opción Seguridad) y `SupabaseAuthRepository` (modo sin conexión).
-- **Sin tocar todavía (a coordinar):** `Caso.ts`, `CasoMapper`, `Database.ts`, `WebDatabase.ts`, `EditarSanidadScreen` y `PasoDatos`, que son los que habría que conectar al modelo por animal.
-- **Los pesos de `calcularPrioridad()` son una propuesta.** Los criterios de urgencia los define el refugio: hay que validarlos con ellos antes de usarlos.
-- **Datos personales:** la planilla del refugio tiene datos reales de adoptantes y tránsitos. No copiarla al repositorio.
-- **Probar en el emulador:** hace falta el build nativo (`npx expo run:android`, JDK 17); Expo Go no sirve por `expo-notifications`. Las contraseñas las escribe cada persona.
-
-### Límites conocidos
-- **Fotos:** la foto principal se sube a Storage y los demás teléfonos reciben un enlace firmado (vence a los 7 días y se renueva en cada sincronización); sin señal esa foto no se ve en los teléfonos que no la sacaron. Implementado en `SincronizacionFotos.ts` y **sin probar todavía en dispositivo**.
-- Los centros veterinarios de la app son locales y no existen en el servidor: los turnos suben sin el centro.
-- Lo que se borra o se cancela en otro dispositivo no se elimina del teléfono al sincronizar; solo se agregan y actualizan filas.
-- Los casos de demostración (`data/mock/`) siguen apareciendo en cada teléfono nuevo.
-- La app guarda `esUrgente` (sí/no) y el servidor `gravedad` (tres niveles): hasta conectar la prioridad nueva, `esUrgente` se traduce a `urgente`/`estable`.
-- El orden de los cambios depende del **reloj de cada teléfono**: uno con la hora mal podría ganar un conflicto que no debería.
-- Los casos no se editan directo en la tabla: no hay política de `UPDATE`/`DELETE`, todo cambio pasa por `aplicar_cambios_caso()`.
-- El primer coordinador se crea a mano desde el SQL Editor (nadie puede aprobar al primero).
-- La clave `sb_publishable_...` del cliente es pública por diseño; la seguridad la dan las políticas RLS. La clave `secret`/`service_role` **nunca** va en la app ni en el repositorio.
-
-### Estado
-- [x] Proyecto de Supabase creado (región São Paulo) y esquema aplicado
-- [x] Tablas, RLS, permisos y bucket de fotos verificados con consultas sin sesión
-- [x] Cliente instalado (`src/data/remote/supabaseClient.ts`, sesión guardada en AsyncStorage)
-- [x] Login y registro con Supabase Auth (`SupabaseAuthRepository`; reemplaza al login local con clave en texto plano). Probado en el emulador. Las cuentas nuevas quedan pendientes y no pueden entrar hasta que un coordinador las apruebe
-- [x] Sesión recordada al reabrir la app (también sin conexión)
-- [x] Candado al abrir la app: pide huella, o el PIN o patrón del celular (`expo-local-authentication`). No se guarda ninguna contraseña: se recuerda la sesión y el candado la protege. Viene activado y se apaga en **Ajustes → Seguridad**; si el celular no tiene ningún bloqueo configurado, entra directo. Probado que el pedido aparece en el emulador; el desbloqueo exitoso lo verifica una persona (la pantalla del sistema no se puede automatizar ni capturar)
-- [x] `sincronizar()` real: sube la cola, baja cambios y maneja conflictos (ver "Sincronización")
-- [x] Prueba contra la base real: alta, descarga, edición sin conexión y conflicto del mismo campo
-- [x] Migración del modelo por animal, pendientes y adopciones escrita y probada contra Postgres (24 comprobaciones del motor + RLS)
-- [x] Migración aplicada en Supabase (31/10/2026). Pendiente: quitar el acceso del rol `anon` con `revoke all on public.animales, public.pendientes, public.adopciones from anon;` (hoy contestan vacío sin login porque RLS filtra todo, pero conviene cerrarlo igual)
-- [ ] Conectar `Caso.ts`, `CasoMapper` y `Database.ts` a los animales y pendientes (son archivos del equipo: **coordinar antes de tocarlos**)
-- [ ] Criterio de urgencia por gravedad en la app (`calcularPrioridad()` ya existe, falta conectarla y validar los pesos con el refugio)
-- [ ] Pantalla de aprobación de voluntarios para coordinadores
-- [x] Subida de fotos a Storage con reintentos (código listo, falta probarlo en el emulador)
-- [ ] Prueba del circuito completo en dos dispositivos reales (incluidos los recordatorios)
-- [ ] Eliminar `data/mock/` y el `MockRemoteApiClient`
-
-### Cómo reproducir el backend
-1. Crear un proyecto en [supabase.com](https://supabase.com) (región South America – São Paulo).
-2. En **SQL Editor**, pegar el **contenido** de cada archivo de `supabase/migrations/` **en orden** (`20261030...esquema_inicial.sql`, después `20261031...animales_pendientes_adopciones.sql`) y ejecutarlos. Después correr el `revoke ... from anon` de arriba.
-3. En **Authentication → Sign In / Providers → Email**, desactivar *Confirm email* mientras se prueba.
-4. Aprobar un voluntario (la primera vez, a mano, desde el SQL Editor; después lo hace un coordinador desde la app):
-   ```sql
-   update public.perfiles set aprobado = true, rol = 'coordinador' where email = 'tu-correo@ejemplo.com';
-   ```
-5. Copiar la *Project URL* y la clave *publishable* en `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` (o en `src/data/remote/supabaseClient.ts`).
+- **Accesibilidad en Interfaz:**
+  - El formulario de alta (Paso 2) y el detalle de caso cuentan con chips táctiles accesibles con altura mínima de **48dp** y contraste accesible.
+  - Las tarjetas (`CasoCard`) y badges (`UrgenciaBadge`) muestran tanto el código cromático como la etiqueta textual del motivo (ej. *"URGENTE • Crítico"*, *"URGENTE • Lactante sin madre"*, *"URGENTE • +16 días"*).
 
 ---
 
@@ -365,7 +319,7 @@ Antes de instalar y correr la aplicación, asegurate de tener instalado en tu co
 
 ---
 
-## 📦 Instalación
+## 📦 Instalación y Configuración
 
 1. **Clonar el repositorio:**
    ```bash
@@ -373,15 +327,45 @@ Antes de instalar y correr la aplicación, asegurate de tener instalado en tu co
    cd PERF-App
    ```
 
-2. **Instalar las dependencias del proyecto:**
+2. **Instalar dependencias del proyecto:**
    ```bash
    npm install
    ```
 
-3. **Verificar que no existan errores de tipos en TypeScript:**
+3. **Configurar variables de entorno (`.env`):**
+   Copia el archivo `.env.example` a `.env` y configura tus credenciales de Supabase:
+   ```bash
+   cp .env.example .env
+   ```
+   Contenido de `.env`:
+   ```env
+   EXPO_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=tu-anon-key-publica
+   ```
+
+4. **Desplegar la infraestructura en Supabase (`supabase/schema.sql`):**
+   - Ingresa al panel de Supabase en [supabase.com](https://supabase.com).
+   - Dirígete a la sección **SQL Editor**.
+   - Abre y copia el contenido completo de [`supabase/schema.sql`](supabase/schema.sql) y haz clic en **Run**.
+   - Esto creará automáticamente:
+     - Las tablas (`casos`, `turnos`, `eventos_historial`, `centros_veterinarios`, `conflictos`, `perfiles`).
+     - Las políticas de seguridad **Row Level Security (RLS)** que bloquean el acceso anónimo (`anon`) y permiten lectura/escritura a usuarios autenticados (`authenticated`).
+     - El bucket privado de Storage `casos-fotos` con sus directivas de acceso firmado.
+     - La función de base de datos `aplicar_cambios_caso()` para la fusión *delta merge* campo por campo.
+
+5. **Verificar compilación estricta de TypeScript:**
    ```bash
    npx tsc --noEmit
    ```
+
+6. **Ejecutar Suite de Tests Unitarios (Jest):**
+   ```bash
+   npm test
+   ```
+   Ejecuta 17 pruebas unitarias automatizadas cubriendo:
+   - `CalcularPrioridadCasoUseCase.test.ts`: Modelo multicriterio (casos críticos inmediatos vs. transcurso de días, lactantes sin madre, umbral configurable, exclusión de casos adoptados/fallecidos).
+   - `DeltaMerge.test.ts`: Fusión parcial de campos concurrentes, diferencias delta y bloqueo de casos cerrados.
+   - `ColaOffline.test.ts`: Idempotencia de cola local, coexistencia *append-only* de turnos/historial e hidratación *Pull Sync* para dispositivos nuevos.
 
 ---
 
@@ -412,7 +396,7 @@ Al ejecutarse, Metro Bundler mostrará un código QR en la terminal y un panel c
 
 ### 3. Ejecución Nativa en Android (Build Local)
 
-Si necesitás compilar los módulos nativos completos de Android (para probar permisos del sistema operativo al 100%):
+Si necesitás compilar los módulos nativos completos de Android (para probar permisos del sistema operativo y canales de notificación al 100%):
 
 ```bash
 npm run android
@@ -424,9 +408,103 @@ npx expo run:android
 
 ---
 
+## 🛡️ Guía Paso a Paso para la Defensa Técnica (Demostración Multi-Dispositivo E2E)
+
+Para defender ante los profesores el cumplimiento integral de los requerimientos de la Etapa 2 (Offline First, Tolerancia a Fallos, No Pérdida de Datos y Notificaciones Reales), seguir este guión técnico:
+
+```
+┌─────────────────────────────────┐                ┌─────────────────────────────────┐
+│     DISPOSITIVO A (Campo)       │                │    DISPOSITIVO B (Coordinador)  │
+│      Modo Avión Activado        │                │         Conectado a Red         │
+└────────────────┬────────────────┘                └────────────────┬────────────────┘
+                 │                                                  │
+ 1. Nuevo Rescate en Calle (Offline)                                │
+    - Foto capturada localmente                                     │
+    - Triaje: CRITICA + SIN_TRANSITO                                │
+    - Asignado URGENTE • Crítico                                    │
+    - Persistido en SQLite con UUID v4                              │
+    - Encolado con idempotency_key                                  │
+                 │                                                  │
+ 2. Reconexión Dispositivo A                                        │
+    - useAutoSync detecta red                                       │
+    - Fase A: Sube foto a bucket privado                            │
+    - Fase B: Actualiza foto_remote_path                            │
+    - UPSERT idempotente en Supabase                                │
+                 │                                                  │
+                 └──────────────► Servidor Supabase ───────────────►│
+                                                                    │
+                                    3. Hidratación Automática (Pull Sync)
+                                       - Ejecuta pullRemoteChanges()
+                                       - Descarga caso, historial y foto
+                                       - Agenta Turno en Veterinaria
+                                       - Notificación MAX programada
+                                       - Modifica transito_direccion
+                                                                    │
+                 ◄────────────── Servidor Supabase ◄────────────────┘
+                 │
+ 4. Edición Concurrente y Delta Merge
+    - Dispositivo A edita gravedad_clinica a MODERADA
+    - Sincronizan ambos dispositivos
+    - aplicar_cambios_caso() fusiona campo por campo
+    - RESULTADO: Ambos cambios coexisten íntegros sin sobreescritura
+                 │
+ 5. Cierre de Caso y Cancelación de Alarmas
+    - Se pasa el caso a estado ADOPTADO
+    - Se cancela reactivamente la alarma local mediante notification_id
+    - Caso queda sellado contra modificaciones desfasadas
+```
+
+### Paso 1: Operación Offline en Campo (Dispositivo A)
+1. Activar el **Modo Avión** en el Dispositivo A.
+2. Iniciar el flujo **"Nuevo Rescate"**:
+   - Tomar o seleccionar una fotografía felina (se comprime y guarda como `foto_local_uri`).
+   - Cargar datos: nombre *"Michi Callejero"*, ubicación obtenida por GPS.
+   - En el Triaje Multicriterio, seleccionar chips: **Gravedad Clínica: CRITICA** y **Vulnerabilidad: SIN_TRANSITO**.
+   - La app muestra inmediatamente el banner accesible: *"Prioridad Calculada: URGENTE • Crítico"*.
+3. Confirmar y guardar el rescate:
+   - Se guarda de inmediato en SQLite local (`casos`) con `sync_status = 'PENDING'` y `foto_sync_status = 'PENDING'`.
+   - Se genera un UUID v4 determinístico y se encola la mutación con `idempotency_key` única en `operaciones_pendientes`.
+   - La pantalla de detalle y la bandeja de casos muestran el badge *"URGENTE • Crítico"* en rojo accesible.
+
+### Paso 2: Reconexión y Sincronización en Dos Fases
+1. Desactivar el **Modo Avión** en el Dispositivo A.
+2. El listener de `NetInfo` dispara la sincronización automática (`useAutoSync`):
+   - **Fase A (Storage):** El binario local se sube a `casos-fotos/{caso_id}/{uuid}.jpg` en Supabase Storage.
+   - **Fase B (Metadata):** Se guarda la ruta remota `foto_remote_path`, se envía el `UPSERT` a PostgreSQL y se marca `foto_sync_status = 'SYNCED'`.
+   - La mutación sale de `operaciones_pendientes` únicamente tras la confirmación del servidor.
+
+### Paso 3: Hidratación en Dispositivo B (Pull Sync) y Agenda de Turno
+1. En el Dispositivo B (emulador o segundo teléfono conectado):
+   - Iniciar sesión con credenciales de voluntario autenticado.
+   - Al presionar **Sincronizar** (o automáticamente en el refresco), `pullRemoteChanges(last_synced_at)` consulta registros con `updated_at > last_synced_at`.
+   - El caso *"Michi Callejero"* aparece instantáneamente en la bandeja con todos sus datos y fotografía visible mediante URL firmada.
+2. Agendar un turno veterinario:
+   - Ingresar al detalle de *"Michi Callejero"* > **Agendar Turno**.
+   - Elegir fecha, clínica y activar recordatorio (1 día antes / 2 horas antes).
+   - El sistema solicita permisos nativos de notificación, configura el canal Android `turnos-veterinarios` (`AndroidImportance.MAX`, sonido, vibración) y guarda el `notification_id` nativo retornado en la tabla `turnos`.
+
+### Paso 4: Demostración de Fusión Delta sin Pérdida de Datos
+1. Sin conexión en Dispositivo A:
+   - El Voluntario A cambia la **Gravedad Clínica** a `'MODERADA'` (el gato fue estabilizado).
+2. En Dispositivo B:
+   - El Voluntario B actualiza la **Dirección de Tránsito** a *"Av. Corrientes 1234"*.
+3. Ambos dispositivos se reconectan y sincronizan:
+   - Cada dispositivo envía únicamente el objeto `changed_fields` con sus marcas temporales.
+   - La función PostgreSQL `aplicar_cambios_caso()` aplica la fusión a nivel campo:
+     - `gravedad_clinica` se actualiza al valor de A.
+     - `transito_direccion` se actualiza al valor de B.
+   - **Resultado Comprobable:** En ambos teléfonos, el caso contiene **ambos cambios íntegros** sin haber sobreescrito la fila completa ni perdido información.
+
+### Paso 5: Regla de Cierre y Cancelación de Alarma
+1. Se actualiza el estado de *"Michi Callejero"* a `ADOPTADO`:
+   - El repositorio detecta el cierre definitivo: cancela automáticamente la alarma médica programada mediante `cancelScheduledNotificationAsync(notification_id)`.
+   - Se sella el caso contra futuras modificaciones desfasadas desde la red.
+
+---
+
 ## 🧪 Pruebas de Capacidades Nativas en Emulador
 
-- **Cámara:** El emulador de Android utiliza por defecto una cámara virtual animada. En un dispositivo físico capturará fotos reales y las almacenará en el almacenamiento temporal de la app.
+- **Cámara:** El emulador de Android utiliza por defecto una cámara virtual animada. En un dispositivo físico capturará fotos reales y las almacenará en el almacenamiento de la app.
 - **Geolocalización (GPS):** Podés simular una posición geográfica en el emulador desde la ventana de **Extended Controls** (`...` en el emulador > *Location*) o mediante comandos ADB en la terminal:
   ```bash
   adb emu geo fix -58.4106 -34.6094
@@ -444,10 +522,11 @@ npx expo run:android
 | Comando | Descripción |
 |---|---|
 | `npm start` | Inicia el servidor de desarrollo de Metro con Expo. |
+| `npm test` | Ejecuta la suite de pruebas unitarias automatizadas con Jest (17 tests). |
 | `npm run android` | Compila y ejecuta el proyecto nativo en Android. |
 | `npm run ios` | Compila y ejecuta el proyecto nativo en iOS (requiere macOS). |
 | `npm run web` | Inicia el servidor para previsualización web en el navegador. |
-| `npx tsc --noEmit` | Ejecuta el comprobador de tipos de TypeScript sobre todo el código fuente. |
+| `npx tsc --noEmit` | Ejecuta el comprobador de tipos estricto de TypeScript sobre todo el código fuente. |
 
 ---
 

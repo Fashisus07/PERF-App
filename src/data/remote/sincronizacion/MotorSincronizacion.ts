@@ -19,6 +19,7 @@ import {
 
 export interface OperacionCola {
   id: number;
+  idempotencyKey?: string;
   entidad: 'CASO' | 'TURNO' | 'HISTORIAL';
   operacion: 'CREATE' | 'UPDATE' | 'DELETE';
   payload: string;
@@ -51,9 +52,10 @@ export interface ServidorRemoto {
   marcarTurnoCumplido(id: string): Promise<void>;
   borrarTurno(id: string): Promise<void>;
   idsCentros(): Promise<Set<string>>;
-  listarCasos(): Promise<FilaServidor[]>;
-  listarEventos(): Promise<FilaServidor[]>;
-  listarTurnos(): Promise<FilaServidor[]>;
+  listarCentros(): Promise<FilaServidor[]>;
+  listarCasos(desdeIso?: string): Promise<FilaServidor[]>;
+  listarEventos(desdeIso?: string): Promise<FilaServidor[]>;
+  listarTurnos(desdeIso?: string): Promise<FilaServidor[]>;
 }
 
 export interface AlmacenLocal {
@@ -93,6 +95,50 @@ export interface Dependencias {
   almacen: AlmacenLocal;
   estado: EstadoSync;
   ahora?: () => number;
+}
+
+/**
+ * Hidrata y recupera datos del servidor de manera incremental (Pull Sync).
+ * Si ultimaSync es 0 (dispositivo nuevo o primer sync), descarga todo el historial y casos.
+ */
+export async function pullRemoteChanges(
+  servidor: ServidorRemoto,
+  almacen: AlmacenLocal,
+  estado: EstadoSync,
+  casosPendientes: Set<string> = new Set(),
+  turnosPendientes: Set<string> = new Set()
+): Promise<{ descargadas: number; basesActualizadas: Record<string, Comparable> }> {
+  const ultimaSync = (await estado.leerUltimaSync()) ?? 0;
+  const desdeIso = ultimaSync > 0 ? new Date(ultimaSync).toISOString() : undefined;
+  const bases = await estado.leerBases();
+  let descargadas = 0;
+
+  // 1. Casos
+  const filasCasos = await servidor.listarCasos(desdeIso);
+  for (const fila of filasCasos) {
+    if (casosPendientes.has(fila.id)) continue;
+    const caso = casoDesdeServidor(fila);
+    await almacen.guardarCaso(caso);
+    bases[caso.id] = camposComparables(caso);
+    descargadas++;
+  }
+
+  // 2. Eventos de historial (inmutables / append-only)
+  const filasEventos = await servidor.listarEventos(desdeIso);
+  for (const fila of filasEventos) {
+    if (casosPendientes.has(fila.caso_id)) continue;
+    await almacen.guardarEvento(eventoDesdeServidor(fila));
+  }
+
+  // 3. Turnos (inmutables / append-only)
+  const filasTurnos = await servidor.listarTurnos(desdeIso);
+  for (const fila of filasTurnos) {
+    if (turnosPendientes.has(fila.id) || casosPendientes.has(fila.caso_id)) continue;
+    await almacen.guardarTurno(turnoDesdeServidor(fila));
+  }
+
+  await estado.guardarBases(bases);
+  return { descargadas, basesActualizadas: bases };
 }
 
 export async function sincronizar({ servidor, almacen, estado, ahora = Date.now }: Dependencias): Promise<ResultadoSync> {
@@ -137,34 +183,22 @@ export async function sincronizar({ servidor, almacen, estado, ahora = Date.now 
     }
   }
 
-  // ── 2. Bajar el estado del servidor, salvo lo que todavía tiene cambios sin subir. ──
+  // ── 2. Bajar el estado del servidor (Pull Sync incremental), omitiendo entidades pendientes locales ──
   const pendientes = await almacen.leerCola();
   const casosPendientes = new Set<string>();
   const turnosPendientes = new Set<string>();
   for (const op of pendientes) {
-    const p = JSON.parse(op.payload);
-    if (op.entidad === 'CASO' && p.id) casosPendientes.add(p.id);
-    if (op.entidad === 'TURNO' && p.id) turnosPendientes.add(p.id);
-    if (op.entidad === 'HISTORIAL' && p.casoId) casosPendientes.add(p.casoId);
+    try {
+      const p = JSON.parse(op.payload);
+      if (op.entidad === 'CASO' && p.id) casosPendientes.add(p.id);
+      if (op.entidad === 'TURNO' && p.id) turnosPendientes.add(p.id);
+      if (op.entidad === 'HISTORIAL' && p.casoId) casosPendientes.add(p.casoId);
+    } catch {}
   }
 
-  for (const fila of await servidor.listarCasos()) {
-    if (casosPendientes.has(fila.id)) continue;
-    const caso = casoDesdeServidor(fila);
-    await almacen.guardarCaso(caso);
-    bases[caso.id] = camposComparables(caso);
-    resultado.descargadas++;
-  }
-  for (const fila of await servidor.listarEventos()) {
-    if (casosPendientes.has(fila.caso_id)) continue;
-    await almacen.guardarEvento(eventoDesdeServidor(fila));
-  }
-  for (const fila of await servidor.listarTurnos()) {
-    if (turnosPendientes.has(fila.id) || casosPendientes.has(fila.caso_id)) continue;
-    await almacen.guardarTurno(turnoDesdeServidor(fila));
-  }
+  const { descargadas } = await pullRemoteChanges(servidor, almacen, estado, casosPendientes, turnosPendientes);
+  resultado.descargadas = descargadas;
 
-  await estado.guardarBases(bases);
   await estado.guardarUltimaSync(inicio);
   return resultado;
 }
@@ -185,7 +219,7 @@ async function subirOperacion(op: OperacionCola, ctx: ContextoSubida): Promise<v
   switch (`${op.entidad}:${op.operacion}`) {
     case 'CASO:CREATE': {
       const caso = payload as Caso;
-      await servidor.insertarCaso(filaCasoParaServidor(caso)); // 'existia' = reintento ya aplicado
+      await servidor.insertarCaso(filaCasoParaServidor(caso)); // 'existia' = reintento ya aplicado (idempotencia)
       // El historial de un caso recién creado (su llegada) no pasa por la cola y con señal figura como SYNCED:
       // se sube junto con el caso. Reenviar uno que ya está es inofensivo (mismo UUID).
       for (const evento of await almacen.leerEventosDeCaso(caso.id)) {
@@ -213,13 +247,15 @@ async function subirOperacion(op: OperacionCola, ctx: ContextoSubida): Promise<v
         base = camposComparables(casoDesdeServidor(fila));
       }
 
+      // Delta merge: mandar solo campos modificados
       const dif = diferenciasCaso(payload, base, op.createdAt);
       if (Object.keys(dif.cambios).length === 0) {
         bases[id] = base;
         return;
       }
       try {
-        const r = await servidor.aplicarCambiosCaso(id, dif.cambios, dif.camposTs, new Date(ultimaSync).toISOString());
+        const baseIso = ultimaSync > 0 ? new Date(ultimaSync).toISOString() : new Date(0).toISOString();
+        const r = await servidor.aplicarCambiosCaso(id, dif.cambios, dif.camposTs, baseIso);
         resultado.conflictos.push(...r.conflictos.map((campo) => `${id}:${campo}`));
       } catch (e) {
         if (!(e instanceof ErrorCasoInexistente)) throw e;
@@ -227,7 +263,6 @@ async function subirOperacion(op: OperacionCola, ctx: ContextoSubida): Promise<v
         if (!local) throw e;
         await servidor.insertarCaso(filaCasoParaServidor(local));
       }
-      // Lo enviado pasa a ser lo último que sabemos: la próxima operación solo manda lo nuevo.
       bases[id] = { ...base, ...dif.nuevosValores };
       return;
     }

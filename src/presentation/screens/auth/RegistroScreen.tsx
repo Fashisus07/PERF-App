@@ -324,6 +324,33 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
             </View>
           ) : null}
 
+          {errorGeneral && authRepository.registrarOffline ? (
+            <Pressable
+              style={styles.offlineBtn}
+              onPress={async () => {
+                setGuardando(true);
+                try {
+                  await authRepository.registrarOffline!({
+                    nombre: nombre.trim(),
+                    email: email.trim(),
+                    telefono: whatsapp.trim(),
+                    zona,
+                    clave,
+                    recursos,
+                  });
+                  onRegistrar();
+                } catch (err: any) {
+                  setErrorGeneral(err?.message || 'Error al registrar voluntario offline.');
+                } finally {
+                  setGuardando(false);
+                }
+              }}
+            >
+              <MaterialIcons name="offline-pin" size={20} color={colors.primary} />
+              <Text style={styles.offlineBtnText}>Continuar en Modo Offline (Voluntario Local)</Text>
+            </Pressable>
+          ) : null}
+
           {cuentaCreada ? (
             <View style={styles.okBanner}>
               <MaterialIcons name="check-circle" size={20} color={colors.primary} />
@@ -530,5 +557,24 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semibold,
     fontSize: 14,
     color: colors.urgente,
+  },
+  offlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    minHeight: 48,
+    marginTop: 4,
+  },
+  offlineBtnText: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    color: colors.primary,
   },
 });

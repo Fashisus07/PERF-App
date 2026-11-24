@@ -26,6 +26,7 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
     await _db.execAsync('PRAGMA foreign_keys = ON;');
   } catch {}
   await crearTablas(_db);
+  await migrarColumnas(_db);
   return _db;
 }
 
@@ -48,6 +49,9 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
       latitud                       REAL,
       longitud                      REAL,
       foto_uri                      TEXT,
+      foto_local_uri                TEXT,
+      foto_remote_path              TEXT,
+      foto_sync_status              TEXT    NOT NULL DEFAULT 'PENDING',
       fecha_rescate                 INTEGER NOT NULL,
       quien_sigue_caso              TEXT,
       transito_nombre               TEXT,
@@ -58,6 +62,13 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
       fecha_primera_desparasitacion INTEGER,
       fecha_segunda_desparasitacion INTEGER,
       estado_caso                   TEXT    NOT NULL DEFAULT 'EN_TRANSITO',
+      gravedad_clinica              TEXT    NOT NULL DEFAULT 'MODERADA',
+      vulnerabilidad                TEXT    NOT NULL DEFAULT 'ESTABLE',
+      nivel_prioridad               TEXT    NOT NULL DEFAULT 'ATENCION',
+      motivo_urgencia               TEXT,
+      puntaje_prioridad             INTEGER NOT NULL DEFAULT 0,
+      creado_por_user_id            TEXT,
+      modificado_por_user_id        TEXT,
       es_urgente                    INTEGER NOT NULL DEFAULT 0,
       sync_status                   TEXT    NOT NULL DEFAULT 'PENDING',
       updated_at                    INTEGER NOT NULL
@@ -71,6 +82,7 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
       motivo                 TEXT    NOT NULL,
       recordatorio_minutos   INTEGER NOT NULL DEFAULT 120,
       cumplido               INTEGER NOT NULL DEFAULT 0,
+      notification_id        TEXT,
       sync_status            TEXT    NOT NULL DEFAULT 'PENDING',
       updated_at             INTEGER NOT NULL,
       FOREIGN KEY (caso_id) REFERENCES casos(id)
@@ -87,12 +99,13 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
     );
 
     CREATE TABLE IF NOT EXISTS operaciones_pendientes (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      entidad    TEXT    NOT NULL,
-      operacion  TEXT    NOT NULL,
-      payload    TEXT    NOT NULL,
-      reintentos INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      idempotency_key TEXT,
+      entidad         TEXT    NOT NULL,
+      operacion       TEXT    NOT NULL,
+      payload         TEXT    NOT NULL,
+      reintentos      INTEGER NOT NULL DEFAULT 0,
+      created_at      INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS centros_veterinarios (
@@ -121,6 +134,37 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
       created_at INTEGER NOT NULL
     );
   `);
+}
+
+/**
+ * Migra columnas faltantes en bases ya creadas en dispositivos físicos o tests.
+ */
+async function migrarColumnas(db: SQLite.SQLiteDatabase): Promise<void> {
+  const columnasCasos = [
+    'ALTER TABLE casos ADD COLUMN foto_local_uri TEXT;',
+    'ALTER TABLE casos ADD COLUMN foto_remote_path TEXT;',
+    'ALTER TABLE casos ADD COLUMN foto_sync_status TEXT NOT NULL DEFAULT "PENDING";',
+    'ALTER TABLE casos ADD COLUMN gravedad_clinica TEXT NOT NULL DEFAULT "MODERADA";',
+    'ALTER TABLE casos ADD COLUMN vulnerabilidad TEXT NOT NULL DEFAULT "ESTABLE";',
+    'ALTER TABLE casos ADD COLUMN nivel_prioridad TEXT NOT NULL DEFAULT "ATENCION";',
+    'ALTER TABLE casos ADD COLUMN motivo_urgencia TEXT;',
+    'ALTER TABLE casos ADD COLUMN puntaje_prioridad INTEGER NOT NULL DEFAULT 0;',
+    'ALTER TABLE casos ADD COLUMN creado_por_user_id TEXT;',
+    'ALTER TABLE casos ADD COLUMN modificado_por_user_id TEXT;',
+  ];
+  for (const sql of columnasCasos) {
+    try {
+      await db.execAsync(sql);
+    } catch {}
+  }
+
+  try {
+    await db.execAsync('ALTER TABLE turnos ADD COLUMN notification_id TEXT;');
+  } catch {}
+
+  try {
+    await db.execAsync('ALTER TABLE operaciones_pendientes ADD COLUMN idempotency_key TEXT;');
+  } catch {}
 }
 
 /**

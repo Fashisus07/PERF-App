@@ -150,7 +150,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
           <View style={styles.field}>
             <View style={styles.labelRow}>
               <Text style={styles.textDark}>Contraseña</Text>
-              <Pressable style={styles.linkBtn} hitSlop={8}>
+              <Pressable style={styles.linkBtn} hitSlop={8} onPress={onRecuperarClave}>
                 <Text style={styles.link}>¿Olvidaste tu clave?</Text>
               </Pressable>
             </View>
@@ -212,6 +212,28 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
             <Pressable style={[styles.btn, styles.btnSecondary]} onPress={handleBiometria} disabled={iniciando}>
               <MaterialIcons name="fingerprint" size={22} color={colors.brand} />
               <Text style={styles.textDark}>Ingresar con huella digital</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.btn, styles.btnDemo]}
+              onPress={async () => {
+                setIniciando(true);
+                try {
+                  if (authRepository.iniciarSesionComoDemo) {
+                    await authRepository.iniciarSesionComoDemo();
+                  }
+                  onLogin();
+                } catch (e: any) {
+                  setErrorMsg(e?.message || 'Error al iniciar sesión demo');
+                } finally {
+                  setIniciando(false);
+                }
+              }}
+              disabled={iniciando}
+            >
+              <MaterialIcons name="offline-pin" size={20} color={colors.primary} />
+              <Text style={[styles.textDark, { color: colors.primary, fontFamily: fonts.bold }]}>
+                Ingresar como Voluntario Demo (Modo Offline)
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -331,6 +353,12 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   btnSecondary: { backgroundColor: colors.surfaceChip, gap: 10, ...SHADOW_SM },
+  btnDemo: {
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    gap: 8,
+  },
 
   offlineChip: {
     alignSelf: 'stretch',

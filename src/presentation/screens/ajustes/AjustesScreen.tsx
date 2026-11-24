@@ -1,5 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Image, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UMBRAL_MAX, UMBRAL_MIN, Voluntario } from '../../../domain/models/Ajustes';
@@ -24,6 +24,16 @@ export function AjustesScreen({ navigation }: Props) {
   const [voluntario, setVoluntario] = useState<Voluntario | null>(null);
   const [candado, setCandado] = useState(true);
   const [tieneBloqueo, setTieneBloqueo] = useState(true);
+  const [pendientesCount, setPendientesCount] = useState<number>(0);
+
+  const cargarPendientes = useCallback(() => {
+    if (authRepository.obtenerVoluntariosPendientes) {
+      authRepository
+        .obtenerVoluntariosPendientes()
+        .then((list) => setPendientesCount(list.length))
+        .catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     candadoActivado().then(setCandado);
@@ -31,13 +41,19 @@ export function AjustesScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    authRepository.obtenerVoluntarioActual().then(setVoluntario);
+    authRepository.obtenerVoluntarioActual().then((vol) => {
+      setVoluntario(vol);
+      if (vol?.rol === 'coordinador') cargarPendientes();
+    });
     const unsubscribe = navigation?.addListener?.('focus', () => {
-      authRepository.obtenerVoluntarioActual().then(setVoluntario);
+      authRepository.obtenerVoluntarioActual().then((vol) => {
+        setVoluntario(vol);
+        if (vol?.rol === 'coordinador') cargarPendientes();
+      });
       actualizarResumen();
     });
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, cargarPendientes]);
 
   // El aviso ("Cambios guardados") desaparece solo.
   useEffect(() => {
@@ -105,6 +121,42 @@ export function AjustesScreen({ navigation }: Props) {
                 Personaliza umbrales de triaje, sincronización sin conexión y avisos de traslados veterinarios.
               </Text>
             </View>
+
+            {voluntario?.rol === 'coordinador' && (
+              <Tarjeta
+                icono="admin-panel-settings"
+                fondo="#e0f2fe"
+                color="#0284c7"
+                titulo="Panel de Coordinación"
+                sub="Aprobación y control de acceso de voluntarios"
+              >
+                <Pressable
+                  style={styles.btnCoordVoluntarios}
+                  onPress={() => navigation?.navigate?.('AprobacionVoluntarios')}
+                  accessibilityLabel="Abrir gestión de solicitudes de voluntarios"
+                >
+                  <View style={styles.coordIconBox}>
+                    <MaterialIcons name="how-to-reg" size={24} color="#0284c7" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.coordTitulo}>Solicitudes de Voluntarios</Text>
+                    <Text style={styles.coordSub}>
+                      {pendientesCount === 1
+                        ? '1 solicitud pendiente de revisión'
+                        : pendientesCount > 1
+                          ? `${pendientesCount} solicitudes pendientes de revisión`
+                          : 'Todas las solicitudes están al día'}
+                    </Text>
+                  </View>
+                  {pendientesCount > 0 && (
+                    <View style={styles.coordBadge}>
+                      <Text style={styles.coordBadgeText}>{pendientesCount}</Text>
+                    </View>
+                  )}
+                  <MaterialIcons name="chevron-right" size={24} color={colors.textSubtle} />
+                </Pressable>
+              </Tarjeta>
+            )}
 
             <Tarjeta icono="adjust" fondo={colors.urgenteBg} color={colors.urgente} titulo="Criterios de Urgencia y Triaje" sub="Umbral automático para catálogo de rescates">
               <View style={styles.umbral}>
@@ -237,8 +289,13 @@ export function AjustesScreen({ navigation }: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.sesionLabel}>Sesión activa como</Text>
                   <Text style={styles.sesionNombre}>
-                    {voluntario?.nombre || 'Mariana Gomez'} · {voluntario?.brigada || 'Brigada Caballito'}
+                    {voluntario?.nombre || 'Voluntario'} · {voluntario?.brigada || 'Brigada PERF'}
                   </Text>
+                  {voluntario?.email && (
+                    <Text style={{ fontFamily: fonts.semibold, fontSize: 13, color: colors.primary, marginTop: 2 }}>
+                      {voluntario.email} {voluntario.id ? `• UID: ${voluntario.id.slice(0, 8)}...` : ''}
+                    </Text>
+                  )}
                   <Text style={styles.sesionEditar}>Toca para editar tus datos o equipamiento</Text>
                 </View>
                 <MaterialIcons name="chevron-right" size={22} color={colors.textSubtle} />
@@ -404,4 +461,44 @@ const styles = StyleSheet.create({
   guardarText: { fontFamily: fonts.semibold, fontSize: 16, color: '#fff' },
   toast: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 9999, backgroundColor: colors.toast },
   toastText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.toastText },
+
+  btnCoordVoluntarios: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceCard,
+  },
+  coordIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#e0f2fe',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coordTitulo: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    color: colors.text,
+  },
+  coordSub: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  coordBadge: {
+    backgroundColor: colors.urgente,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginRight: 4,
+  },
+  coordBadgeText: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: '#ffffff',
+  },
 });

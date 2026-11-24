@@ -1,6 +1,23 @@
-import { Caso, EventoHistorial, SyncStatus, Especie, EstadoCaso, EstadoCastracion, EstadoVirales, TipoEvento } from '../../domain/models/Caso';
+import {
+  Caso,
+  EventoHistorial,
+  SyncStatus,
+  Especie,
+  EstadoCaso,
+  EstadoCastracion,
+  EstadoVirales,
+  GravedadClinica,
+  Vulnerabilidad,
+  NivelPrioridad,
+  TipoEvento,
+} from '../../domain/models/Caso';
 import { Turno } from '../../domain/models/Turno';
-import { OperacionPendiente, EntidadPendiente, TipoOperacion } from '../../domain/models/OperacionPendiente';
+import {
+  OperacionPendiente,
+  EntidadPendiente,
+  TipoOperacion,
+} from '../../domain/models/OperacionPendiente';
+import { calcularPrioridadCasoUseCase } from '../../domain/usecases/CalcularPrioridadCasoUseCase';
 
 // ─── Tipos de las filas SQLite (todo primitivo) ───
 
@@ -17,6 +34,9 @@ export interface CasoRow {
   latitud: number | null;
   longitud: number | null;
   foto_uri: string | null;
+  foto_local_uri?: string | null;
+  foto_remote_path?: string | null;
+  foto_sync_status?: string | null;
   fecha_rescate: number;
   quien_sigue_caso: string | null;
   transito_nombre: string | null;
@@ -27,6 +47,13 @@ export interface CasoRow {
   fecha_primera_desparasitacion: number | null;
   fecha_segunda_desparasitacion: number | null;
   estado_caso: string;
+  gravedad_clinica?: string | null;
+  vulnerabilidad?: string | null;
+  nivel_prioridad?: string | null;
+  motivo_urgencia?: string | null;
+  puntaje_prioridad?: number | null;
+  creado_por_user_id?: string | null;
+  modificado_por_user_id?: string | null;
   es_urgente: number;
   sync_status: string;
   updated_at: number;
@@ -40,6 +67,7 @@ export interface TurnoRow {
   motivo: string;
   recordatorio_minutos: number;
   cumplido: number;
+  notification_id?: string | null;
   sync_status: string;
   updated_at: number;
 }
@@ -55,6 +83,7 @@ export interface EventoHistorialRow {
 
 export interface OperacionPendienteRow {
   id: number;
+  idempotency_key?: string | null;
   entidad: string;
   operacion: string;
   payload: string;
@@ -65,6 +94,21 @@ export interface OperacionPendienteRow {
 // ─── Mappers: Row → Domain ───
 
 export function casoFromRow(row: CasoRow): Caso {
+  const gravedad = (row.gravedad_clinica as GravedadClinica) || (row.es_urgente === 1 ? 'CRITICA' : 'MODERADA');
+  const vulnerabilidad = (row.vulnerabilidad as Vulnerabilidad) || 'ESTABLE';
+  
+  // Si no tenía cálculo persistido, lo evaluamos en vuelo
+  const calculo = calcularPrioridadCasoUseCase.ejecutar({
+    estadoCaso: row.estado_caso,
+    gravedadClinica: gravedad,
+    vulnerabilidad,
+    fechaRescate: row.fecha_rescate,
+  });
+
+  const nivelPrioridad = (row.nivel_prioridad as NivelPrioridad) || calculo.nivelPrioridad;
+  const motivoUrgencia = row.motivo_urgencia || calculo.motivoUrgencia;
+  const puntajePrioridad = row.puntaje_prioridad ?? calculo.puntajePrioridad;
+
   return {
     id: row.id,
     nombreProvisorio: row.nombre_provisorio,
@@ -75,10 +119,14 @@ export function casoFromRow(row: CasoRow): Caso {
     personalidad: row.personalidad ?? '',
     estadoVisible: row.estado_visible ?? '',
     barrio: row.barrio,
-    coordenadas: row.latitud != null && row.longitud != null
-      ? { latitud: row.latitud, longitud: row.longitud }
-      : null,
+    coordenadas:
+      row.latitud != null && row.longitud != null
+        ? { latitud: row.latitud, longitud: row.longitud }
+        : null,
     fotoUri: row.foto_uri,
+    fotoLocalUri: row.foto_local_uri ?? row.foto_uri,
+    fotoRemotePath: row.foto_remote_path ?? null,
+    fotoSyncStatus: (row.foto_sync_status as any) || (row.foto_uri ? 'PENDING' : 'SYNCED'),
     fechaRescate: row.fecha_rescate,
     quienSigueCaso: row.quien_sigue_caso ?? '',
     transito: {
@@ -93,7 +141,14 @@ export function casoFromRow(row: CasoRow): Caso {
       fechaSegundaDesparasitacion: row.fecha_segunda_desparasitacion,
     },
     estadoCaso: row.estado_caso as EstadoCaso,
-    esUrgente: row.es_urgente === 1,
+    gravedadClinica: gravedad,
+    vulnerabilidad,
+    nivelPrioridad,
+    motivoUrgencia,
+    puntajePrioridad,
+    creadoPorUserId: row.creado_por_user_id ?? undefined,
+    modificadoPorUserId: row.modificado_por_user_id ?? undefined,
+    esUrgente: nivelPrioridad === 'URGENTE',
     syncStatus: row.sync_status as SyncStatus,
     updatedAt: row.updated_at,
   };
@@ -108,6 +163,7 @@ export function turnoFromRow(row: TurnoRow): Turno {
     motivo: row.motivo,
     recordatorioMinutos: row.recordatorio_minutos,
     cumplido: row.cumplido === 1,
+    notificationId: row.notification_id ?? null,
     syncStatus: row.sync_status as SyncStatus,
     updatedAt: row.updated_at,
   };
@@ -127,6 +183,7 @@ export function eventoFromRow(row: EventoHistorialRow): EventoHistorial {
 export function operacionFromRow(row: OperacionPendienteRow): OperacionPendiente {
   return {
     id: row.id,
+    idempotencyKey: row.idempotency_key ?? undefined,
     entidad: row.entidad as EntidadPendiente,
     operacion: row.operacion as TipoOperacion,
     payload: row.payload,
@@ -141,6 +198,15 @@ export type SQLiteBindParams = Record<string, SQLiteBindValue>;
 // ─── Mappers: Domain → Row params (para INSERT/UPDATE) ───
 
 export function casoToParams(caso: Caso): SQLiteBindParams {
+  const gravedad = caso.gravedadClinica || (caso.esUrgente ? 'CRITICA' : 'MODERADA');
+  const vulnerabilidad = caso.vulnerabilidad || 'ESTABLE';
+  const calculo = calcularPrioridadCasoUseCase.ejecutar({
+    estadoCaso: caso.estadoCaso,
+    gravedadClinica: gravedad,
+    vulnerabilidad,
+    fechaRescate: caso.fechaRescate,
+  });
+
   return {
     $id: caso.id,
     $nombre_provisorio: caso.nombreProvisorio,
@@ -154,6 +220,9 @@ export function casoToParams(caso: Caso): SQLiteBindParams {
     $latitud: caso.coordenadas?.latitud ?? null,
     $longitud: caso.coordenadas?.longitud ?? null,
     $foto_uri: caso.fotoUri ?? null,
+    $foto_local_uri: caso.fotoLocalUri ?? caso.fotoUri ?? null,
+    $foto_remote_path: caso.fotoRemotePath ?? null,
+    $foto_sync_status: caso.fotoSyncStatus ?? (caso.fotoUri ? 'PENDING' : 'SYNCED'),
     $fecha_rescate: caso.fechaRescate,
     $quien_sigue_caso: caso.quienSigueCaso || null,
     $transito_nombre: caso.transito.nombre || null,
@@ -164,7 +233,14 @@ export function casoToParams(caso: Caso): SQLiteBindParams {
     $fecha_primera_desparasitacion: caso.sanidad.fechaPrimeraDesparasitacion ?? null,
     $fecha_segunda_desparasitacion: caso.sanidad.fechaSegundaDesparasitacion ?? null,
     $estado_caso: caso.estadoCaso,
-    $es_urgente: caso.esUrgente ? 1 : 0,
+    $gravedad_clinica: gravedad,
+    $vulnerabilidad: vulnerabilidad,
+    $nivel_prioridad: caso.nivelPrioridad || calculo.nivelPrioridad,
+    $motivo_urgencia: caso.motivoUrgencia || calculo.motivoUrgencia,
+    $puntaje_prioridad: caso.puntajePrioridad ?? calculo.puntajePrioridad,
+    $creado_por_user_id: caso.creadoPorUserId ?? null,
+    $modificado_por_user_id: caso.modificadoPorUserId ?? null,
+    $es_urgente: (caso.nivelPrioridad === 'URGENTE' || calculo.esUrgente) ? 1 : 0,
     $sync_status: caso.syncStatus,
     $updated_at: caso.updatedAt,
   };
@@ -179,6 +255,7 @@ export function turnoToParams(turno: Turno): SQLiteBindParams {
     $motivo: turno.motivo,
     $recordatorio_minutos: turno.recordatorioMinutos,
     $cumplido: turno.cumplido ? 1 : 0,
+    $notification_id: turno.notificationId ?? null,
     $sync_status: turno.syncStatus,
     $updated_at: turno.updatedAt,
   };

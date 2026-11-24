@@ -14,15 +14,22 @@ function traducir(e: ErrorPostgrest): Error {
   return new Error(e.message);
 }
 
+/**
+ * Inserción con idempotencia (UPSERT): si el UUID ya existe en el servidor, no duplica.
+ */
 async function insertar(tabla: string, fila: Record<string, unknown>): Promise<'creado' | 'existia'> {
-  const { error } = await supabase.from(tabla).insert(fila);
+  const { error } = await supabase.from(tabla).upsert(fila, { onConflict: 'id', ignoreDuplicates: true });
   if (!error) return 'creado';
-  if (error.code === '23505') return 'existia'; // mismo UUID: es un reintento que ya se había aplicado
+  if (error.code === '23505') return 'existia'; // mismo UUID: reintento ya aplicado
   throw traducir(error);
 }
 
-async function listar(tabla: string): Promise<Record<string, any>[]> {
-  const { data, error } = await supabase.from(tabla).select('*');
+async function listar(tabla: string, campoFecha?: string, desdeIso?: string): Promise<Record<string, any>[]> {
+  let query = supabase.from(tabla).select('*');
+  if (desdeIso && campoFecha) {
+    query = query.gt(campoFecha, desdeIso);
+  }
+  const { data, error } = await query;
   if (error) throw traducir(error);
   return data ?? [];
 }
@@ -56,7 +63,7 @@ export const servidorSupabase: ServidorRemoto = {
   },
 
   async marcarTurnoCumplido(id) {
-    const { error } = await supabase.from('turnos').update({ cumplido: true }).eq('id', id);
+    const { error } = await supabase.from('turnos').update({ cumplido: true, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw traducir(error);
   },
 
@@ -69,7 +76,8 @@ export const servidorSupabase: ServidorRemoto = {
     return new Set((await listar('centros_veterinarios')).map((c) => c.id as string));
   },
 
-  listarCasos: () => listar('casos'),
-  listarEventos: () => listar('eventos_historial'),
-  listarTurnos: () => listar('turnos'),
+  listarCentros: () => listar('centros_veterinarios'),
+  listarCasos: (desdeIso) => listar('casos', 'updated_at', desdeIso),
+  listarEventos: (desdeIso) => listar('eventos_historial', 'created_at', desdeIso),
+  listarTurnos: (desdeIso) => listar('turnos', 'updated_at', desdeIso),
 };

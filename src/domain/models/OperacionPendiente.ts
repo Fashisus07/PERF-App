@@ -5,6 +5,7 @@ export type TipoOperacion = 'CREATE' | 'UPDATE' | 'DELETE';
 
 export interface OperacionPendiente {
   id: number; // AUTOINCREMENT
+  idempotencyKey?: string; // UUID v4 para idempotencia en reintentos
   entidad: EntidadPendiente;
   operacion: TipoOperacion;
   payload: string; // JSON serializado

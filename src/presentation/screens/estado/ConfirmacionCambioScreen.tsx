@@ -24,7 +24,25 @@ export function ConfirmacionCambioScreen({ route, navigation }: { route?: { para
   if (!p || !caso) return <View style={styles.screen} />;
 
   const info = infoEstado(p.nuevo);
-  const verFicha = () => navigation?.popTo?.('DetalleCaso', { casoId: caso.id, estadoActualizado: true });
+  const verFicha = () => {
+    if (navigation?.popTo) {
+      try {
+        navigation.popTo('DetalleCaso', { casoId: caso.id, estadoActualizado: true });
+        return;
+      } catch {}
+    }
+    navigation?.navigate?.('DetalleCaso', { casoId: caso.id, estadoActualizado: true });
+  };
+
+  const volverCasos = () => {
+    if (navigation?.popTo) {
+      try {
+        navigation.popTo('Main');
+        return;
+      } catch {}
+    }
+    navigation?.navigate?.('Main');
+  };
 
   return (
     <View style={styles.screen}>
@@ -132,7 +150,7 @@ export function ConfirmacionCambioScreen({ route, navigation }: { route?: { para
             <MaterialIcons name="assignment" size={18} color="#fff" />
             <Text style={styles.btnPrimarioText}>Ver ficha actualizada de {caso.nombreProvisorio}</Text>
           </Pressable>
-          <Pressable style={styles.btnVolver} onPress={() => navigation?.popTo?.('Main')}>
+          <Pressable style={styles.btnVolver} onPress={volverCasos}>
             <MaterialIcons name="arrow-back" size={16} color={colors.textMuted} />
             <Text style={styles.btnVolverText}>Volver a Casos activos</Text>
           </Pressable>

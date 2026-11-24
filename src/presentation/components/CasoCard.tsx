@@ -6,6 +6,7 @@ import {
   descripcionCorta,
   diasEnEspera,
   ETIQUETA_ESTADO,
+  nivelAUrgencia,
 } from '../../domain/models/Caso';
 import { colors, fonts } from '../theme';
 import { UbicacionCaso } from './UbicacionCaso';
@@ -15,7 +16,7 @@ const FOTO_DEFAULT = require('../../../assets/images/casos/misho.jpg');
 const COLOR_DIAS = { urgente: colors.urgente, atencion: colors.atencion, aldia: colors.aldia };
 
 export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }) {
-  const urgencia = calcularUrgencia(caso, 10);
+  const urgencia = caso.nivelPrioridad ? nivelAUrgencia(caso.nivelPrioridad) : calcularUrgencia(caso, 15);
   const dias = diasEnEspera(caso);
   const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;
 
@@ -33,7 +34,7 @@ export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }
                 </View>
               )}
             </View>
-            <UrgenciaBadge urgencia={urgencia} />
+            <UrgenciaBadge urgencia={urgencia} motivo={caso.motivoUrgencia} />
           </View>
 
           <View style={styles.metaRow}>
@@ -98,10 +99,19 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   species: { backgroundColor: colors.surfaceChip, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, flexShrink: 1 },
   speciesText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.textMuted },
-  dot: { fontFamily: fonts.regular, fontSize: 13, color: colors.placeholder },
-  dias: { fontFamily: fonts.bold, fontSize: 12, flexShrink: 0 },
-  estado: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
-  estadoLabel: { fontFamily: fonts.regular, color: colors.textSubtle },
-  cta: { marginTop: 4, alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 2 },
-  ctaText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.primary },
+  dot: { color: colors.textSubtle },
+  dias: { fontFamily: fonts.semibold, fontSize: 12 },
+  estado: { fontFamily: fonts.regular, fontSize: 13, color: colors.text },
+  estadoLabel: { fontFamily: fonts.semibold, color: colors.textMuted },
+  cta: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  ctaText: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: colors.primary,
+  },
 });

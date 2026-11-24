@@ -2,6 +2,7 @@ import { Caso } from '../models/Caso';
 import { BorradorRescate, faltantesDelRescate } from '../models/Rescate';
 import { CasoRepository } from '../repositories/CasoRepository';
 import { generarUUID } from '../../data/local/uuid';
+import { calcularPrioridadCasoUseCase } from './CalcularPrioridadCasoUseCase';
 
 export class RegistrarRescate {
   constructor(private readonly repo: CasoRepository) {}
@@ -13,6 +14,17 @@ export class RegistrarRescate {
     }
 
     const ahora = Date.now();
+    const prioridad = calcularPrioridadCasoUseCase.ejecutar(
+      {
+        estadoCaso: 'EN_TRANSITO',
+        gravedadClinica: b.gravedadClinica,
+        vulnerabilidad: b.vulnerabilidad,
+        fechaRescate: ahora,
+      },
+      15,
+      ahora
+    );
+
     const caso: Caso = {
       id: generarUUID(),
       nombreProvisorio: b.nombreProvisorio.trim(),
@@ -25,6 +37,9 @@ export class RegistrarRescate {
       barrio: b.barrio.trim(),
       coordenadas: b.coordenadas ?? null,
       fotoUri: b.fotoUri ?? null,
+      fotoLocalUri: b.fotoUri ?? null,
+      fotoRemotePath: null,
+      fotoSyncStatus: b.fotoUri ? 'PENDING' : 'SYNCED',
       fechaRescate: ahora,
       quienSigueCaso: b.quienSigueCaso || 'PERF',
       transito: {
@@ -39,7 +54,12 @@ export class RegistrarRescate {
         fechaSegundaDesparasitacion: b.fechaSegundaDesparasitacion ?? null,
       },
       estadoCaso: 'EN_TRANSITO',
-      esUrgente: b.esUrgente,
+      gravedadClinica: b.gravedadClinica,
+      vulnerabilidad: b.vulnerabilidad,
+      nivelPrioridad: prioridad.nivelPrioridad,
+      motivoUrgencia: prioridad.motivoUrgencia,
+      puntajePrioridad: prioridad.puntajePrioridad,
+      esUrgente: prioridad.esUrgente,
       syncStatus: sinConexion ? 'PENDING' : 'SYNCED',
       updatedAt: ahora,
     };

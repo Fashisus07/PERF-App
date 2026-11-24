@@ -21,6 +21,18 @@ export type EstadoVirales =
 
 export type SyncStatus = 'PENDING' | 'SYNCED';
 
+// ─── Nuevos criterios de priorización multicriterio ───
+
+export type GravedadClinica = 'CRITICA' | 'MODERADA' | 'LEVE' | 'SANA';
+
+export type Vulnerabilidad =
+  | 'LACTANTE_SIN_MADRE'
+  | 'SIN_TRANSITO'
+  | 'EN_TRATAMIENTO'
+  | 'ESTABLE';
+
+export type NivelPrioridad = 'URGENTE' | 'ATENCION' | 'AL_DIA';
+
 // ─── Value Objects ───
 
 export interface HogarTransito {
@@ -53,12 +65,22 @@ export interface Caso {
     longitud: number;
   } | null;
   fotoUri?: string | null;
+  fotoLocalUri?: string | null;
+  fotoRemotePath?: string | null;
+  fotoSyncStatus?: 'PENDING' | 'SYNCED' | 'FAILED';
   fechaRescate: number; // Timestamp
   quienSigueCaso: string;
   transito: HogarTransito;
   sanidad: FichaSanitariaFelina;
   estadoCaso: EstadoCaso;
-  esUrgente: boolean;
+  gravedadClinica: GravedadClinica;
+  vulnerabilidad: Vulnerabilidad;
+  nivelPrioridad: NivelPrioridad;
+  motivoUrgencia: string;
+  puntajePrioridad: number;
+  creadoPorUserId?: string;
+  modificadoPorUserId?: string;
+  esUrgente: boolean; // Retrocompatibilidad
   syncStatus: SyncStatus;
   updatedAt: number; // Timestamp
 }
@@ -94,37 +116,74 @@ export const ETIQUETA_VIRALES: Record<EstadoVirales, string> = {
   AMBOS_POSITIVOS: 'VIF + ViLeF Positivo',
 };
 
+export const ETIQUETA_GRAVEDAD: Record<GravedadClinica, string> = {
+  CRITICA: 'Crítica',
+  MODERADA: 'Moderada',
+  LEVE: 'Leve',
+  SANA: 'Sana',
+};
+
+export const ETIQUETA_VULNERABILIDAD: Record<Vulnerabilidad, string> = {
+  LACTANTE_SIN_MADRE: 'Lactante sin madre',
+  SIN_TRANSITO: 'Sin tránsito asignado',
+  EN_TRATAMIENTO: 'En tratamiento activo',
+  ESTABLE: 'Estable',
+};
+
+export const ETIQUETA_PRIORIDAD: Record<NivelPrioridad, string> = {
+  URGENTE: 'Urgente',
+  ATENCION: 'Atención',
+  AL_DIA: 'Al día',
+};
+
 // ─── Coordinadores de PERF ───
 
 export const COORDINADORES_PERF = ['Cami', 'Juli', 'Martu', 'Nay'] as const;
 
-// ─── Urgencia ───
+// ─── Urgencia y cálculo ───
 
 export type Urgencia = 'urgente' | 'atencion' | 'aldia';
 
+export function nivelAUrgencia(nivel: NivelPrioridad): Urgencia {
+  switch (nivel) {
+    case 'URGENTE':
+      return 'urgente';
+    case 'ATENCION':
+      return 'atencion';
+    case 'AL_DIA':
+    default:
+      return 'aldia';
+  }
+}
+
 /**
- * Calcula el nivel de urgencia de un caso a partir de los días transcurridos desde el rescate.
- * Reglas:
- *  - `esUrgente = true` (marcado manualmente) → siempre 'urgente'.
- *  - Más de `umbral` días desde el rescate → 'urgente'.
- *  - Más de `umbral / 2` días → 'atencion'.
- *  - Caso contrario → 'aldia'.
+ * Calcula el nivel de urgencia de un caso usando el modelo multicriterio de PERF.
  */
-export function calcularUrgencia(caso: Caso, umbralDias: number): Urgencia {
-  if (caso.esUrgente) return 'urgente';
-  const diasEnEspera = Math.floor((Date.now() - caso.fechaRescate) / (1000 * 60 * 60 * 24));
-  if (diasEnEspera > umbralDias) return 'urgente';
-  if (diasEnEspera > umbralDias / 2) return 'atencion';
+export function calcularUrgencia(caso: Partial<Caso>, umbralDias: number = 15): Urgencia {
+  if (caso.estadoCaso === 'ADOPTADO' || caso.estadoCaso === 'FALLECIDO') {
+    return 'aldia';
+  }
+  const gravedad = caso.gravedadClinica ?? 'MODERADA';
+  const vuln = caso.vulnerabilidad ?? 'ESTABLE';
+  const fecha = caso.fechaRescate ?? Date.now();
+  const dias = Math.max(0, Math.floor((Date.now() - fecha) / (1000 * 60 * 60 * 24)));
+
+  if (gravedad === 'CRITICA' || vuln === 'LACTANTE_SIN_MADRE' || vuln === 'SIN_TRANSITO' || dias > umbralDias) {
+    return 'urgente';
+  }
+  if (gravedad === 'MODERADA' || vuln === 'EN_TRATAMIENTO' || dias >= Math.ceil(0.7 * umbralDias)) {
+    return 'atencion';
+  }
   return 'aldia';
 }
 
 /** Días transcurridos desde el rescate. */
-export function diasEnEspera(caso: Caso): number {
+export function diasEnEspera(caso: Pick<Caso, 'fechaRescate'>): number {
   return Math.max(0, Math.floor((Date.now() - caso.fechaRescate) / (1000 * 60 * 60 * 24)));
 }
 
 /** Descripción corta para tarjetas: "Gato · 45 días" */
-export function descripcionCorta(caso: Caso): string {
+export function descripcionCorta(caso: Pick<Caso, 'especie' | 'edadEstimada'>): string {
   return [ETIQUETA_ESPECIE[caso.especie], caso.edadEstimada].filter(Boolean).join(' · ');
 }
 

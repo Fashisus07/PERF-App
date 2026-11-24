@@ -10,6 +10,7 @@ export interface Turno {
   motivo: string; // Texto libre: 'Castración', 'Control tumor de mama', etc.
   recordatorioMinutos: number; // Minutos de anticipación (120 = 2h, 1440 = 24h)
   cumplido: boolean;
+  notificationId?: string | null; // ID de notificación local de expo-notifications para cancelación
   syncStatus: SyncStatus;
   updatedAt: number;
 }

@@ -74,23 +74,40 @@ export class WebDatabase {
         });
       }
 
-      table.push(row);
+      const existingIdx =
+        cleanSql.toLowerCase().includes('on conflict') && row.id
+          ? table.findIndex((r) => r.id === row.id)
+          : -1;
+      if (existingIdx >= 0) {
+        table[existingIdx] = { ...table[existingIdx], ...row };
+      } else {
+        table.push(row);
+      }
       await this.persist();
       return { lastInsertRowId: table.length, changes: 1 };
     }
 
     // 2. UPDATE
-    const updateMatch = cleanSql.match(/update\s+([a-zA-Z0-9_]+)\s+set\s+([\s\S]+?)\s+where\s+([\s\S]+)/i);
+    const updateMatch = cleanSql.match(/update\s+([a-zA-Z0-9_]+)\s+set\s+([\s\S]+?)(?:\s+where\s+([\s\S]+?))?(?:;|$)/i);
     if (updateMatch) {
       const tableName = updateMatch[1].toLowerCase().trim();
       const setClause = updateMatch[2].trim();
-      const whereClause = updateMatch[3].trim();
+      const whereClause = updateMatch[3]?.trim();
       const table = this.ensureTable(tableName);
+
+      let setParams: any[] | Record<string, any> | undefined = params;
+      let whereParams: any[] | Record<string, any> | undefined = params;
+
+      if (Array.isArray(params)) {
+        const numSetPlaceholders = (setClause.match(/\?/g) || []).length;
+        setParams = params.slice(0, numSetPlaceholders);
+        whereParams = params.slice(numSetPlaceholders);
+      }
 
       let changes = 0;
       for (const row of table) {
-        if (this.evalWhere(row, whereClause, params)) {
-          this.applySet(row, setClause, params);
+        if (!whereClause || this.evalWhere(row, whereClause, whereParams)) {
+          this.applySet(row, setClause, setParams);
           changes++;
         }
       }

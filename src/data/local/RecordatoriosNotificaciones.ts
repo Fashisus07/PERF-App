@@ -2,11 +2,15 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { Clinica, horaDe, Turno } from '../../domain/models/Turno';
 import { RecordatorioTurnos } from '../../domain/services/RecordatorioTurnos';
+import { getDatabase } from './Database';
 
 const CANAL = 'turnos';
 export const CATEGORIA = 'turno';
 export const ACCION_LLAMAR = 'llamar';
 
+/**
+ * Configura el canal de notificaciones de Android con prioridad MAX para Android 8.0+ (API 26+)
+ */
 export async function configurarNotificaciones() {
   if (Platform.OS === 'web') return;
   try {
@@ -21,7 +25,11 @@ export async function configurarNotificaciones() {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync(CANAL, {
         name: 'Turnos veterinarios',
-        importance: Notifications.AndroidImportance.HIGH,
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        enableVibrate: true,
+        sound: 'default',
+        lightColor: '#005c55',
       });
     }
     await Notifications.setNotificationCategoryAsync(CATEGORIA, [
@@ -60,15 +68,17 @@ export class RecordatoriosNotificaciones implements RecordatorioTurnos {
       const fechaCita = new Date(turno.fechaHora);
       const clinicaNombre = clinica?.nombre || 'Centro Veterinario';
       const animal = nombreCaso || 'Animal rescatado';
+      const notifIdentificador = `${turno.id}-recordatorio`;
 
-      await Notifications.scheduleNotificationAsync({
-        identifier: `${turno.id}-recordatorio`,
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        identifier: notifIdentificador,
         content: {
           title: `Recordatorio de turno: ${animal}`,
           subtitle: clinicaNombre,
           body: `Cita a las ${horaDe(fechaCita)} hs en ${clinicaNombre}. Motivo: ${turno.motivo}.`,
           categoryIdentifier: CATEGORIA,
           data: { turnoId: turno.id, telefono: clinica?.telefono },
+          sound: 'default',
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -77,15 +87,30 @@ export class RecordatoriosNotificaciones implements RecordatorioTurnos {
         },
       });
 
+      // Guardar el notification_id devuelto en la tabla turnos de SQLite
+      try {
+        const db = await getDatabase();
+        await db.runAsync('UPDATE turnos SET notification_id = ? WHERE id = ?;', [
+          notificationId,
+          turno.id,
+        ]);
+        turno.notificationId = notificationId;
+      } catch {}
+
       return true;
     } catch {
       return false;
     }
   }
 
-  async cancelar(turnoId: string): Promise<void> {
+  async cancelar(turnoId: string, notificationId?: string | null): Promise<void> {
     try {
-      await Notifications.cancelScheduledNotificationAsync(`${turnoId}-recordatorio`);
+      if (notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {});
+      }
+      await Notifications.cancelScheduledNotificationAsync(`${turnoId}-recordatorio`).catch(() => {});
+      const db = await getDatabase();
+      await db.runAsync('UPDATE turnos SET notification_id = NULL WHERE id = ?;', [turnoId]).catch(() => {});
     } catch {}
   }
 }

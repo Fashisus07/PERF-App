@@ -1,3 +1,4 @@
+import * as Notifications from 'expo-notifications';
 import { Clinica, SolicitudTurno, Turno } from '../../domain/models/Turno';
 import { TurnoRepository } from '../../domain/repositories/TurnoRepository';
 import { getDatabase } from '../local/Database';
@@ -58,8 +59,8 @@ export class TurnoRepositoryImpl implements TurnoRepository {
         await db.runAsync(
           `INSERT INTO turnos (
             id, caso_id, centro_veterinario_id, fecha_hora, motivo,
-            recordatorio_minutos, cumplido, sync_status, updated_at
-          ) VALUES ($id, $caso_id, $centro_veterinario_id, $fecha_hora, $motivo, $recordatorio_minutos, $cumplido, $sync_status, $updated_at);`,
+            recordatorio_minutos, cumplido, notification_id, sync_status, updated_at
+          ) VALUES ($id, $caso_id, $centro_veterinario_id, $fecha_hora, $motivo, $recordatorio_minutos, $cumplido, $notification_id, $sync_status, $updated_at);`,
           turnoToParams(t)
         );
       }
@@ -149,6 +150,7 @@ export class TurnoRepositoryImpl implements TurnoRepository {
       motivo: titulo || solicitud.motivo,
       recordatorioMinutos: solicitud.recordatorioMinutos || 120,
       cumplido: false,
+      notificationId: null,
       syncStatus: 'PENDING',
       updatedAt: ahora,
     };
@@ -156,8 +158,8 @@ export class TurnoRepositoryImpl implements TurnoRepository {
     await db.runAsync(
       `INSERT INTO turnos (
         id, caso_id, centro_veterinario_id, fecha_hora, motivo,
-        recordatorio_minutos, cumplido, sync_status, updated_at
-      ) VALUES ($id, $caso_id, $centro_veterinario_id, $fecha_hora, $motivo, $recordatorio_minutos, $cumplido, $sync_status, $updated_at);`,
+        recordatorio_minutos, cumplido, notification_id, sync_status, updated_at
+      ) VALUES ($id, $caso_id, $centro_veterinario_id, $fecha_hora, $motivo, $recordatorio_minutos, $cumplido, $notification_id, $sync_status, $updated_at);`,
       turnoToParams(turno)
     );
 
@@ -168,11 +170,12 @@ export class TurnoRepositoryImpl implements TurnoRepository {
       [generarUUID(), turno.casoId, turno.fechaHora, `Turno agendado: ${turno.motivo}`]
     );
 
-    // Encolar en cola de sincronización offline
+    // Encolar en cola de sincronización offline con idempotency_key
+    const idempotencyKey = generarUUID();
     await db.runAsync(
-      `INSERT INTO operaciones_pendientes (entidad, operacion, payload, reintentos, created_at)
-       VALUES (?, ?, ?, 0, ?);`,
-      ['TURNO', 'CREATE', JSON.stringify(turno), ahora]
+      `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+       VALUES (?, ?, ?, ?, 0, ?);`,
+      [idempotencyKey, 'TURNO', 'CREATE', JSON.stringify(turno), ahora]
     );
 
     return turno;
@@ -181,15 +184,24 @@ export class TurnoRepositoryImpl implements TurnoRepository {
   async marcarCumplido(turnoId: string): Promise<Turno> {
     const db = await getDatabase();
     const ahora = Date.now();
+
+    const previo = await db.getFirstAsync<TurnoRow>('SELECT * FROM turnos WHERE id = ?;', [turnoId]);
+    if (previo?.notification_id) {
+      try {
+        await Notifications.cancelScheduledNotificationAsync(previo.notification_id).catch(() => {});
+      } catch {}
+    }
+
     await db.runAsync(
       `UPDATE turnos SET cumplido = 1, sync_status = 'PENDING', updated_at = ? WHERE id = ?;`,
       [ahora, turnoId]
     );
 
+    const idempotencyKey = generarUUID();
     await db.runAsync(
-      `INSERT INTO operaciones_pendientes (entidad, operacion, payload, reintentos, created_at)
-       VALUES (?, ?, ?, 0, ?);`,
-      ['TURNO', 'UPDATE', JSON.stringify({ id: turnoId, cumplido: true }), ahora]
+      `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+       VALUES (?, ?, ?, ?, 0, ?);`,
+      [idempotencyKey, 'TURNO', 'UPDATE', JSON.stringify({ id: turnoId, cumplido: true, updated_at: ahora }), ahora]
     );
 
     const row = await db.getFirstAsync<TurnoRow>('SELECT * FROM turnos WHERE id = ?;', [turnoId]);
@@ -199,12 +211,20 @@ export class TurnoRepositoryImpl implements TurnoRepository {
 
   async cancelar(turnoId: string): Promise<void> {
     const db = await getDatabase();
+    const previo = await db.getFirstAsync<TurnoRow>('SELECT * FROM turnos WHERE id = ?;', [turnoId]);
+    if (previo?.notification_id) {
+      try {
+        await Notifications.cancelScheduledNotificationAsync(previo.notification_id).catch(() => {});
+      } catch {}
+    }
+
     await db.runAsync(`DELETE FROM turnos WHERE id = ?;`, [turnoId]);
 
+    const idempotencyKey = generarUUID();
     await db.runAsync(
-      `INSERT INTO operaciones_pendientes (entidad, operacion, payload, reintentos, created_at)
-       VALUES (?, ?, ?, 0, ?);`,
-      ['TURNO', 'DELETE', JSON.stringify({ id: turnoId }), Date.now()]
+      `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+       VALUES (?, ?, ?, ?, 0, ?);`,
+      [idempotencyKey, 'TURNO', 'DELETE', JSON.stringify({ id: turnoId }), Date.now()]
     );
   }
 
