@@ -198,16 +198,65 @@ El sistema reemplazó el conteo de días simple por un modelo de triaje multicri
 
 ---
 
+## ✅ Pedidos del equipo: qué se hizo y qué falta
+
+Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/2026, ya integrados los cambios de Facu y de Tobías).
+
+| # | Pedido | Estado |
+|---|---|---|
+| 4 | Gestión de perfil | ✅ La foto del encabezado abre **Mi perfil** (datos, zonas, recursos) con **Editar mi perfil**; cerrar sesión y la versión pasaron ahí |
+| 5 | Cada coordinador ve sus casos | ✅ Selector **Todos / Mis casos** en la bandeja (coincide por nombre, ver "Roles y perfiles") |
+| 6 | Más barrios y zonas en el registro | ✅ 23 zonas, varias a la vez y "otra zona" de texto libre |
+| — | Vistas de perfiles | ✅ Lista de voluntarios con buscador y perfil de cada uno |
+| — | Filtros de la bandeja | ✅ Botón **Filtrar**: orden (Prioridad, Último rescate, Más antiguos, Última revisión) y estado del caso |
+| 11 | Prioridad por nivel de estado | ✅ Triaje multicriterio (gravedad clínica, vulnerabilidad y días de espera), ver "Criterio de Urgencia". "Última revisión" se usa como orden en **Filtrar** |
+| — | Aprobación de voluntarios y cambio de clave | ✅ Correo a coordinadores, Panel de Coordinación y `CambiarClaveScreen` |
+| 13 | Seguridad y acceso desde el backend | 🟡 Hecho: login con JWT, RLS en todas las tablas, fotos privadas. Falta sacar la clave `service_role` de la app (ver "Base de datos compartida") |
+| 10 | Un único administrador | 🟡 Migración escrita (`20261112000000_administrador_unico.sql`), **sin aplicar** |
+| 1 | Animales con seguimiento individual | ❌ La base ya tiene `animales`, la app no está conectada (`Caso.ts`, `CasoMapper`, `Database.ts`) |
+| 2 | Coordinador responsable como registro fijo | ❌ Falta |
+| 3 | Tests virales como registro fijo | ❌ Falta |
+| 7 | Registro de veterinarios | ❌ Falta |
+| 8 | Horarios según el veterinario | ❌ Falta |
+| 9 | Recordatorio de 24 hs configurable | ❌ Falta (hoy hay un interruptor de sí/no en Ajustes) |
+| 12 | Que el cambio requiera tocar **Guardar** | ❌ Falta (hay que definir en qué pantallas) |
+| 14/15 | Sacar al veterinario al guardar un rescate | ❌ Falta |
+
+### Roles y perfiles
+- **Dos roles:** un **único administrador** y el resto voluntarios. En la base el rol del administrador se llama `coordinador` (así lo usan `es_coordinador()`, las políticas RLS, el panel de aprobaciones y los correos); la app lo muestra como **Administrador** (`ETIQUETA_ROL`, `esAdministrador()` en `domain/models/Ajustes.ts`). La migración `20261112000000_administrador_unico.sql` agrega un índice único parcial para que haya uno solo; **todavía no está aplicada** (coordinar con el equipo).
+- **Zonas múltiples:** cada voluntario elige una o más zonas (`SelectorZonas`). Se guardan en la columna `perfiles.zona` separadas por coma (`"Caballito, Almagro"`), así que no cambió el esquema. Helpers: `zonasDesdeTexto` y `zonasATexto`.
+- **Mis casos:** un caso es "de" un voluntario si `quienSigueCaso` coincide con su nombre o su primer nombre (`sigueElCaso()`). Es una coincidencia por texto hasta que el coordinador responsable pase a ser un registro con ID propio.
+- **Vistas de perfiles:** `PerfilesScreen` lista a los voluntarios aprobados y `PerfilDetalleScreen` muestra el perfil completo. Leen `perfiles`, que solo responde a usuarios autenticados y aprobados: sin sesión la lista sale vacía.
+- **Cuentas de prueba** (correos `@example.com`, solo para desarrollo):
+
+  | Rol | Correo | Contraseña |
+  |---|---|---|
+  | Voluntario | `perf.voluntario.test@example.com` | `Perf2026!prueba` |
+  | Administrador | `perf.admin.test@example.com` | pedirla al equipo (el repo es público y esta cuenta tiene permisos sobre la base compartida) |
+
+  Para borrarlas: `delete from auth.users where email like 'perf.%.test@example.com';`
+
+### Base de datos compartida
+- **Proyecto de Supabase del equipo:** el de Tobías (`kdnosvxrgoxsopmzkghh`). Es el valor por defecto de `src/data/remote/supabaseClient.ts`; se puede cambiar con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` en `.env`.
+- **Si se pausa:** los proyectos gratuitos se pausan tras una semana sin uso. Se restaura desde el panel con **Restore project** y no se pierden datos.
+- **Migraciones, en este orden** (SQL Editor, una vez cada una): `20261030…esquema_inicial`, `20261031…animales_pendientes_adopciones`, `20261112…administrador_unico` y `20261124…compatibilidad_etapa2`. Esta última adapta la base al código de la Etapa 2 (columnas de triaje en `casos`, bucket `casos-fotos`, `aplicar_cambios_caso()` nueva y las funciones `aprobar_voluntario` / `rechazar_voluntario`).
+- `supabase/schema.sql` es el script completo para un proyecto **vacío**; en el proyecto existente se usan las migraciones, no los dos.
+- **Pendiente de seguridad:** `supabaseClient.ts` crea `adminSupabase` con `EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY`. Todo lo que empieza con `EXPO_PUBLIC_` queda dentro del APK, así que esa clave no debería estar en la app. La salida es usar `aprobar_voluntario` / `rechazar_voluntario` (ya creadas por la migración de compatibilidad) con la sesión del administrador, y dejar la aprobación por el enlace del correo para una función del servidor.
+
+---
+
 ## 📱 Módulos y Pantallas
 
 ### 1. Autenticación (`presentation/screens/auth/`)
 - **`LoginScreen`**: Inicio de sesión del voluntario con credenciales, selector para mostrar/ocultar contraseña, opción de recordar sesión e indicador de modo online/offline.
-- **`RegistroScreen`**: Alta de voluntarios (nombre, teléfono, brigada/rol, correo y contraseña).
+- **`RegistroScreen`**: Alta de voluntarios (nombre, teléfono, **una o más zonas** con `SelectorZonas`, recursos, correo y contraseña). La cuenta queda pendiente hasta que el administrador la apruebe.
+- **`CambiarClaveScreen`**: restablecimiento de contraseña desde el enlace del correo.
 
 ### 2. Gestión de Casos (`presentation/screens/casos/` & `detalle/`)
 - **`CasosScreen`**: Pantalla principal con:
   - Buscador reactivo por nombre provisorio o ubicación.
-  - Filtros rápidos por urgencia: **Todos**, **Alta**, **Media**, **Baja**.
+  - Selector **Todos / Mis casos** (solo los que sigue el voluntario de la sesión) y, debajo, filtros de urgencia **Urgentes**, **Atención** y **Al día** (tocar de nuevo para quitarlos).
+  - Botón **Filtrar** (`FiltrosCasosModal`): ordenar por Prioridad, Último rescate, Más antiguos o Última revisión, y filtrar por estado del caso.
   - Tarjeta destacada de casos críticos urgentes.
   - Pull-to-refresh y lista optimizada de tarjetas (`CasoCard`).
 - **Estados de Pantalla:**
@@ -260,7 +309,11 @@ Asistente guiado de 3 pasos con barra de progreso superior (`BarraRescate`):
   - Preferencias predeterminadas para recordatorios de turnos.
   - **Sincronización manual:** botón para forzar el envío de operaciones pendientes.
   - Diagnóstico de memoria local: contador de casos activos, eventos archivados y espacio utilizado en MB.
-  - Información del voluntario activo y cierre de sesión.
+  - **Panel de Coordinación** (solo para el administrador): solicitudes de voluntarios pendientes (`AprobacionVoluntariosScreen`, `ProcesarSolicitudScreen`).
+  - Termina en las notificaciones de turnos: la sesión, los perfiles y el cierre de sesión están en **Mi perfil**.
+- **`PerfilDetalleScreen`**: se abre al tocar la foto del encabezado. Mi perfil muestra datos, zonas y recursos, con **Editar mi perfil**, acceso a **Perfiles de voluntarios** y **Cerrar sesión**; el perfil de otro voluntario es de solo lectura e incluye los casos que sigue.
+- **`PerfilesScreen`**: lista de voluntarios con rol y zonas.
+- **`PerfilVoluntarioScreen`**: edición de mis datos, zonas y recursos.
 
 ### 7. Archivo de Casos (`presentation/screens/archivo/`)
 - **`ArchivoScreen`**: Sección destinada a consultar el histórico de animales adoptados o finalizados.

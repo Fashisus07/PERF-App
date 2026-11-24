@@ -9,11 +9,11 @@ import { Platform } from 'react-native';
  * del servidor (ver supabase/migrations). Nunca poner acá la clave "secret"/service_role.
  */
 export const SUPABASE_URL =
-  process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'https://ibeinjomorryrkqrdpsx.supabase.co';
+  process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'https://kdnosvxrgoxsopmzkghh.supabase.co';
 export const SUPABASE_PUBLISHABLE_KEY =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
   process.env.EXPO_PUBLIC_SUPABASE_KEY ??
-  'sb_publishable_6HdilHj9S5-9BBKJYMXMyg_Tqpoh1gq';
+  'sb_publishable_N9ImvM-07t2h9XIVs0EKhA_xoqPD9Qm';
 
 export const SUPABASE_SERVICE_ROLE_KEY =
   process.env.EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY ??

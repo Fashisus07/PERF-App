@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Voluntario } from '../../domain/models/Ajustes';
+import { esAdministrador, RolVoluntario, Voluntario } from '../../domain/models/Ajustes';
 import {
   AuthRepository,
   CredencialesRegistro,
@@ -9,7 +9,7 @@ import {
 } from '../../domain/repositories/AuthRepository';
 import { generarUUID } from '../local/uuid';
 import { notificarCoordinadoresNuevoVoluntario } from './NotificacionesCoordinadoresService';
-import { adminSupabase, supabase, SUPABASE_URL } from './supabaseClient';
+import { adminSupabase, supabase } from './supabaseClient';
 
 export const VOLUNTARIO_DEMO: Voluntario = {
   id: 'voluntario-demo',
@@ -31,12 +31,19 @@ interface PerfilRow {
   brigada: string;
   zona: string | null;
   recursos: string[] | null;
-  rol?: string;
+  rol?: string | null;
   aprobado: boolean;
 }
 
+const COLUMNAS_PERFIL = 'id, nombre, email, telefono, brigada, zona, recursos, rol, aprobado';
+
 const MENSAJE_PENDIENTE =
   'Tu cuenta todavía no fue aprobada. Un coordinador de PERF tiene que habilitarla para que puedas ver los casos.';
+
+/** En la base el administrador es el único con rol 'coordinador' (se muestra como "Administrador"). */
+function aRol(rol?: string | null): RolVoluntario {
+  return rol === 'coordinador' || rol === 'administrador' ? 'coordinador' : 'voluntario';
+}
 
 function aVoluntario(p: PerfilRow): Voluntario {
   return {
@@ -47,7 +54,7 @@ function aVoluntario(p: PerfilRow): Voluntario {
     telefono: p.telefono ?? '',
     zona: p.zona ?? '',
     recursos: p.recursos ?? [],
-    rol: (p.rol as any) ?? 'voluntario',
+    rol: aRol(p.rol),
     aprobado: p.aprobado,
   };
 }
@@ -60,12 +67,10 @@ function traducirError(error: { message: string; status?: number }): Error {
   if (m.includes('rate limit')) return new Error('Demasiados intentos. Esperá unos minutos y volvé a probar.');
   if (m.includes('password')) return new Error('La contraseña no cumple los requisitos (mínimo 6 caracteres).');
   if (m.includes('network') || m.includes('fetch')) {
-    if (!process.env.EXPO_PUBLIC_SUPABASE_URL || SUPABASE_URL.includes('kdnosvxrgoxsopmzkghh')) {
-      return new Error(
-        'El servidor remoto de Supabase no está configurado o el proyecto por defecto está inactivo. Podés configurar un proyecto en tu archivo .env o continuar en Modo Offline.'
-      );
-    }
-    return new Error('Sin conexión con el servidor de Supabase. Verificá tu acceso a internet.');
+    // Sin internet o con el proyecto de Supabase pausado (los gratuitos se pausan tras una semana sin uso).
+    return new Error(
+      'No se pudo conectar con el servidor. Verificá tu internet; si el proyecto de Supabase está pausado, restauralo desde su panel. Podés continuar en Modo Offline.'
+    );
   }
   return new Error(error.message || 'Error de conexión con el servidor');
 }
@@ -74,7 +79,7 @@ export class SupabaseAuthRepository implements AuthRepository {
   private async leerPerfil(userId: string): Promise<PerfilRow | null> {
     const { data, error } = await supabase
       .from('perfiles')
-      .select('id, nombre, email, telefono, brigada, zona, recursos, rol, aprobado')
+      .select(COLUMNAS_PERFIL)
       .eq('id', userId)
       .maybeSingle();
     if (error) throw traducirError(error);
@@ -272,6 +277,23 @@ export class SupabaseAuthRepository implements AuthRepository {
     } catch {}
 
     return voluntario;
+  }
+
+  async listarVoluntarios(): Promise<Voluntario[]> {
+    const { data, error } = await supabase
+      .from('perfiles')
+      .select(COLUMNAS_PERFIL)
+      .eq('aprobado', true)
+      .order('nombre', { ascending: true });
+    if (error) throw traducirError(error);
+    const lista = ((data ?? []) as PerfilRow[]).map(aVoluntario);
+    // El administrador primero, después el resto por orden alfabético.
+    return lista.sort((a, b) => Number(esAdministrador(b.rol)) - Number(esAdministrador(a.rol)));
+  }
+
+  async obtenerVoluntario(id: string): Promise<Voluntario | null> {
+    const perfil = await this.leerPerfil(id);
+    return perfil ? aVoluntario(perfil) : null;
   }
 
   async recuperarClave(email: string): Promise<boolean> {

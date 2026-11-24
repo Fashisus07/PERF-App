@@ -11,6 +11,8 @@ import { authRepository } from '../../di/container';
 import { AjustesScreen } from '../screens/ajustes/AjustesScreen';
 import { AprobacionVoluntariosScreen } from '../screens/ajustes/AprobacionVoluntariosScreen';
 import { ColaSincronizacionScreen } from '../screens/ajustes/ColaSincronizacionScreen';
+import { PerfilDetalleScreen } from '../screens/ajustes/PerfilDetalleScreen';
+import { PerfilesScreen } from '../screens/ajustes/PerfilesScreen';
 import { PerfilVoluntarioScreen } from '../screens/ajustes/PerfilVoluntarioScreen';
 import { ProcesarSolicitudScreen } from '../screens/ajustes/ProcesarSolicitudScreen';
 import { ArchivoScreen } from '../screens/archivo/ArchivoScreen';
@@ -165,6 +167,8 @@ export function AppNavigator() {
         <Stack.Screen name="AprobacionVoluntarios" component={AprobacionVoluntariosScreen} />
         <Stack.Screen name="ProcesarSolicitud" component={ProcesarSolicitudScreen} />
         <Stack.Screen name="PerfilVoluntario" component={PerfilVoluntarioScreen} />
+        <Stack.Screen name="Perfiles" component={PerfilesScreen} />
+        <Stack.Screen name="PerfilDetalle" component={PerfilDetalleScreen} />
         <Stack.Screen name="ColaSincronizacion" component={ColaSincronizacionScreen} />
         <Stack.Screen name="DetalleCaso" component={DetalleCasoScreen} />
         <Stack.Screen name="EditarSanidad" component={EditarSanidadScreen} />
