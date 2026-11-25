@@ -47,7 +47,9 @@ export function AppHeader({ subtitle, onSettings }: { subtitle: string; onSettin
           <Pressable style={styles.iconBtn} onPress={abrirAjustes} accessibilityLabel="Ajustes">
             <MaterialIcons name="settings" size={24} color={colors.text} />
           </Pressable>
-          <Image source={require('../../../assets/images/avatar.jpg')} style={styles.avatar} />
+          <Pressable onPress={() => navigation.navigate('PerfilVoluntario')} accessibilityLabel="Ver perfil">
+            <Image source={require('../../../assets/images/avatar.jpg')} style={styles.avatar} />
+          </Pressable>
         </View>
       </View>
     </View>

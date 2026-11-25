@@ -101,7 +101,9 @@ export function AjustesScreen({ navigation }: Props) {
             <Text style={styles.volverText}>Volver</Text>
           </Pressable>
           <Text style={styles.titulo}>Ajustes</Text>
-          <AvatarPerfil />
+          <Pressable onPress={() => navigation?.navigate?.('PerfilVoluntario')} accessibilityLabel="Ver perfil">
+            <AvatarPerfil />
+          </Pressable>
         </View>
       </View>
 
@@ -129,6 +131,7 @@ export function AjustesScreen({ navigation }: Props) {
                 color="#0284c7"
                 titulo="Panel de Coordinación"
                 sub="Aprobación y control de acceso de voluntarios"
+                destacada
               >
                 <Pressable
                   style={styles.btnCoordVoluntarios}
@@ -330,11 +333,11 @@ export function AjustesScreen({ navigation }: Props) {
   );
 }
 
-type TarjetaProps = { icono: keyof typeof MaterialIcons.glyphMap; fondo: string; color: string; titulo: string; sub: string; children: ReactNode };
+type TarjetaProps = { icono: keyof typeof MaterialIcons.glyphMap; fondo: string; color: string; titulo: string; sub: string; children: ReactNode; destacada?: boolean };
 
-function Tarjeta({ icono, fondo, color, titulo, sub, children }: TarjetaProps) {
+function Tarjeta({ icono, fondo, color, titulo, sub, children, destacada }: TarjetaProps) {
   return (
-    <View style={styles.tarjeta}>
+    <View style={[styles.tarjeta, destacada && styles.tarjetaDestacada]}>
       <View style={styles.tarjetaTop}>
         <View style={[styles.tarjetaIcono, { backgroundColor: fondo }]}>
           <MaterialIcons name={icono} size={26} color={color} />
@@ -396,6 +399,7 @@ const styles = StyleSheet.create({
   introTexto: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 22, color: colors.textMuted },
 
   tarjeta: { gap: 14, padding: 16, borderRadius: 16, backgroundColor: colors.surface },
+  tarjetaDestacada: { borderWidth: 2, borderColor: '#0284c7', shadowColor: '#0284c7', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
   tarjetaTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   tarjetaIcono: { width: 52, height: 52, borderRadius: 9999, alignItems: 'center', justifyContent: 'center' },
   tarjetaTitulo: { fontFamily: fonts.bold, fontSize: 18, color: colors.text },

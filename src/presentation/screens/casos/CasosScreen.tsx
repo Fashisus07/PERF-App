@@ -88,10 +88,7 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
           <Text style={styles.summarySep}>•</Text>
           <Text style={styles.summaryActive}>{conteo.todos} activos</Text>
         </View>
-        <Pressable style={styles.filterBtn}>
-          <MaterialIcons name="tune" size={18} color={colors.textMuted} />
-          <Text style={styles.filterText}>Filtrar</Text>
-        </Pressable>
+
       </View>
       <View style={styles.search}>
         <MaterialIcons name="search" size={22} color={colors.textMuted} />
@@ -192,8 +189,7 @@ const styles = StyleSheet.create({
   summaryUrgent: { fontFamily: fonts.bold, fontSize: 14, color: colors.urgenteText },
   summarySep: { fontFamily: fonts.regular, fontSize: 15, color: colors.urgenteSoft },
   summaryActive: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
-  filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceChip, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999 },
-  filterText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
+
   search: { height: 56, backgroundColor: colors.surface, borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingLeft: 14, gap: 8 },
   searchInput: { flex: 1, height: 56, fontFamily: fonts.regular, fontSize: 16, color: colors.text, paddingRight: 40 },
   tabs: { flexDirection: 'row', gap: 8, paddingVertical: 8, marginBottom: 4 },
