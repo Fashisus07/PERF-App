@@ -234,22 +234,25 @@ Ordenadas por prioridad. 🔴 pedidos del equipo y de los profesores que siguen 
 6. **Animales con seguimiento individual** (1): conectar la tabla `animales` a la app (`Caso.ts`, `CasoMapper`, `Database.ts`). Archivos compartidos: coordinar con Mateo.
 7. **Coordinador responsable y tests virales como registros fijos** (2, 3): con ID propio. Con eso "Mis casos" deja de comparar por nombre.
 8. **Prioridad con "última revisión"** (11): guardar la fecha de la última revisión de cada caso y usarla en el cálculo.
+9. **Unificar el cálculo de prioridad**: hoy conviven `CalcularPrioridadCasoUseCase` (gravedad, vulnerabilidad y días) y `domain/services/PrioridadCaso.ts` (pesos por animal). Dejar uno solo y **validar los pesos con el refugio** (el profesor pidió que responda a necesidades reales).
+10. **Aplicar `20261031000000_animales_pendientes_adopciones.sql`** y `20261124000000_compatibilidad_etapa2.sql` en el Supabase de Tobías (`kdnosvxrgoxsopmzkghh`, es producción: avisar antes). Siempre se usa la base de Tobías, no la de Facu.
 
 **🟠 Seguridad y riesgos para la demo**
-9. **Sacar la clave `service_role` de la app**: `adminSupabase` la lee de `EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY`, y todo `EXPO_PUBLIC_` queda dentro del APK. Usar `aprobar_voluntario` / `rechazar_voluntario` con la sesión del administrador; la aprobación por el enlace del correo, con una función del servidor.
-10. **Cerrar el acceso anónimo** a `animales`, `pendientes` y `adopciones`: `revoke all on public.animales, public.pendientes, public.adopciones from anon;`.
-11. **Botón "Voluntario Demo (Modo Offline)"** del login: entra sin contraseña. Quitarlo o dejarlo solo en modo desarrollo (`__DEV__`).
-12. **Contraseñas**: cambiar la de la cuenta de administrador de prueba y no dejar contraseñas en un README público.
-13. **Error de notificaciones** "Custom sound 'default' not found" al abrir la app (canal de turnos).
-14. **Datos locales de versiones anteriores**: un celular con una instalación vieja muestra mal la urgencia (las columnas de triaje quedan con valores por defecto). Recalcular la prioridad en la migración de la base local, o limpiar los datos de la app.
+11. **Sacar la clave `service_role` de la app**: `adminSupabase` la lee de `EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY`, y todo `EXPO_PUBLIC_` queda dentro del APK. Usar `aprobar_voluntario` / `rechazar_voluntario` con la sesión del administrador; la aprobación por el enlace del correo, con una función del servidor.
+12. **Cerrar el acceso anónimo** a `animales`, `pendientes` y `adopciones`: `revoke all on public.animales, public.pendientes, public.adopciones from anon;`.
+13. **Botón "Voluntario Demo (Modo Offline)"** del login: entra sin contraseña. Quitarlo o dejarlo solo en modo desarrollo (`__DEV__`).
+14. **Contraseñas**: cambiar la de la cuenta de administrador de prueba y no dejar contraseñas en un README público.
+15. **Error de notificaciones** "Custom sound 'default' not found" al abrir la app (canal de turnos).
+16. **Datos locales de versiones anteriores**: un celular con una instalación vieja muestra mal la urgencia (las columnas de triaje quedan con valores por defecto). Recalcular la prioridad en la migración de la base local, o limpiar los datos de la app.
 
 **🟡 Mejoras**
-15. Algunos rescates guardan el barrio como coordenadas (por ejemplo `-34.60940, -58.41060`): revisar la geocodificación inversa y su valor de respaldo.
-16. Foto de perfil propia: hoy es una imagen fija y las iniciales.
-17. Pruebas de lo nuevo: `sigueElCaso`, zonas y filtros / orden de la bandeja.
-18. Una sola fuente de verdad del esquema: `supabase/schema.sql` y `supabase/migrations/` conviven y pueden diferir.
-19. Eliminar `data/mock/` y el `MockRemoteApiClient`, y probar el circuito completo en dos dispositivos reales.
-20. Nombre de paquete de la app (`com.anonymous.PERFtmp`) y generar el APK/AAB de entrega.
+17. Algunos rescates guardan el barrio como coordenadas (por ejemplo `-34.60940, -58.41060`): revisar la geocodificación inversa y su valor de respaldo.
+18. Foto de perfil propia: hoy es una imagen fija y las iniciales.
+19. Pruebas de lo nuevo: `sigueElCaso`, zonas y filtros / orden de la bandeja.
+20. Una sola fuente de verdad del esquema: `supabase/schema.sql` y `supabase/migrations/` conviven y pueden diferir.
+21. Eliminar `data/mock/` y el `MockRemoteApiClient`, y **probar el circuito completo (registro, consulta y actualización) en dos celulares físicos**, la recuperación de datos tras reinstalar y los recordatorios en dispositivos reales (lo pidió el profesor).
+22. Nombre de paquete de la app (`com.anonymous.PERFtmp`) y generar el APK/AAB de entrega.
+23. **Limpiar datos de prueba en Supabase**: el usuario de prueba, los casos "PRUEBA SYNC 1/2/3", sus eventos y el conflicto de prueba.
 
 ### Roles y perfiles
 - **Dos roles:** un **único administrador** y el resto voluntarios. En la base el rol del administrador se llama `coordinador` (así lo usan `es_coordinador()`, las políticas RLS, el panel de aprobaciones y los correos); la app lo muestra como **Administrador** (`ETIQUETA_ROL`, `esAdministrador()` en `domain/models/Ajustes.ts`). La migración `20261112000000_administrador_unico.sql` agrega un índice único parcial para que haya uno solo; **todavía no está aplicada** (coordinar con el equipo).
