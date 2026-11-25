@@ -278,7 +278,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 🟠 **Seguridad y riesgos para la demo**
 
 - [x] **Sacar la clave `service_role` de la app** (en el código; ver "Por qué no hay clave `service_role` en la app"). Falta **desplegar**: aplicar `20261125…sin_service_role` y subir las 2 Edge Functions con sus secrets, y probar el correo y el enlace de aprobación.
-- [ ] **Cerrar el acceso anónimo** a `animales`, `pendientes` y `adopciones`: `revoke all on public.animales, public.pendientes, public.adopciones from anon;`.
+- [x] **Cerrar el acceso anónimo** (en el código): migración `20261125000100_cerrar_acceso_anonimo.sql`, que le saca al rol `anon` el permiso sobre todas las tablas (segunda barrera además de RLS). Falta **pegarla en el SQL Editor** de Supabase.
 - [ ] **Botón "Voluntario Demo (Modo Offline)"** del login: entra sin contraseña. Quitarlo o dejarlo solo en modo desarrollo (`__DEV__`).
 - [ ] **Contraseñas**: cambiar la de la cuenta de administrador de prueba y no dejar contraseñas en un README público.
 - [x] **Error de notificaciones** "Custom sound 'default' not found": el canal se creaba con `sound: 'default'`, que la librería busca como archivo. Ahora se omite y se usa el sonido del sistema, en un canal nuevo (`turnos-veterinarios`) porque Android no deja modificar un canal ya creado.
@@ -312,7 +312,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 ### Base de datos compartida
 - **Proyecto de Supabase del equipo:** el de Tobías (`kdnosvxrgoxsopmzkghh`). Es el valor por defecto de `src/data/remote/supabaseClient.ts`; se puede cambiar con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` en `.env`.
 - **Si se pausa:** los proyectos gratuitos se pausan tras una semana sin uso. Se restaura desde el panel con **Restore project** y no se pierden datos.
-- **Migraciones, en este orden** (SQL Editor, una vez cada una): `20261030…esquema_inicial`, `20261031…animales_pendientes_adopciones`, `20261112…administrador_unico` y `20261124…compatibilidad_etapa2` y `20261125…sin_service_role`. Esta última adapta la base al código de la Etapa 2 (columnas de triaje en `casos`, bucket `casos-fotos`, `aplicar_cambios_caso()` nueva y las funciones `aprobar_voluntario` / `rechazar_voluntario`).
+- **Migraciones, en este orden** (SQL Editor, una vez cada una): `20261030…esquema_inicial`, `20261031…animales_pendientes_adopciones`, `20261112…administrador_unico` y `20261124…compatibilidad_etapa2` `20261125…sin_service_role` y `20261125…cerrar_acceso_anonimo`. Esta última adapta la base al código de la Etapa 2 (columnas de triaje en `casos`, bucket `casos-fotos`, `aplicar_cambios_caso()` nueva y las funciones `aprobar_voluntario` / `rechazar_voluntario`).
 - `supabase/schema.sql` es el script completo para un proyecto **vacío**; en el proyecto existente se usan las migraciones, no los dos.
 - **Seguridad:** la app ya no usa la clave `service_role` (ver la sección siguiente). Antes de probar aprobaciones hay que aplicar la migración `20261125…sin_service_role` y desplegar las Edge Functions.
 
