@@ -253,6 +253,7 @@ Ordenadas por prioridad. 🔴 pedidos del equipo y de los profesores que siguen 
 21. Eliminar `data/mock/` y el `MockRemoteApiClient`, y **probar el circuito completo (registro, consulta y actualización) en dos celulares físicos**, la recuperación de datos tras reinstalar y los recordatorios en dispositivos reales (lo pidió el profesor).
 22. Nombre de paquete de la app (`com.anonymous.PERFtmp`) y generar el APK/AAB de entrega.
 23. **Limpiar datos de prueba en Supabase**: el usuario de prueba, los casos "PRUEBA SYNC 1/2/3", sus eventos y el conflicto de prueba.
+24. **Más animales, no solo gatos**: el formulario ya permite Gato, Perro y Otro, pero "Otro" no pide qué animal es. Agregar una lista (conejo, ave, tortuga, etc.) con texto libre, ampliar el `check` de `especie` en `schema.sql` y en la migración, y sacar el "foco felino" de los textos. Los tests virales (FIV/FeLV) son de gatos: para perros definir con el refugio qué estudios y pendientes aplican (parvovirus, moquillo, desparasitación).
 
 ### Roles y perfiles
 - **Dos roles:** un **único administrador** y el resto voluntarios. En la base el rol del administrador se llama `coordinador` (así lo usan `es_coordinador()`, las políticas RLS, el panel de aprobaciones y los correos); la app lo muestra como **Administrador** (`ETIQUETA_ROL`, `esAdministrador()` en `domain/models/Ajustes.ts`). La migración `20261112000000_administrador_unico.sql` agrega un índice único parcial para que haya uno solo; **todavía no está aplicada** (coordinar con el equipo).
@@ -310,7 +311,7 @@ Asistente guiado de 3 pasos con barra de progreso superior (`BarraRescate`):
   - Acceso alternativo a la galería multimedia del teléfono (`expo-image-picker`).
   - Opción de "Omitir foto por urgencia" para situaciones críticas en la calle.
 - **Paso 2: Datos del Animal (`PasoDatos`)**
-  - Nombre provisorio, especie (foco felino), cantidad de animales, edad estimada, estado visible y temperamento.
+  - Nombre provisorio, especie (gato, perro u otro), cantidad de animales, edad estimada, estado visible y temperamento.
   - Preguntas de triaje que calculan automáticamente la urgencia del caso.
   - Botón **"Usar mi ubicación"**: obtiene coordenadas GPS mediante `expo-location` y ejecuta geocodificación inversa para obtener la calle y barrio de forma legible (con límite de 15 segundos para no bloquear la app).
 - **Paso 3: Confirmación (`PasoConfirmar`)**
