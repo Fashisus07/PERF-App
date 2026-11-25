@@ -281,7 +281,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - [ ] **Cerrar el acceso anónimo** a `animales`, `pendientes` y `adopciones`: `revoke all on public.animales, public.pendientes, public.adopciones from anon;`.
 - [ ] **Botón "Voluntario Demo (Modo Offline)"** del login: entra sin contraseña. Quitarlo o dejarlo solo en modo desarrollo (`__DEV__`).
 - [ ] **Contraseñas**: cambiar la de la cuenta de administrador de prueba y no dejar contraseñas en un README público.
-- [ ] **Error de notificaciones** "Custom sound 'default' not found" al abrir la app (canal de turnos).
+- [x] **Error de notificaciones** "Custom sound 'default' not found": el canal se creaba con `sound: 'default'`, que la librería busca como archivo. Ahora se omite y se usa el sonido del sistema, en un canal nuevo (`turnos-veterinarios`) porque Android no deja modificar un canal ya creado.
 - [ ] **Datos locales de versiones anteriores**: un celular con una instalación vieja muestra mal la urgencia (las columnas de triaje quedan con valores por defecto). Recalcular la prioridad en la migración de la base local, o limpiar los datos de la app.
 
 🟡 **Mejoras**
