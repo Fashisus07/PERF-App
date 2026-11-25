@@ -9,7 +9,7 @@ import {
 } from '../../domain/repositories/AuthRepository';
 import { generarUUID } from '../local/uuid';
 import { notificarCoordinadoresNuevoVoluntario } from './NotificacionesCoordinadoresService';
-import { adminSupabase, supabase } from './supabaseClient';
+import { supabase } from './supabaseClient';
 
 export const VOLUNTARIO_DEMO: Voluntario = {
   id: 'voluntario-demo',
@@ -139,8 +139,6 @@ export class SupabaseAuthRepository implements AuthRepository {
 
   async registrar(datos: CredencialesRegistro): Promise<ResultadoRegistro> {
     const email = datos.email.trim().toLowerCase();
-    const tokenAprobacion = generarUUID();
-
     const { data, error } = await supabase.auth.signUp({
       email,
       password: datos.clave,
@@ -151,7 +149,6 @@ export class SupabaseAuthRepository implements AuthRepository {
           zona: datos.zona.trim(),
           brigada: `Brigada ${datos.zona.trim()}`,
           recursos: datos.recursos ?? [],
-          token_aprobacion: tokenAprobacion,
           fecha_solicitud: new Date().toISOString(),
         },
       },
@@ -163,26 +160,10 @@ export class SupabaseAuthRepository implements AuthRepository {
       throw new Error('Ya existe una cuenta registrada con este correo electrónico.');
     }
 
-    // Asegurar recursos en tabla perfiles mediante adminSupabase
+    // Los recursos viajan en los datos del registro y el trigger de la base los copia al perfil.
+    // Avisar a los coordinadores es trabajo del servidor (Edge Function), no de la app.
     try {
-      if (datos.recursos?.length) {
-        await adminSupabase.from('perfiles').update({ recursos: datos.recursos }).eq('id', data.user.id);
-      }
-    } catch {}
-
-    // Notificar a todos los coordinadores por correo con los botones de acción
-    try {
-      await notificarCoordinadoresNuevoVoluntario({
-        id: data.user.id,
-        nombre: datos.nombre.trim(),
-        email,
-        telefono: datos.telefono.trim(),
-        zona: datos.zona.trim(),
-        brigada: `Brigada ${datos.zona.trim()}`,
-        recursos: datos.recursos ?? [],
-        tokenAprobacion,
-        fechaSolicitud: new Date().toISOString(),
-      });
+      await notificarCoordinadoresNuevoVoluntario(data.user.id);
     } catch (errNotif) {
       console.warn('[SupabaseAuthRepository] Error notificando a coordinadores:', errNotif);
     }
@@ -320,40 +301,30 @@ export class SupabaseAuthRepository implements AuthRepository {
   }
 
   /**
-   * Obtiene la lista de todos los voluntarios pendientes de aprobación.
+   * Obtiene los voluntarios pendientes de aprobación. Lo permiten las políticas RLS solo al
+   * administrador (coordinador); para cualquier otra sesión la lista viene vacía.
    */
   async obtenerVoluntariosPendientes(): Promise<SolicitudVoluntarioPendiente[]> {
     try {
-      const { data, error } = await adminSupabase
+      const { data, error } = await supabase
         .from('perfiles')
         .select('id, nombre, email, telefono, brigada, zona, recursos, rol, aprobado, created_at')
         .eq('aprobado', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      if (!data) return [];
-
-      // Obtener metadatos de auth para tokens de aprobación
-      const { data: usersData } = await adminSupabase.auth.admin.listUsers();
-      const userMap = new Map((usersData?.users || []).map((u) => [u.id, u]));
-
-      return data.map((p) => {
-        const authUser = userMap.get(p.id);
-        const token = authUser?.user_metadata?.token_aprobacion;
-        return {
-          id: p.id,
-          nombre: p.nombre,
-          email: p.email,
-          telefono: p.telefono ?? authUser?.user_metadata?.telefono ?? '',
-          zona: p.zona ?? authUser?.user_metadata?.zona ?? '',
-          brigada: p.brigada,
-          recursos: p.recursos ?? authUser?.user_metadata?.recursos ?? [],
-          rol: (p.rol as any) ?? 'voluntario',
-          aprobado: p.aprobado,
-          tokenAprobacion: token,
-          createdAt: p.created_at,
-        };
-      });
+      return (data ?? []).map((p) => ({
+        id: p.id,
+        nombre: p.nombre,
+        email: p.email,
+        telefono: p.telefono ?? '',
+        zona: p.zona ?? '',
+        brigada: p.brigada,
+        recursos: p.recursos ?? [],
+        rol: (p.rol as any) ?? 'voluntario',
+        aprobado: p.aprobado,
+        createdAt: p.created_at,
+      }));
     } catch (err: any) {
       console.warn('[SupabaseAuthRepository] Error al obtener voluntarios pendientes:', err);
       return [];
@@ -361,97 +332,71 @@ export class SupabaseAuthRepository implements AuthRepository {
   }
 
   /**
-   * Aprueba una postulación de voluntario.
-   * Marca aprobado = true en perfiles y limpia el token de un solo uso.
+   * Aprueba una postulación. Con `token` (enlace del correo, sin sesión) lo valida la Edge Function
+   * `gestionar-voluntario`; sin token (desde la app) es el administrador con su sesión, y la base
+   * verifica que lo sea (`aprobar_voluntario`).
    */
   async aprobarVoluntario(userId: string, token?: string): Promise<ResultadoAccionSolicitud> {
-    try {
-      if (token) {
-        const { data: user } = await adminSupabase.auth.admin.getUserById(userId);
-        const tokenEsperado = user?.user?.user_metadata?.token_aprobacion;
-        if (tokenEsperado && tokenEsperado !== token) {
-          throw new Error('El enlace de aprobación es inválido o ya fue utilizado.');
-        }
-      }
-
-      // 1. Marcar como aprobado en perfiles
-      const { data: perfil, error: perfilErr } = await adminSupabase
-        .from('perfiles')
-        .update({ aprobado: true })
-        .eq('id', userId)
-        .select('nombre, email')
-        .single();
-
-      if (perfilErr) throw perfilErr;
-
-      // 2. Limpiar token_aprobacion en user_metadata y fijar aprobado
-      await adminSupabase.auth.admin.updateUserById(userId, {
-        user_metadata: { token_aprobacion: null, aprobado: true },
-      });
-
-      return {
-        success: true,
-        mensaje: `El voluntario ${perfil?.nombre || ''} (${perfil?.email || ''}) fue aprobado con éxito. Ya puede iniciar sesión.`,
-        nombre: perfil?.nombre,
-        email: perfil?.email,
-      };
-    } catch (err: any) {
-      return {
-        success: false,
-        mensaje: err?.message || 'Error al aprobar voluntario.',
-      };
-    }
+    return this.gestionarSolicitud('aprobar', userId, token);
   }
 
   /**
-   * Rechaza una postulación de voluntario.
-   * Borra toda la información de ese perfil y de auth.users de la base de datos.
+   * Rechaza una postulación y borra la cuenta y el perfil. Mismo esquema que `aprobarVoluntario`.
    */
   async rechazarVoluntario(userId: string, token?: string): Promise<ResultadoAccionSolicitud> {
+    return this.gestionarSolicitud('rechazar', userId, token);
+  }
+
+  private async gestionarSolicitud(
+    accion: 'aprobar' | 'rechazar',
+    userId: string,
+    token?: string
+  ): Promise<ResultadoAccionSolicitud> {
     try {
       if (token) {
-        const { data: user } = await adminSupabase.auth.admin.getUserById(userId);
-        const tokenEsperado = user?.user?.user_metadata?.token_aprobacion;
-        if (tokenEsperado && tokenEsperado !== token) {
-          throw new Error('El enlace de rechazo es inválido o ya fue utilizado.');
-        }
+        const { data, error } = await supabase.functions.invoke('gestionar-voluntario', {
+          body: { accion, id: userId, token },
+        });
+        // Si la función respondió con un error de negocio, el mensaje viene en el cuerpo.
+        const cuerpo = data ?? (await leerCuerpoError(error));
+        if (error && !cuerpo?.mensaje) throw error;
+        return {
+          success: !!cuerpo?.success,
+          mensaje: cuerpo?.mensaje ?? 'No se pudo procesar la solicitud.',
+          nombre: cuerpo?.nombre,
+          email: cuerpo?.email,
+        };
       }
 
-      // Obtener datos del postulante antes de borrar para el feedback
-      let nombre = 'Voluntario';
-      let email = '';
-      try {
-        const { data: p } = await adminSupabase
-          .from('perfiles')
-          .select('nombre, email')
-          .eq('id', userId)
-          .maybeSingle();
-        if (p) {
-          nombre = p.nombre;
-          email = p.email;
-        }
-      } catch {}
-
-      // 1. Eliminar usuario de auth.users (cascada automática a perfiles)
-      const { error: authErr } = await adminSupabase.auth.admin.deleteUser(userId);
-      if (authErr) {
-        console.warn('[SupabaseAuthRepository] Advertencia al borrar de auth.users:', authErr);
-      }
-
-      // 2. Borrado explícito de perfiles por seguridad
-      await adminSupabase.from('perfiles').delete().eq('id', userId);
-
+      const { data, error } = await supabase.rpc(
+        accion === 'aprobar' ? 'aprobar_voluntario' : 'rechazar_voluntario',
+        { p_user_id: userId }
+      );
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'No se pudo procesar la solicitud.');
       return {
         success: true,
-        mensaje: `La solicitud de ${nombre} fue rechazada y todos sus datos fueron eliminados permanentemente de la base de datos.`,
-        nombre,
-        email,
+        mensaje:
+          accion === 'aprobar'
+            ? `El voluntario ${data.nombre} (${data.email}) fue aprobado con éxito. Ya puede iniciar sesión.`
+            : `La solicitud de ${data.nombre} fue rechazada y sus datos fueron eliminados de la base de datos.`,
+        nombre: data.nombre,
+        email: data.email,
       };
     } catch (err: any) {
       return {
         success: false,
-        mensaje: err?.message || 'Error al rechazar y eliminar voluntario.',
+        mensaje: err?.message || 'Error al procesar la solicitud.',
       };
     }
+  }
+}
+
+/** Lee el cuerpo JSON de un error HTTP de una Edge Function, si lo trae. */
+async function leerCuerpoError(error: any): Promise<any | null> {
+  try {
+    return await error?.context?.json?.();
+  } catch {
+    return null;
   }
 }

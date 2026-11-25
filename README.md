@@ -144,6 +144,28 @@ El backend de **PERF Móvil** está implementado sobre **Supabase** (PostgreSQL 
   - **Fase A:** El binario capturado en campo (`foto_local_uri`) se sube al bucket privado en la ruta `{caso_id}/{foto_id}.jpg`.
   - **Fase B:** Tras la subida exitosa, se obtiene la ruta remota (`foto_remote_path`), se actualiza la columna en PostgreSQL y se actualiza el estado local en SQLite como `foto_sync_status = 'SYNCED'`. Si no hay conexión o falla la subida de la imagen, el caso se sincroniza de todas formas y la fotografía queda encolada para reintento automático.
 
+### 3. Por qué no hay clave `service_role` en la app
+La clave `service_role` es la clave maestra de Supabase: **se salta todas las políticas RLS** y puede leer, editar y borrar cualquier dato y cualquier usuario. Todo lo que empieza con `EXPO_PUBLIC_` se empaqueta dentro del APK, así que cualquiera que descomprima la app (minutos de trabajo) se lleva la clave y tiene control total de la base. Por eso la seguridad tiene que estar en el servidor, no en el celular (pedido del profesor: control de acceso desde el backend). La app solo conoce la clave *publishable*.
+
+Lo que antes hacía `adminSupabase` ahora se reparte así:
+
+| Antes (clave maestra en la app) | Ahora |
+|---|---|
+| Guardar los recursos del postulante | Viajan en los datos del registro y el trigger `crear_perfil_al_registrarse` los copia al perfil |
+| Listar postulaciones pendientes | Consulta normal con RLS: solo el administrador ve los perfiles no aprobados |
+| Aprobar o rechazar desde **Ajustes** | Funciones SQL `aprobar_voluntario` / `rechazar_voluntario` con la sesión del administrador (la base verifica que lo sea) |
+| Correo a coordinadores | Edge Function `notificar-voluntario` (usa `RESEND_API_KEY` como secret del servidor) |
+| Aprobar o rechazar desde el enlace del correo | Edge Function `gestionar-voluntario`, que valida un token de un solo uso |
+
+El token del enlace ahora lo genera el servidor y se guarda en `app_metadata`, que el usuario no puede editar. Antes lo generaba la app y el propio postulante lo conocía, así que podía aprobarse solo. `notificar-voluntario` además solo avisa de perfiles no aprobados creados en las últimas 24 hs, una sola vez por postulante.
+
+**Cómo desplegarlo** (una vez, con la CLI de Supabase y la cuenta dueña del proyecto):
+1. Pegar `supabase/migrations/20261125000000_sin_service_role.sql` en el SQL Editor.
+2. `npx supabase login` y `npx supabase link --project-ref kdnosvxrgoxsopmzkghh`.
+3. `npx supabase secrets set RESEND_API_KEY=re_xxx APP_URL=https://url-de-la-app-web`. `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta Supabase solos.
+4. `npx supabase functions deploy notificar-voluntario` y `npx supabase functions deploy gestionar-voluntario` (`supabase/config.toml` ya las deja sin exigir JWT, porque las usa quien todavía no tiene sesión).
+5. Sacar `EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY` y `EXPO_PUBLIC_RESEND_API_KEY` del `.env` local, y **rotar** la service role en el panel de Supabase (Project Settings > API) si alguna vez estuvo en un APK o en un repo.
+
 ---
 
 ## 🔄 Motor de Sincronización Bidireccional (`SyncEngine`)
@@ -255,7 +277,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 
 🟠 **Seguridad y riesgos para la demo**
 
-- [ ] **Sacar la clave `service_role` de la app**: `adminSupabase` la lee de `EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY`, y todo `EXPO_PUBLIC_` queda dentro del APK. Usar `aprobar_voluntario` / `rechazar_voluntario` con la sesión del administrador; la aprobación por el enlace del correo, con una función del servidor.
+- [x] **Sacar la clave `service_role` de la app** (en el código; ver "Por qué no hay clave `service_role` en la app"). Falta **desplegar**: aplicar `20261125…sin_service_role` y subir las 2 Edge Functions con sus secrets, y probar el correo y el enlace de aprobación.
 - [ ] **Cerrar el acceso anónimo** a `animales`, `pendientes` y `adopciones`: `revoke all on public.animales, public.pendientes, public.adopciones from anon;`.
 - [ ] **Botón "Voluntario Demo (Modo Offline)"** del login: entra sin contraseña. Quitarlo o dejarlo solo en modo desarrollo (`__DEV__`).
 - [ ] **Contraseñas**: cambiar la de la cuenta de administrador de prueba y no dejar contraseñas en un README público.
@@ -290,9 +312,9 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 ### Base de datos compartida
 - **Proyecto de Supabase del equipo:** el de Tobías (`kdnosvxrgoxsopmzkghh`). Es el valor por defecto de `src/data/remote/supabaseClient.ts`; se puede cambiar con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` en `.env`.
 - **Si se pausa:** los proyectos gratuitos se pausan tras una semana sin uso. Se restaura desde el panel con **Restore project** y no se pierden datos.
-- **Migraciones, en este orden** (SQL Editor, una vez cada una): `20261030…esquema_inicial`, `20261031…animales_pendientes_adopciones`, `20261112…administrador_unico` y `20261124…compatibilidad_etapa2`. Esta última adapta la base al código de la Etapa 2 (columnas de triaje en `casos`, bucket `casos-fotos`, `aplicar_cambios_caso()` nueva y las funciones `aprobar_voluntario` / `rechazar_voluntario`).
+- **Migraciones, en este orden** (SQL Editor, una vez cada una): `20261030…esquema_inicial`, `20261031…animales_pendientes_adopciones`, `20261112…administrador_unico` y `20261124…compatibilidad_etapa2` y `20261125…sin_service_role`. Esta última adapta la base al código de la Etapa 2 (columnas de triaje en `casos`, bucket `casos-fotos`, `aplicar_cambios_caso()` nueva y las funciones `aprobar_voluntario` / `rechazar_voluntario`).
 - `supabase/schema.sql` es el script completo para un proyecto **vacío**; en el proyecto existente se usan las migraciones, no los dos.
-- **Pendiente de seguridad:** `supabaseClient.ts` crea `adminSupabase` con `EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY`. Todo lo que empieza con `EXPO_PUBLIC_` queda dentro del APK, así que esa clave no debería estar en la app. La salida es usar `aprobar_voluntario` / `rechazar_voluntario` (ya creadas por la migración de compatibilidad) con la sesión del administrador, y dejar la aprobación por el enlace del correo para una función del servidor.
+- **Seguridad:** la app ya no usa la clave `service_role` (ver la sección siguiente). Antes de probar aprobaciones hay que aplicar la migración `20261125…sin_service_role` y desplegar las Edge Functions.
 
 ---
 
