@@ -222,38 +222,58 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 | 12 | Que el cambio requiera tocar **Guardar** | ❌ Falta (hay que definir en qué pantallas) |
 | 14/15 | Sacar al veterinario al guardar un rescate | ❌ Falta |
 
-### Tareas que faltan
-Ordenadas por prioridad. 🔴 pedidos del equipo y de los profesores que siguen abiertos · 🟠 seguridad y riesgos para la demo · 🟡 mejoras.
+### Checklist del proyecto
+`[x]` hecho · `[ ]` falta. Lo que falta está ordenado por prioridad: 🔴 pedidos del equipo y de los profesores · 🟠 seguridad y riesgos para la demo · 🟡 mejoras.
 
-**🔴 Pedidos abiertos**
-1. **Sacar al veterinario del guardado de rescate** (14/15): quitar el botón "Agendar primer turno veterinario" de `RescateGuardadoScreen`.
-2. **Recordatorio configurable** (9): poder elegir con cuánta anticipación avisar; hoy solo hay un sí/no para el aviso de 1 día antes.
-3. **Botón Guardar** (12): que los cambios no se apliquen solos, sino al tocar Guardar. Definir en qué pantallas.
-4. **Administrador único** (10): aplicar `20261112000000_administrador_unico.sql` en el SQL Editor (hoy hay un solo coordinador, así que no cambia el rol de nadie).
-5. **Registro de veterinarios y horarios por veterinario** (7, 8): hoy los centros son locales y los horarios son una lista fija por centro.
-6. **Animales con seguimiento individual** (1): conectar la tabla `animales` a la app (`Caso.ts`, `CasoMapper`, `Database.ts`). Archivos compartidos: coordinar con Mateo.
-7. **Coordinador responsable y tests virales como registros fijos** (2, 3): con ID propio. Con eso "Mis casos" deja de comparar por nombre.
-8. **Prioridad con "última revisión"** (11): guardar la fecha de la última revisión de cada caso y usarla en el cálculo.
-9. **Unificar el cálculo de prioridad**: hoy conviven `CalcularPrioridadCasoUseCase` (gravedad, vulnerabilidad y días) y `domain/services/PrioridadCaso.ts` (pesos por animal). Dejar uno solo y **validar los pesos con el refugio** (el profesor pidió que responda a necesidades reales).
-10. **Aplicar `20261031000000_animales_pendientes_adopciones.sql`** y `20261124000000_compatibilidad_etapa2.sql` en el Supabase de Tobías (`kdnosvxrgoxsopmzkghh`, es producción: avisar antes). Siempre se usa la base de Tobías, no la de Facu.
+**Hecho**
+- [x] Mi perfil, editar perfil, cerrar sesión y versión (4)
+- [x] Selector Todos / Mis casos en la bandeja (5)
+- [x] 23 zonas, varias a la vez y "otra zona" en el registro (6)
+- [x] Lista de voluntarios con buscador y perfil de cada uno
+- [x] Botón Filtrar: orden y estado del caso
+- [x] Prioridad por triaje multicriterio: gravedad, vulnerabilidad y días de espera (11)
+- [x] Aprobación de voluntarios por correo, Panel de Coordinación y cambio de clave
+- [x] Login con JWT, RLS en todas las tablas y fotos privadas (parte de 13)
+- [x] Sincronización campo a campo, con conflictos guardados, sin duplicados y con fotos
+- [x] Sesión recordada y candado de huella o PIN al abrir la app
+- [x] Modelo por animal, pendientes y adopciones en la base (migración escrita)
+- [x] Probado en emulador contra Supabase: alta, descarga, edición offline y conflicto
+- [x] Turnos veterinarios sin superposición
 
-**🟠 Seguridad y riesgos para la demo**
-11. **Sacar la clave `service_role` de la app**: `adminSupabase` la lee de `EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY`, y todo `EXPO_PUBLIC_` queda dentro del APK. Usar `aprobar_voluntario` / `rechazar_voluntario` con la sesión del administrador; la aprobación por el enlace del correo, con una función del servidor.
-12. **Cerrar el acceso anónimo** a `animales`, `pendientes` y `adopciones`: `revoke all on public.animales, public.pendientes, public.adopciones from anon;`.
-13. **Botón "Voluntario Demo (Modo Offline)"** del login: entra sin contraseña. Quitarlo o dejarlo solo en modo desarrollo (`__DEV__`).
-14. **Contraseñas**: cambiar la de la cuenta de administrador de prueba y no dejar contraseñas en un README público.
-15. **Error de notificaciones** "Custom sound 'default' not found" al abrir la app (canal de turnos).
-16. **Datos locales de versiones anteriores**: un celular con una instalación vieja muestra mal la urgencia (las columnas de triaje quedan con valores por defecto). Recalcular la prioridad en la migración de la base local, o limpiar los datos de la app.
+**Falta**
 
-**🟡 Mejoras**
-17. Algunos rescates guardan el barrio como coordenadas (por ejemplo `-34.60940, -58.41060`): revisar la geocodificación inversa y su valor de respaldo.
-18. Foto de perfil propia: hoy es una imagen fija y las iniciales.
-19. Pruebas de lo nuevo: `sigueElCaso`, zonas y filtros / orden de la bandeja.
-20. Una sola fuente de verdad del esquema: `supabase/schema.sql` y `supabase/migrations/` conviven y pueden diferir.
-21. Eliminar `data/mock/` y el `MockRemoteApiClient`, y **probar el circuito completo (registro, consulta y actualización) en dos celulares físicos**, la recuperación de datos tras reinstalar y los recordatorios en dispositivos reales (lo pidió el profesor).
-22. Nombre de paquete de la app (`com.anonymous.PERFtmp`) y generar el APK/AAB de entrega.
-23. **Limpiar datos de prueba en Supabase**: el usuario de prueba, los casos "PRUEBA SYNC 1/2/3", sus eventos y el conflicto de prueba.
-24. **Más animales, no solo gatos**: el formulario ya permite Gato, Perro y Otro, pero "Otro" no pide qué animal es. Que al elegir **Otro** se pueda indicar qué animal doméstico es (conejo, cobayo, ave, tortuga, etc.) con una lista y texto libre, ampliar el `check` de `especie` en `schema.sql` y en la migración, y sacar el "foco felino" de los textos. Los tests virales (FIV/FeLV) son de gatos: para perros definir con el refugio qué estudios y pendientes aplican (parvovirus, moquillo, desparasitación).
+🔴 **Pedidos abiertos**
+
+- [ ] **Sacar al veterinario del guardado de rescate** (14/15): quitar el botón "Agendar primer turno veterinario" de `RescateGuardadoScreen`.
+- [ ] **Recordatorio configurable** (9): poder elegir con cuánta anticipación avisar; hoy solo hay un sí/no para el aviso de 1 día antes.
+- [ ] **Botón Guardar** (12): que los cambios no se apliquen solos, sino al tocar Guardar. Definir en qué pantallas.
+- [ ] **Administrador único** (10): aplicar `20261112000000_administrador_unico.sql` en el SQL Editor (hoy hay un solo coordinador, así que no cambia el rol de nadie).
+- [ ] **Registro de veterinarios y horarios por veterinario** (7, 8): hoy los centros son locales y los horarios son una lista fija por centro.
+- [ ] **Animales con seguimiento individual** (1): conectar la tabla `animales` a la app (`Caso.ts`, `CasoMapper`, `Database.ts`). Archivos compartidos: coordinar con Mateo.
+- [ ] **Coordinador responsable y tests virales como registros fijos** (2, 3): con ID propio. Con eso "Mis casos" deja de comparar por nombre.
+- [ ] **Prioridad con "última revisión"** (11): guardar la fecha de la última revisión de cada caso y usarla en el cálculo.
+- [ ] **Unificar el cálculo de prioridad**: hoy conviven `CalcularPrioridadCasoUseCase` (gravedad, vulnerabilidad y días) y `domain/services/PrioridadCaso.ts` (pesos por animal). Dejar uno solo y **validar los pesos con el refugio** (el profesor pidió que responda a necesidades reales).
+- [ ] **Aplicar `20261031000000_animales_pendientes_adopciones.sql`** y `20261124000000_compatibilidad_etapa2.sql` en el Supabase de Tobías (`kdnosvxrgoxsopmzkghh`, es producción: avisar antes). Siempre se usa la base de Tobías, no la de Facu.
+
+🟠 **Seguridad y riesgos para la demo**
+
+- [ ] **Sacar la clave `service_role` de la app**: `adminSupabase` la lee de `EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY`, y todo `EXPO_PUBLIC_` queda dentro del APK. Usar `aprobar_voluntario` / `rechazar_voluntario` con la sesión del administrador; la aprobación por el enlace del correo, con una función del servidor.
+- [ ] **Cerrar el acceso anónimo** a `animales`, `pendientes` y `adopciones`: `revoke all on public.animales, public.pendientes, public.adopciones from anon;`.
+- [ ] **Botón "Voluntario Demo (Modo Offline)"** del login: entra sin contraseña. Quitarlo o dejarlo solo en modo desarrollo (`__DEV__`).
+- [ ] **Contraseñas**: cambiar la de la cuenta de administrador de prueba y no dejar contraseñas en un README público.
+- [ ] **Error de notificaciones** "Custom sound 'default' not found" al abrir la app (canal de turnos).
+- [ ] **Datos locales de versiones anteriores**: un celular con una instalación vieja muestra mal la urgencia (las columnas de triaje quedan con valores por defecto). Recalcular la prioridad en la migración de la base local, o limpiar los datos de la app.
+
+🟡 **Mejoras**
+
+- [ ] Algunos rescates guardan el barrio como coordenadas (por ejemplo `-34.60940, -58.41060`): revisar la geocodificación inversa y su valor de respaldo.
+- [ ] Foto de perfil propia: hoy es una imagen fija y las iniciales.
+- [ ] Pruebas de lo nuevo: `sigueElCaso`, zonas y filtros / orden de la bandeja.
+- [ ] Una sola fuente de verdad del esquema: `supabase/schema.sql` y `supabase/migrations/` conviven y pueden diferir.
+- [ ] Eliminar `data/mock/` y el `MockRemoteApiClient`, y **probar el circuito completo (registro, consulta y actualización) en dos celulares físicos**, la recuperación de datos tras reinstalar y los recordatorios en dispositivos reales (lo pidió el profesor).
+- [ ] Nombre de paquete de la app (`com.anonymous.PERFtmp`) y generar el APK/AAB de entrega.
+- [ ] **Limpiar datos de prueba en Supabase**: el usuario de prueba, los casos "PRUEBA SYNC 1/2/3", sus eventos y el conflicto de prueba.
+- [ ] **Más animales, no solo gatos**: el formulario ya permite Gato, Perro y Otro, pero "Otro" no pide qué animal es. Que al elegir **Otro** se pueda indicar qué animal doméstico es (conejo, cobayo, ave, tortuga, etc.) con una lista y texto libre, ampliar el `check` de `especie` en `schema.sql` y en la migración, y sacar el "foco felino" de los textos. Los tests virales (FIV/FeLV) son de gatos: para perros definir con el refugio qué estudios y pendientes aplican (parvovirus, moquillo, desparasitación).
 
 ### Roles y perfiles
 - **Dos roles:** un **único administrador** y el resto voluntarios. En la base el rol del administrador se llama `coordinador` (así lo usan `es_coordinador()`, las políticas RLS, el panel de aprobaciones y los correos); la app lo muestra como **Administrador** (`ETIQUETA_ROL`, `esAdministrador()` en `domain/models/Ajustes.ts`). La migración `20261112000000_administrador_unico.sql` agrega un índice único parcial para que haya uno solo; **todavía no está aplicada** (coordinar con el equipo).
