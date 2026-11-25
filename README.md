@@ -208,8 +208,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 | 5 | Cada coordinador ve sus casos | ✅ Selector **Todos / Mis casos** en la bandeja (coincide por nombre, ver "Roles y perfiles") |
 | 6 | Más barrios y zonas en el registro | ✅ 23 zonas, varias a la vez y "otra zona" de texto libre |
 | — | Vistas de perfiles | ✅ Lista de voluntarios con buscador y perfil de cada uno |
-| — | Filtros de la bandeja | ✅ Botón **Filtrar**: orden (Prioridad, Último rescate, Más antiguos, Última revisión) y estado del caso |
-| 11 | Prioridad por nivel de estado | ✅ Triaje multicriterio (gravedad clínica, vulnerabilidad y días de espera), ver "Criterio de Urgencia". "Última revisión" se usa como orden en **Filtrar** |
+| 11 | Prioridad por nivel de estado | ✅ Triaje multicriterio (gravedad clínica, vulnerabilidad y días de espera), ver "Criterio de Urgencia". "Última revisión" queda pendiente (ver Tareas) |
 | — | Aprobación de voluntarios y cambio de clave | ✅ Correo a coordinadores, Panel de Coordinación y `CambiarClaveScreen` |
 | 13 | Seguridad y acceso desde el backend | 🟡 Hecho: login con JWT, RLS en todas las tablas, fotos privadas. Falta sacar la clave `service_role` de la app (ver "Base de datos compartida") |
 | 10 | Un único administrador | 🟡 Migración escrita (`20261112000000_administrador_unico.sql`); falta pegarla en el SQL Editor |
@@ -230,7 +229,6 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - [x] Selector Todos / Mis casos en la bandeja (5)
 - [x] 23 zonas, varias a la vez y "otra zona" en el registro (6)
 - [x] Lista de voluntarios con buscador y perfil de cada uno
-- [x] Botón Filtrar: orden y estado del caso
 - [x] Prioridad por triaje multicriterio: gravedad, vulnerabilidad y días de espera (11)
 - [x] Aprobación de voluntarios por correo, Panel de Coordinación y cambio de clave
 - [x] Login con JWT, RLS en todas las tablas y fotos privadas (parte de 13)
@@ -268,7 +266,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 
 - [ ] Algunos rescates guardan el barrio como coordenadas (por ejemplo `-34.60940, -58.41060`): revisar la geocodificación inversa y su valor de respaldo.
 - [ ] Foto de perfil propia: hoy es una imagen fija y las iniciales.
-- [ ] Pruebas de lo nuevo: `sigueElCaso`, zonas y filtros / orden de la bandeja.
+- [ ] Pruebas de lo nuevo: `sigueElCaso` y zonas.
 - [ ] Una sola fuente de verdad del esquema: `supabase/schema.sql` y `supabase/migrations/` conviven y pueden diferir.
 - [ ] Eliminar `data/mock/` y el `MockRemoteApiClient`, y **probar el circuito completo (registro, consulta y actualización) en dos celulares físicos**, la recuperación de datos tras reinstalar y los recordatorios en dispositivos reales (lo pidió el profesor).
 - [ ] Nombre de paquete de la app (`com.anonymous.PERFtmp`) y generar el APK/AAB de entrega.
@@ -309,7 +307,6 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - **`CasosScreen`**: Pantalla principal con:
   - Buscador reactivo por nombre provisorio o ubicación.
   - Selector **Todos / Mis casos** (solo los que sigue el voluntario de la sesión) y, debajo, filtros de urgencia **Urgentes**, **Atención** y **Al día** (tocar de nuevo para quitarlos).
-  - Botón **Filtrar** (`FiltrosCasosModal`): ordenar por Prioridad, Último rescate, Más antiguos o Última revisión, y filtrar por estado del caso.
   - Tarjeta destacada de casos críticos urgentes.
   - Pull-to-refresh y lista optimizada de tarjetas (`CasoCard`).
 - **Estados de Pantalla:**

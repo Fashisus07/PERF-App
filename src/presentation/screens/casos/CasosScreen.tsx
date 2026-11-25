@@ -11,7 +11,6 @@ import { colors, fonts } from '../../theme';
 import { CasosCargando } from './CasosCargando';
 import { CasosError } from './CasosError';
 import { CasosVacio } from './CasosVacio';
-import { FiltrosCasosModal } from './FiltrosCasosModal';
 
 const TABS: { key: FiltroUrgencia; label: string; dot?: string }[] = [
   { key: 'todos', label: 'Todos' },
@@ -28,9 +27,7 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
   const {
     visibles, casos, conteo, cargando, error, recargar, busqueda, setBusqueda, filtro, setFiltro,
     soloMios, setSoloMios, cantidadMios, sesionIniciada,
-    orden, setOrden, estadoFiltro, setEstadoFiltro, estadosDisponibles, limpiarFiltros, filtrosActivos,
   } = useCasos();
-  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
   const online = useOnline();
   const [ultimaSync, setUltimaSync] = useState<Date | null>(null);
   useEffect(() => {
@@ -125,16 +122,6 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
           <Text style={styles.summarySep}>•</Text>
           <Text style={styles.summaryActive}>{conteo.todos} activos</Text>
         </View>
-        <Pressable
-          style={[styles.filterBtn, filtrosActivos > 0 && styles.filterBtnActivo]}
-          onPress={() => setFiltrosAbiertos(true)}
-          accessibilityLabel="Filtrar y ordenar casos"
-        >
-          <MaterialIcons name="tune" size={18} color={filtrosActivos > 0 ? colors.onPrimary : colors.textMuted} />
-          <Text style={[styles.filterText, filtrosActivos > 0 && { color: colors.onPrimary }]}>
-            Filtrar{filtrosActivos > 0 ? ` (${filtrosActivos})` : ''}
-          </Text>
-        </Pressable>
       </View>
       <View style={styles.search}>
         <MaterialIcons name="search" size={22} color={colors.textMuted} />
@@ -222,16 +209,6 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
         }
       />
       <NuevoRescateFab onPress={nuevoRescate} />
-      <FiltrosCasosModal
-        visible={filtrosAbiertos}
-        onClose={() => setFiltrosAbiertos(false)}
-        orden={orden}
-        onOrden={setOrden}
-        estado={estadoFiltro}
-        onEstado={setEstadoFiltro}
-        estadosDisponibles={estadosDisponibles}
-        onLimpiar={limpiarFiltros}
-      />
     </View>
   );
 }
@@ -245,9 +222,6 @@ const styles = StyleSheet.create({
   summaryUrgent: { fontFamily: fonts.bold, fontSize: 14, color: colors.urgenteText },
   summarySep: { fontFamily: fonts.regular, fontSize: 15, color: colors.urgenteSoft },
   summaryActive: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
-  filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceChip, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999 },
-  filterBtnActivo: { backgroundColor: colors.primary },
-  filterText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
   search: { height: 56, backgroundColor: colors.surface, borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingLeft: 14, gap: 8 },
   searchInput: { flex: 1, height: 56, fontFamily: fonts.regular, fontSize: 16, color: colors.text, paddingRight: 40 },
   vista: { flexDirection: 'row', backgroundColor: colors.surfaceChip, borderRadius: 9999, padding: 4, marginTop: 4 },
