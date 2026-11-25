@@ -241,7 +241,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 | 8 | Horarios según el veterinario | ❌ Falta |
 | 9 | Recordatorio de 24 hs configurable | ❌ Falta (hoy hay un interruptor de sí/no en Ajustes) |
 | 12 | Que el cambio requiera tocar **Guardar** | ❌ Falta (hay que definir en qué pantallas) |
-| 14/15 | Sacar al veterinario al guardar un rescate | ❌ Falta |
+| 14/15 | Sacar al veterinario al guardar un rescate | ✅ Se quitó el botón de `RescateGuardadoScreen` |
 
 ### Checklist del proyecto
 `[x]` hecho · `[ ]` falta. Lo que falta está ordenado por prioridad: 🔴 pedidos del equipo y de los profesores · 🟠 seguridad y riesgos para la demo · 🟡 mejoras.
@@ -264,7 +264,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 
 🔴 **Pedidos abiertos**
 
-- [ ] **Sacar al veterinario del guardado de rescate** (14/15): quitar el botón "Agendar primer turno veterinario" de `RescateGuardadoScreen`.
+- [x] **Sacar al veterinario del guardado de rescate** (14/15): se quitó el botón "Agendar primer turno veterinario" de `RescateGuardadoScreen`; el turno se sigue agendando desde la agenda.
 - [ ] **Recordatorio configurable** (9): poder elegir con cuánta anticipación avisar; hoy solo hay un sí/no para el aviso de 1 día antes.
 - [ ] **Botón Guardar** (12): que los cambios no se apliquen solos, sino al tocar Guardar. Definir en qué pantallas.
 - [ ] **Administrador único** (10): aplicar `20261112000000_administrador_unico.sql` en el SQL Editor (hoy hay un solo coordinador, así que no cambia el rol de nadie).
