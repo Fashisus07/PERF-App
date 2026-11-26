@@ -1,10 +1,11 @@
 import type { Caso, EventoHistorial } from '../../../domain/models/Caso';
 import type { AnimalCaso } from '../../../domain/models/Animal';
-import type { Turno } from '../../../domain/models/Turno';
+import type { CentroVeterinario, Turno } from '../../../domain/models/Turno';
 import {
   Comparable,
   FilaServidor,
   animalDesdeServidor,
+  centroDesdeServidor,
   filaAnimalParaServidor,
   camposComparables,
   casoDesdeServidor,
@@ -73,6 +74,8 @@ export interface AlmacenLocal {
   guardarCaso(caso: Caso): Promise<void>;
   guardarEvento(evento: EventoHistorial): Promise<void>;
   guardarTurno(turno: Turno): Promise<void>;
+  /** Deja los centros del servidor (alta, cambios y bajas); si el servidor no tiene ninguno no se llama. */
+  reemplazarCentros(centros: CentroVeterinario[]): Promise<void>;
   guardarAnimal(animal: AnimalCaso): Promise<void>;
   /** Animales de un caso, sin mirar su marca: se suben junto con el caso al crearlo. */
   leerAnimalesDeCaso(casoId: string): Promise<AnimalCaso[]>;
@@ -123,6 +126,15 @@ export async function pullRemoteChanges(
   const desdeIso = ultimaSync > 0 ? new Date(ultimaSync).toISOString() : undefined;
   const bases = await estado.leerBases();
   let descargadas = 0;
+
+  // 0. Veterinarias que carga el administrador (pocas filas: se bajan completas)
+  try {
+    const filasCentros = await servidor.listarCentros();
+    if (filasCentros.length) await almacen.reemplazarCentros(filasCentros.map(centroDesdeServidor));
+  } catch (e) {
+    if (e instanceof ErrorDeRed) throw e;
+    console.warn('[sync] no se pudieron bajar las veterinarias:', (e as Error).message);
+  }
 
   // 1. Casos
   const filasCasos = await servidor.listarCasos(desdeIso);

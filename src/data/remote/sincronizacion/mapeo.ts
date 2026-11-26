@@ -11,6 +11,7 @@ import type {
   TipoEvento,
 } from '../../../domain/models/Caso';
 import type { AnimalCaso } from '../../../domain/models/Animal';
+import { CentroVeterinario, normalizarHorarios } from '../../../domain/models/Turno';
 import type { Turno } from '../../../domain/models/Turno';
 import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
 
@@ -254,5 +255,38 @@ export function animalDesdeServidor(f: FilaServidor): AnimalCaso {
     motivoFallecimiento: f.motivo_fallecimiento ?? null,
     syncStatus: 'SYNCED',
     updatedAt: Date.parse(f.updated_at),
+  };
+}
+
+/** Fila de `centros_veterinarios` para el servidor. */
+export function filaCentroParaServidor(c: CentroVeterinario): FilaServidor {
+  return {
+    id: c.id,
+    nombre: c.nombre.trim(),
+    medico: c.medico?.trim() || null,
+    barrio: c.barrio.trim(),
+    direccion: c.direccion.trim(),
+    telefono: c.telefono.trim(),
+    detalle: c.detalle?.trim() || null,
+    distancia: c.distancia?.trim() || null,
+    abierto: c.abierto,
+    tipo: c.tipo,
+    horarios: normalizarHorarios(c.horarios),
+  };
+}
+
+export function centroDesdeServidor(f: FilaServidor): CentroVeterinario {
+  return {
+    id: f.id,
+    nombre: f.nombre,
+    medico: f.medico || undefined,
+    barrio: f.barrio,
+    direccion: f.direccion,
+    telefono: f.telefono,
+    detalle: f.detalle || undefined,
+    distancia: f.distancia || undefined,
+    abierto: f.abierto !== false,
+    tipo: f.tipo,
+    horarios: normalizarHorarios(f.horarios),
   };
 }

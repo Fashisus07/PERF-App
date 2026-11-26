@@ -1,6 +1,6 @@
 import { Caso, EventoHistorial } from '../../../domain/models/Caso';
 import { AnimalCaso } from '../../../domain/models/Animal';
-import { Turno } from '../../../domain/models/Turno';
+import { CentroVeterinario, Turno } from '../../../domain/models/Turno';
 import { getDatabase } from '../../local/Database';
 import {
   AnimalRow,
@@ -177,6 +177,14 @@ export const almacenSqlite: AlmacenLocal = {
     await db.runAsync(`UPDATE animales SET sync_status = 'SYNCED' WHERE id = ?;`, [id]);
   },
 
+  async reemplazarCentros(centros: CentroVeterinario[]) {
+    const db = await getDatabase();
+    for (const c of centros) await guardarCentroLocal(c);
+    // Lo que ya no está en el servidor (el catálogo de prueba o una baja) se saca del teléfono.
+    const marcas = centros.map(() => '?').join(', ');
+    await db.runAsync(`DELETE FROM centros_veterinarios WHERE id NOT IN (${marcas});`, centros.map((c) => c.id));
+  },
+
   async guardarTurno(turno: Turno) {
     const db = await getDatabase();
     await db.runAsync(
@@ -201,3 +209,30 @@ export const almacenSqlite: AlmacenLocal = {
     );
   },
 };
+
+/** Alta o cambio de una veterinaria en la base del teléfono. */
+export async function guardarCentroLocal(c: CentroVeterinario): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `INSERT INTO centros_veterinarios (id, nombre, medico, barrio, direccion, telefono, detalle, distancia, abierto, tipo, horarios)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       nombre = excluded.nombre, medico = excluded.medico, barrio = excluded.barrio,
+       direccion = excluded.direccion, telefono = excluded.telefono, detalle = excluded.detalle,
+       distancia = excluded.distancia, abierto = excluded.abierto, tipo = excluded.tipo,
+       horarios = excluded.horarios;`,
+    [
+      c.id,
+      c.nombre,
+      c.medico ?? null,
+      c.barrio,
+      c.direccion,
+      c.telefono,
+      c.detalle ?? null,
+      c.distancia ?? null,
+      c.abierto ? 1 : 0,
+      c.tipo,
+      JSON.stringify(c.horarios ?? []),
+    ]
+  );
+}

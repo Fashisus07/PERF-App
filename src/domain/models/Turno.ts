@@ -80,6 +80,22 @@ export function etiquetaRecordatorio(minutos: number): string {
 export const HORARIOS_CLINICA = ['09:00', '10:30', '11:15', '12:15', '16:00', '18:30'];
 export const HORARIOS_FORMULARIO = ['10:30', '11:15', '16:00', '18:30'];
 
+const FORMATO_HORARIO = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** "9:5" no es un horario; "09:05" sí. */
+export const esHorarioValido = (hhmm: string) => FORMATO_HORARIO.test(hhmm);
+
+/** Sin repetidos, sin valores inválidos y de menor a mayor. */
+export function normalizarHorarios(horarios: readonly string[] | null | undefined): string[] {
+  return Array.from(new Set((horarios ?? []).map((h) => h.trim()).filter(esHorarioValido))).sort();
+}
+
+/** Horarios en que atiende una clínica: los suyos o, si no cargó ninguno, los de siempre. */
+export function horariosDeClinica(clinica?: Pick<CentroVeterinario, 'horarios'> | null): string[] {
+  const propios = normalizarHorarios(clinica?.horarios);
+  return propios.length ? propios : HORARIOS_CLINICA;
+}
+
 /** Lo que dura cada turno: dos turnos a menos de esto de distancia se superponen (45 min = separación mínima entre horarios). */
 export const DURACION_TURNO_MIN = 45;
 

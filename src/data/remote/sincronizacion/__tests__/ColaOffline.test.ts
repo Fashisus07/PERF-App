@@ -8,7 +8,7 @@ import {
 } from '../MotorSincronizacion';
 import { Caso, EventoHistorial } from '../../../../domain/models/Caso';
 import { AnimalCaso } from '../../../../domain/models/Animal';
-import { Turno } from '../../../../domain/models/Turno';
+import { CentroVeterinario, Turno } from '../../../../domain/models/Turno';
 
 describe('Cola Offline First y Sincronización Bidireccional', () => {
   let cola: OperacionCola[];
@@ -19,6 +19,8 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
   let eventosRemotos: any[];
   let turnosRemotos: any[];
   let animalesLocales: AnimalCaso[];
+  let centrosLocales: CentroVeterinario[];
+  let centrosRemotos: any[];
   let animalesRemotos: Map<string, any>;
   let ultimaSyncGuardada: number | null;
 
@@ -31,6 +33,8 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
     eventosRemotos = [];
     turnosRemotos = [];
     animalesLocales = [];
+    centrosLocales = [];
+    centrosRemotos = [];
     animalesRemotos = new Map();
     ultimaSyncGuardada = null;
   });
@@ -57,6 +61,9 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
     },
     async guardarTurno(turno) {
       turnosLocales.push(turno);
+    },
+    async reemplazarCentros(centros) {
+      centrosLocales = centros;
     },
     async guardarAnimal(animal) {
       animalesLocales = [...animalesLocales.filter((a) => a.id !== animal.id), animal];
@@ -129,7 +136,7 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
       return new Set(['centro-1']);
     },
     async listarCentros() {
-      return [];
+      return [...centrosRemotos];
     },
     async listarCasos() {
       return Array.from(casosRemotos.values());
@@ -375,6 +382,44 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
       mockServidor.obtenerCaso = original;
       expect(r.fallidas).toBe(1);
       expect(animalesLocales.find((a) => a.id === 'an-1')?.nombre).toBe('Local');
+    });
+  });
+
+  describe('Veterinarias que carga el administrador', () => {
+    test('se bajan con sus horarios, ordenados y sin valores inválidos', async () => {
+      centrosRemotos.push({
+        id: 'vet-1',
+        nombre: 'Vet del Parque',
+        medico: 'Dra. Paz',
+        barrio: 'Caballito',
+        direccion: 'Acoyte 100',
+        telefono: '1144',
+        detalle: null,
+        distancia: null,
+        abierto: true,
+        tipo: 'consultorio',
+        horarios: ['16:00', '09:30', '9:5', '09:30', 'tarde'],
+      });
+      await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado, ahora: () => 1700001000000 });
+      expect(centrosLocales).toHaveLength(1);
+      expect(centrosLocales[0]).toMatchObject({ id: 'vet-1', nombre: 'Vet del Parque', medico: 'Dra. Paz', horarios: ['09:30', '16:00'] });
+    });
+
+    test('si el servidor todavía no tiene ninguna, no se borra el catálogo del teléfono', async () => {
+      centrosLocales = [{ id: 'patitas', nombre: 'Patitas', barrio: 'B', direccion: 'D', telefono: '1', abierto: true, tipo: 'consultorio' }];
+      await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado, ahora: () => 1700001000000 });
+      expect(centrosLocales).toHaveLength(1);
+    });
+
+    test('un fallo al bajar las veterinarias no frena el resto de la sincronización', async () => {
+      const original = mockServidor.listarCentros;
+      mockServidor.listarCentros = async () => {
+        throw new Error('permiso denegado');
+      };
+      animalesRemotos.set('an-5', { id: 'an-5', caso_id: 'c', nombre: 'X', castrado: 'NO', virales_vif_vilef: 'PENDIENTE', updated_at: '2026-10-02T00:00:00.000Z' });
+      await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado, ahora: () => 1700001000000 });
+      mockServidor.listarCentros = original;
+      expect(animalesLocales.some((a) => a.id === 'an-5')).toBe(true);
     });
   });
 });

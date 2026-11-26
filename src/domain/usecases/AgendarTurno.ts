@@ -5,6 +5,8 @@ import {
   ETIQUETA_MOTIVO,
   formatoTurnoCorto,
   HORARIOS_CLINICA,
+  horariosDeClinica,
+  horaDe,
   SolicitudTurno,
   sumarDias,
   Turno,
@@ -23,11 +25,16 @@ export class CupoNoDisponible extends Error {
 
 const ocupado = (fecha: Date, ocupados: Date[]) => ocupados.some((o) => o.getTime() === fecha.getTime());
 
-export function proximosLibres(desde: Date, ocupados: Date[], cantidad = 2): OpcionTurno[] {
+export function proximosLibres(
+  desde: Date,
+  ocupados: Date[],
+  cantidad = 2,
+  horarios: readonly string[] = HORARIOS_CLINICA,
+): OpcionTurno[] {
   const libres: OpcionTurno[] = [];
   for (let d = 0; d < 7 && libres.length < cantidad; d++) {
     const dia = sumarDias(desde, d);
-    for (const hora of HORARIOS_CLINICA) {
+    for (const hora of horarios) {
       const f = conHora(dia, hora);
       if (f.getTime() > desde.getTime() && !ocupado(f, ocupados)) {
         libres.push({ fecha: f, espera: f.getTime() - desde.getTime() });
@@ -71,8 +78,13 @@ export class AgendarTurno {
     if (clinicaId) {
       const ocupados = await this.repo.horariosOcupados(clinicaId);
       const fechaCita = new Date(ts);
+      const horarios = horariosDeClinica(clinica);
+      // Cada veterinario atiende en sus horarios: no se puede reservar fuera de ellos.
+      if (clinica && !horarios.includes(horaDe(fechaCita))) {
+        throw new Error(`${clinica.nombre} no atiende a las ${horaDe(fechaCita)}. Horarios: ${horarios.join(', ')}.`);
+      }
       if (ocupado(fechaCita, ocupados)) {
-        throw new CupoNoDisponible(s, proximosLibres(fechaCita, ocupados));
+        throw new CupoNoDisponible(s, proximosLibres(fechaCita, ocupados, 2, horarios));
       }
     }
 

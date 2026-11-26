@@ -8,7 +8,7 @@ import {
   Clinica,
   conHora,
   ETIQUETA_MOTIVO,
-  HORARIOS_FORMULARIO,
+  horariosDeClinica,
   MotivoConsulta,
   OPCIONES_RECORDATORIO,
   RECORDATORIO_POR_DEFECTO_MIN,
@@ -61,6 +61,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
   const fechaDia = dias[dia];
   const caso = casos.find((c) => c.id === casoId);
   const clinica = clinicas.find((c) => c.id === clinicaId);
+  const horariosDelCentro = horariosDeClinica(clinica);
 
   // Hoy no se pueden elegir horarios que ya pasaron.
   const horaPasada = (h: string) => mismoDia(fechaDia, ahora) && conHora(fechaDia, h).getTime() <= ahora.getTime();
@@ -185,7 +186,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
             <Text style={styles.seccion}>Hora de atención</Text>
           </View>
           <View style={styles.horas}>
-            {HORARIOS_FORMULARIO.map((h) => {
+            {horariosDelCentro.map((h) => {
               const activa = hora === h;
               const pasada = horaPasada(h);
               return (
@@ -222,6 +223,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
                   onPress={() => {
                     setClinicaId(c.id);
                     setEligiendoClinica(false);
+                    if (hora && !horariosDeClinica(c).includes(hora)) setHora(null);
                   }}
                 >
                   <TarjetaClinica clinica={c} />
