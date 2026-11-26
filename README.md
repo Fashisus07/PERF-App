@@ -321,7 +321,10 @@ El archivo queda en `android/app/build/outputs/apk/release/app-release.apk` (uno
 
   Un registro nuevo queda **pendiente** hasta que el único administrador lo apruebe (le llega un correo con los botones Aprobar y Rechazar), por eso para evaluar conviene usar la cuenta de evaluación y no registrarse.
 - **Si la app no conecta:** los proyectos gratuitos de Supabase se **pausan tras una semana sin uso**. Entrar a https://supabase.com/dashboard/project/kdnosvxrgoxsopmzkghh y apretar **Restore project**; no se pierden datos.
-- **Cuenta de evaluación:** `perf.voluntario.test@example.com` (voluntario ya aprobado). Su contraseña **no está en este repositorio**: se entrega junto con el TP. La que tenía antes estuvo publicada en el historial de git, así que se cambió desde Supabase (`update auth.users set encrypted_password = crypt('<nueva>', gen_salt('bf')) where email = '<correo>';`). La cuenta `perf.admin.test@example.com` **no se borra** si es el único administrador: solo se le cambia la clave.
+- **Cuentas de evaluación** (se entregan junto con el TP; **las contraseñas no están en este repositorio**):
+  - **Voluntario:** `perf.voluntario.test@example.com`, ya aprobado. Prueba el login real, la sincronización, el historial, los turnos, las fichas por animal y las veterinarias.
+  - **Administrador:** la cuenta del único administrador (`rol = coordinador`; el índice `perfiles_un_solo_administrador` no permite crear otro). Permite ver el panel de **Solicitudes de Voluntarios** (aprobar y rechazar) y **cargar o editar veterinarias**. Rechazar una solicitud borra esa cuenta: probar solo con cuentas de prueba.
+  - La contraseña anterior del voluntario estuvo publicada en el historial de git, así que se cambió desde Supabase (`update auth.users set encrypted_password = crypt('<nueva>', gen_salt('bf')) where email = '<correo>';`). **No se borra ninguna de las dos cuentas**; si se cambia la clave del administrador hay que avisarle al equipo.
 
 ### Base de datos compartida
 - **Proyecto de Supabase del equipo:** el de Tobías (`kdnosvxrgoxsopmzkghh`). Es el valor por defecto de `src/data/remote/supabaseClient.ts`; se puede cambiar con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` en `.env`.
