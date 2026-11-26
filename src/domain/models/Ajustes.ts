@@ -90,6 +90,23 @@ export type Voluntario = {
   tokenAprobacion?: string;
 };
 
+const ES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** El servidor guarda el creador como uuid: la sesión demo (id local) no puede mandarse. */
+export function idDeCreadorValido(id: string | null | undefined): id is string {
+  return !!id && ES_UUID.test(id);
+}
+
+/** "Mis casos": los que cargó el voluntario o en los que figura como responsable. */
+export function esMiCaso(
+  caso: { quienSigueCaso: string; creadoPorUserId?: string | null },
+  voluntario: Pick<Voluntario, 'nombre' | 'id'> | null
+): boolean {
+  if (!voluntario) return false;
+  if (idDeCreadorValido(voluntario.id) && caso.creadoPorUserId === voluntario.id) return true;
+  return sigueElCaso(caso.quienSigueCaso, voluntario);
+}
+
 /** Un caso es "de" un voluntario si el nombre de quien lo sigue coincide con su nombre o su primer nombre. */
 export function sigueElCaso(quienSigue: string, voluntario: Pick<Voluntario, 'nombre'> | null): boolean {
   const sigue = quienSigue.trim().toLowerCase();
