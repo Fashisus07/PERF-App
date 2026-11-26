@@ -126,7 +126,7 @@ PERF-App/
 El backend de **PERF Móvil** está implementado sobre **Supabase** (PostgreSQL en la nube con Supabase Auth y Storage Privado), diseñado para operar bajo un modelo distribuido y tolerante a desconexiones.
 
 ### 1. Seguridad y Control de Acceso (Row Level Security - RLS)
-- **Script Consolidado de Infraestructura:** [`supabase/schema.sql`](supabase/schema.sql).
+- **Script Consolidado de Infraestructura:** [`supabase/schema.sql`](supabase/schema.sql). Es un archivo **generado**: la suma, en orden, de `supabase/migrations/`. No se edita a mano (ver "Base de datos compartida").
 - **Políticas de Seguridad Estrictas:**
   - Se habilitó RLS en todas las tablas: `casos`, `turnos`, `eventos_historial`, `centros_veterinarios`, `conflictos` y `perfiles`.
   - **Acceso Anónimo Denegado:** Los usuarios no autenticados (`role = anon`) tienen acceso completamente denegado a las fichas clínicas, fotos y coordenadas GPS de tránsitos.
@@ -291,7 +291,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - [ ] Algunos rescates guardan el barrio como coordenadas (por ejemplo `-34.60940, -58.41060`): revisar la geocodificación inversa y su valor de respaldo.
 - [ ] Foto de perfil propia: hoy es una imagen fija y las iniciales.
 - [ ] Pruebas de lo nuevo: `sigueElCaso` y zonas.
-- [ ] Una sola fuente de verdad del esquema: `supabase/schema.sql` y `supabase/migrations/` conviven y pueden diferir.
+- [x] Una sola fuente de verdad del esquema: las migraciones. `supabase/schema.sql` se genera con `node supabase/generar-schema.js` y un test (`SchemaSupabase.test.ts`) falla si se desalinean. Se comprobó que las 8 migraciones y el `schema.sql` completo corren en orden sobre una base vacía (PGlite). **Ojo:** la versión anterior de `schema.sql` (la del esquema integral de la Etapa 2) queda en el historial de git.
 - [ ] Eliminar `data/mock/` y el `MockRemoteApiClient`, y **probar el circuito completo (registro, consulta y actualización) en dos celulares físicos**, la recuperación de datos tras reinstalar y los recordatorios en dispositivos reales (lo pidió el profesor).
 - [ ] Nombre de paquete de la app (`com.anonymous.PERFtmp`) y generar el APK/AAB de entrega.
 - [ ] **Limpiar datos de prueba en Supabase**: el usuario de prueba, los casos "PRUEBA SYNC 1/2/3", sus eventos y el conflicto de prueba.
@@ -314,7 +314,8 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - **Proyecto de Supabase del equipo:** el de Tobías (`kdnosvxrgoxsopmzkghh`). Es el valor por defecto de `src/data/remote/supabaseClient.ts`; se puede cambiar con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` en `.env`.
 - **Si se pausa:** los proyectos gratuitos se pausan tras una semana sin uso. Se restaura desde el panel con **Restore project** y no se pierden datos.
 - **Migraciones, en este orden** (SQL Editor, una vez cada una): `20261030…esquema_inicial`, `20261031…animales_pendientes_adopciones`, `20261112…administrador_unico` y `20261124…compatibilidad_etapa2` `20261125…sin_service_role`, `20261125…cerrar_acceso_anonimo` y `20261126…cargar_animales_de_casos_existentes` (esta última crea los animales de los casos que ya existían). Esta última adapta la base al código de la Etapa 2 (columnas de triaje en `casos`, bucket `casos-fotos`, `aplicar_cambios_caso()` nueva y las funciones `aprobar_voluntario` / `rechazar_voluntario`).
-- `supabase/schema.sql` es el script completo para un proyecto **vacío**; en el proyecto existente se usan las migraciones, no los dos.
+- `supabase/schema.sql` es el script completo para un proyecto **vacío** y se **genera** a partir de las migraciones (`node supabase/generar-schema.js`); en el proyecto existente se usan solo las migraciones que falten, nunca los dos. Para cambiar el esquema: agregar una migración, volver a generar y commitear ambos.
+- `20261127…coordinadores_responsables` está **escrita y validada pero NO aplicada** en Supabase, y la app todavía no la usa (queda para después de unir con la rama de Facu).
 - **Seguridad:** la app ya no usa la clave `service_role` (ver la sección siguiente). Las migraciones y las Edge Functions ya están aplicadas; para que salga el correo faltan los secrets `RESEND_API_KEY` y `APP_URL`.
 
 ---
