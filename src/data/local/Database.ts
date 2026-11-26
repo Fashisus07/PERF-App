@@ -1,10 +1,12 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
+import { recalcularPrioridadesLocales } from './MigracionPrioridades';
 import { getWebDatabase } from './WebDatabase';
 
 const DB_NAME = 'perf.db';
 
 let _db: SQLite.SQLiteDatabase | null = null;
+let _migracionWebHecha = false;
 
 /**
  * Singleton de la base de datos SQLite.
@@ -13,8 +15,13 @@ let _db: SQLite.SQLiteDatabase | null = null;
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (Platform.OS === 'web') {
     const webDb = getWebDatabase();
-    await crearTablas(webDb as unknown as SQLite.SQLiteDatabase);
-    return webDb as unknown as SQLite.SQLiteDatabase;
+    const dbCompat = webDb as unknown as SQLite.SQLiteDatabase;
+    await crearTablas(dbCompat);
+    if (!_migracionWebHecha) {
+      await recalcularPrioridadesLocales(dbCompat).catch(() => {});
+      _migracionWebHecha = true;
+    }
+    return dbCompat;
   }
 
   if (_db) return _db;
@@ -41,6 +48,7 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
       nombre_provisorio             TEXT    NOT NULL,
       cantidad_animales             INTEGER NOT NULL DEFAULT 1,
       especie                       TEXT    NOT NULL DEFAULT 'Gato',
+      especie_detalle               TEXT,
       edad_estimada                 TEXT,
       historia_origen               TEXT,
       personalidad                  TEXT,
@@ -54,6 +62,7 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
       foto_sync_status              TEXT    NOT NULL DEFAULT 'PENDING',
       fecha_rescate                 INTEGER NOT NULL,
       quien_sigue_caso              TEXT,
+      coordinador_id                TEXT,
       transito_nombre               TEXT,
       transito_telefono             TEXT,
       transito_correo               TEXT,
@@ -68,10 +77,50 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
       motivo_urgencia               TEXT,
       puntaje_prioridad             INTEGER NOT NULL DEFAULT 0,
       creado_por_user_id            TEXT,
+      creado_por_nombre             TEXT,
       modificado_por_user_id        TEXT,
       es_urgente                    INTEGER NOT NULL DEFAULT 0,
       sync_status                   TEXT    NOT NULL DEFAULT 'PENDING',
       updated_at                    INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS coordinadores (
+      id         TEXT    PRIMARY KEY NOT NULL,
+      nombre     TEXT    NOT NULL UNIQUE,
+      perfil_id  TEXT,
+      activo     INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS tests_virales (
+      id         TEXT    PRIMARY KEY NOT NULL,
+      nombre     TEXT    NOT NULL,
+      especie    TEXT    NOT NULL,
+      orden      INTEGER NOT NULL DEFAULT 0,
+      activo     INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS resultados_tests_animal (
+      id             TEXT    PRIMARY KEY NOT NULL,
+      caso_id        TEXT    NOT NULL,
+      animal_id      TEXT,
+      test_id        TEXT    NOT NULL,
+      resultado      TEXT    NOT NULL DEFAULT 'PENDIENTE',
+      fecha_test     INTEGER,
+      observaciones  TEXT,
+      registrado_por TEXT,
+      sync_status    TEXT    NOT NULL DEFAULT 'PENDING',
+      updated_at     INTEGER NOT NULL,
+      FOREIGN KEY (caso_id) REFERENCES casos(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS relaciones_animales (
+      id              TEXT    PRIMARY KEY NOT NULL,
+      caso_origen_id  TEXT    NOT NULL,
+      tipo_relacion   TEXT    NOT NULL,
+      caso_destino_id TEXT,
+      nombre_destino  TEXT    NOT NULL,
+      sync_status     TEXT    NOT NULL DEFAULT 'PENDING',
+      updated_at      INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS turnos (
@@ -126,17 +175,18 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
     );
 
     CREATE TABLE IF NOT EXISTS centros_veterinarios (
-      id         TEXT    PRIMARY KEY NOT NULL,
-      nombre     TEXT    NOT NULL,
-      medico     TEXT,
-      barrio     TEXT    NOT NULL,
-      direccion  TEXT    NOT NULL,
-      telefono   TEXT    NOT NULL,
-      detalle    TEXT,
-      distancia  TEXT,
-      abierto    INTEGER NOT NULL DEFAULT 1,
-      tipo       TEXT    NOT NULL,
-      horarios   TEXT    NOT NULL DEFAULT '["09:00","10:30","11:15","12:15","16:00","18:30"]'
+      id            TEXT    PRIMARY KEY NOT NULL,
+      nombre        TEXT    NOT NULL,
+      medico        TEXT,
+      barrio        TEXT    NOT NULL,
+      direccion     TEXT    NOT NULL,
+      telefono      TEXT    NOT NULL,
+      detalle       TEXT,
+      distancia     TEXT,
+      abierto       INTEGER NOT NULL DEFAULT 1,
+      tipo          TEXT    NOT NULL,
+      horarios      TEXT    NOT NULL DEFAULT '["09:00","10:30","11:15","12:15","16:00","18:30"]',
+      dias_atencion TEXT
     );
 
     CREATE TABLE IF NOT EXISTS voluntarios (
@@ -167,6 +217,9 @@ async function migrarColumnas(db: SQLite.SQLiteDatabase): Promise<void> {
     'ALTER TABLE casos ADD COLUMN motivo_urgencia TEXT;',
     'ALTER TABLE casos ADD COLUMN puntaje_prioridad INTEGER NOT NULL DEFAULT 0;',
     'ALTER TABLE casos ADD COLUMN creado_por_user_id TEXT;',
+    'ALTER TABLE casos ADD COLUMN creado_por_nombre TEXT;',
+    'ALTER TABLE casos ADD COLUMN coordinador_id TEXT;',
+    'ALTER TABLE casos ADD COLUMN especie_detalle TEXT;',
     'ALTER TABLE casos ADD COLUMN modificado_por_user_id TEXT;',
   ];
   for (const sql of columnasCasos) {
@@ -182,12 +235,19 @@ async function migrarColumnas(db: SQLite.SQLiteDatabase): Promise<void> {
   try {
     await db.execAsync('ALTER TABLE operaciones_pendientes ADD COLUMN idempotency_key TEXT;');
   } catch {}
+
+  try {
+    await db.execAsync('ALTER TABLE centros_veterinarios ADD COLUMN dias_atencion TEXT;');
+  } catch {}
+
+  await recalcularPrioridadesLocales(db).catch(() => {});
 }
 
 /**
  * Cierra la base (para tests o al cerrar la app).
  */
 export async function cerrarDatabase(): Promise<void> {
+  _migracionWebHecha = false;
   if (_db) {
     await _db.closeAsync();
     _db = null;

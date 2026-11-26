@@ -55,7 +55,10 @@ export function PerfilDetalleScreen({ navigation, route }: Props) {
   };
 
   const susCasos = useMemo(
-    () => (voluntario ? casos.filter((c) => sigueElCaso(c.quienSigueCaso, voluntario)) : []),
+    () =>
+      voluntario
+        ? casos.filter((c) => sigueElCaso(c.quienSigueCaso, voluntario, c.coordinadorPerfilId))
+        : [],
     [casos, voluntario]
   );
 
@@ -101,7 +104,7 @@ export function PerfilDetalleScreen({ navigation, route }: Props) {
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottom + 32 }]}>
         <View style={styles.card}>
           <View style={styles.cabecera}>
-            <AvatarIniciales nombre={voluntario.nombre} rol={rol} tamano={64} />
+            <AvatarIniciales nombre={voluntario.nombre} fotoUri={voluntario.fotoUri} rol={rol} tamano={64} />
             <View style={{ flex: 1, gap: 4 }}>
               <Text style={styles.nombre}>{voluntario.nombre || 'Sin nombre'}</Text>
               <View style={styles.badges}>

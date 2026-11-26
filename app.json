@@ -1,13 +1,14 @@
 {
   "expo": {
-    "name": "PERF-tmp",
-    "slug": "PERF-tmp",
+    "name": "PERF Móvil",
+    "slug": "perf-movil",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "org.perf.movil"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +18,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.PERFtmp"
+      "package": "org.perf.movil"
     },
     "web": {
       "favicon": "./assets/favicon.png"

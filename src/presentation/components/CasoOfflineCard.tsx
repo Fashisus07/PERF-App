@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Caso, diasEnEspera, prioridadDeCaso } from '../../domain/models/Caso';
+import { Caso, diasEnEspera, etiquetaRelacionParaCaso, prioridadDeCaso } from '../../domain/models/Caso';
 import { useCasoStore } from '../stores/useCasoStore';
 import { colors, fonts } from '../theme';
 import { fotoCasoSource } from './fotoCaso';
@@ -16,10 +16,16 @@ type Props = { caso: Caso; onFicha?: () => void; onAccion?: () => void };
 
 export function CasoOfflineCard({ caso, onFicha, onAccion }: Props) {
   const umbral = useCasoStore((s) => s.umbralDias);
+  const todosCasos = useCasoStore((s) => s.casos);
   const { urgencia, motivoUrgencia } = prioridadDeCaso(caso, umbral);
   const u = URGENCIA[urgencia];
   const dias = diasEnEspera(caso);
   const fotoSource = fotoCasoSource(caso);
+  const nombresPorId = new Map(todosCasos.map((c) => [c.id, c.nombreProvisorio]));
+  const primeraRel =
+    caso.relaciones && caso.relaciones.length > 0
+      ? etiquetaRelacionParaCaso(caso.relaciones[0], caso.id, nombresPorId)
+      : null;
 
   return (
     <View style={styles.card}>
@@ -36,6 +42,16 @@ export function CasoOfflineCard({ caso, onFicha, onAccion }: Props) {
             </View>
           </View>
           <UbicacionCaso caso={caso} detalle />
+          {primeraRel && (
+            <Text style={styles.autor} numberOfLines={1}>
+              Vínculo: {primeraRel.texto}
+            </Text>
+          )}
+          {!!caso.creadoPorNombre && (
+            <Text style={styles.autor} numberOfLines={1}>
+              Registrado por: {caso.creadoPorNombre}
+            </Text>
+          )}
           <View style={styles.chips}>
             <View style={styles.chip}>
               <Text style={[styles.chipText, { color: colors.textMuted }]}>
@@ -78,6 +94,7 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', gap: 12 },
   foto: { width: 72, height: 72, borderRadius: 12 },
   info: { flex: 1, gap: 6 },
+  autor: { fontFamily: fonts.regular, fontSize: 12, color: colors.textSubtle },
   nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   nombre: { fontFamily: fonts.bold, fontSize: 18, color: colors.text },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 9999 },

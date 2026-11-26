@@ -1,5 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -10,20 +10,28 @@ import {
   View,
 } from 'react-native';
 import {
-  COORDINADORES_PERF,
+  COORDINADORES_FIJOS,
+  Coordinador,
   Especie,
+  ESPECIES_OTRO_SUGERIDAS,
   EstadoCastracion,
   EstadoVirales,
   ETIQUETA_CASTRACION,
   ETIQUETA_ESPECIE,
+  ETIQUETA_RESULTADO_TEST,
   ETIQUETA_VIRALES,
   GravedadClinica,
+  RegistroTestAnimal,
+  ResultadoTestViral,
+  testsPorEspecie,
   Vulnerabilidad,
 } from '../../../domain/models/Caso';
 import { BorradorRescate, faltantesDelRescate } from '../../../domain/models/Rescate';
 import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
 import { PlanDesparasitacionCard } from '../../components/PlanDesparasitacionCard';
+import { SelectorRelacionesAnimal } from '../../components/SelectorRelacionesAnimal';
 import { useUbicacion } from '../../hooks/useUbicacion';
+import { useCasoStore } from '../../stores/useCasoStore';
 import { colors, fonts } from '../../theme';
 import { SegmentosPaso } from './BarraRescate';
 
@@ -63,33 +71,63 @@ const VULNERABILIDADES: { key: Vulnerabilidad; label: string; desc: string; icon
   { key: 'ESTABLE', label: 'Estable', desc: 'Hogar asignado y seguro', icon: 'shield' },
 ];
 
+const RESULTADOS_TEST_OPCIONES: ResultadoTestViral[] = ['PENDIENTE', 'NEGATIVO', 'POSITIVO', 'NO_APLICA'];
+
 export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }: Props) {
   const gps = useUbicacion();
+  const casosExistentes = useCasoStore((s) => s.casos);
+  const obtenerCoordinadores = useCasoStore((s) => s.obtenerCoordinadores);
+  const [coordinadores, setCoordinadores] = useState<Coordinador[]>(COORDINADORES_FIJOS);
   const [intento, setIntento] = useState(false);
   const [fechasDespValidas, setFechasDespValidas] = useState(true);
+  const [avisoGps, setAvisoGps] = useState<string | null>(null);
   const faltan = faltantesDelRescate(b);
 
+  useEffect(() => {
+    obtenerCoordinadores()
+      .then((lista) => {
+        if (lista.length > 0) setCoordinadores(lista);
+      })
+      .catch(() => {});
+  }, [obtenerCoordinadores]);
+
   const usarGps = async () => {
+    setAvisoGps(null);
     const r = await gps.obtener();
     if (r) {
       onCambio({
-        barrio: r.texto,
         coordenadas: r.coordenadas,
+        ...(r.texto ? { barrio: r.texto } : {}),
       });
+      if (r.sinBarrio) {
+        setAvisoGps('Coordenadas GPS guardadas. Escribí el barrio manualmente porque no se pudo resolver la dirección.');
+      }
     }
   };
 
+  const ahoraVista = Date.now();
+  const especieActual: Especie = b.especie ?? 'Gato';
+  const testsPreview: RegistroTestAnimal[] = testsPorEspecie(especieActual).map((t) => ({
+    id: t.id,
+    casoId: 'preview',
+    testId: t.id,
+    resultado: b.resultadosTests?.[t.id] ?? 'PENDIENTE',
+    updatedAt: ahoraVista,
+  }));
+
   const prioridadVista = calcularPrioridadCasoUseCase.ejecutar({
+    especie: especieActual,
     estadoCaso: 'EN_TRANSITO',
     gravedadClinica: b.gravedadClinica,
     vulnerabilidad: b.vulnerabilidad,
-    fechaRescate: Date.now(),
+    fechaRescate: ahoraVista,
     sanidad: {
       castrado: b.castrado,
       virales: b.virales,
       fechaPrimeraDesparasitacion: b.fechaPrimeraDesparasitacion,
       fechaSegundaDesparasitacion: b.fechaSegundaDesparasitacion,
     },
+    testsAnimal: testsPreview,
   });
 
   const continuar = () => {
@@ -125,40 +163,14 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
             </View>
           )}
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={styles.campoLabel}>Nombre provisorio / Camada *</Text>
+            <Text style={styles.campoLabel}>Nombre provisorio del animal *</Text>
             <TextInput
               style={[styles.input, intento && !b.nombreProvisorio.trim() && styles.inputError]}
-              placeholder="Ej: Nube / Bimba con 3 cachorros"
+              placeholder="Ej: Mora / Nube / Toby"
               placeholderTextColor={colors.placeholder}
               value={b.nombreProvisorio}
               onChangeText={(nombreProvisorio) => onCambio({ nombreProvisorio })}
             />
-          </View>
-        </View>
-
-        {/* Cantidad de animales */}
-        <View style={styles.campo}>
-          <Text style={styles.campoLabel}>Cantidad de animales rescatados</Text>
-          <View style={styles.contadorRow}>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <Pressable
-                key={n}
-                style={[
-                  styles.contadorChip,
-                  b.cantidadAnimales === n && styles.chipActivo,
-                ]}
-                onPress={() => onCambio({ cantidadAnimales: n })}
-              >
-                <Text
-                  style={[
-                    styles.contadorChipText,
-                    b.cantidadAnimales === n && styles.chipActivoText,
-                  ]}
-                >
-                  {n === 5 ? '5+' : n}
-                </Text>
-              </Pressable>
-            ))}
           </View>
         </View>
 
@@ -184,6 +196,32 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
               </Pressable>
             ))}
           </View>
+          {b.especie === 'Otro' && (
+            <View style={{ gap: 8, marginTop: 6 }}>
+              <Text style={styles.campoLabel}>¿Qué animal doméstico es? *</Text>
+              <View style={styles.chipsRow}>
+                {ESPECIES_OTRO_SUGERIDAS.map((sug) => {
+                  const activa = (b.especieDetalle ?? '').trim().toLowerCase() === sug.toLowerCase();
+                  return (
+                    <Pressable
+                      key={sug}
+                      style={[styles.chip, activa && styles.chipActivo]}
+                      onPress={() => onCambio({ especieDetalle: sug })}
+                    >
+                      <Text style={[styles.chipTexto, activa && styles.chipActivoText]}>{sug}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <TextInput
+                style={[styles.input, intento && !b.especieDetalle?.trim() && styles.inputError]}
+                placeholder="Especificá el animal (ej: Conejo, cobayo, canario, tortuga...)"
+                placeholderTextColor={colors.placeholder}
+                value={b.especieDetalle ?? ''}
+                onChangeText={(especieDetalle) => onCambio({ especieDetalle })}
+              />
+            </View>
+          )}
         </View>
 
         {/* Edad estimada */}
@@ -195,6 +233,25 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
             placeholderTextColor={colors.placeholder}
             value={b.edadEstimada}
             onChangeText={(edadEstimada) => onCambio({ edadEstimada })}
+          />
+        </View>
+
+        {/* Parentesco / vínculos con otros animales (opcional) */}
+        <View style={styles.campo}>
+          <Text style={styles.campoLabel}>Parentesco / Camada con otros animales (opcional)</Text>
+          <SelectorRelacionesAnimal
+            relaciones={b.relacionesIniciales ?? []}
+            casosDisponibles={casosExistentes}
+            onAgregar={(rel) =>
+              onCambio({
+                relacionesIniciales: [...(b.relacionesIniciales ?? []), rel],
+              })
+            }
+            onQuitar={(idx) =>
+              onCambio({
+                relacionesIniciales: (b.relacionesIniciales ?? []).filter((_, i) => i !== idx),
+              })
+            }
           />
         </View>
       </View>
@@ -382,6 +439,9 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
             </Text>
           </View>
         )}
+        {!!avisoGps && (
+          <Text style={[styles.coordenadasTexto, { color: colors.atencionText }]}>{avisoGps}</Text>
+        )}
       </View>
 
       {/* Tarjeta de Seguimiento PERF y Tránsito */}
@@ -394,22 +454,27 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
         <View style={styles.campo}>
           <Text style={styles.campoLabel}>Coordinador responsable (PERF)</Text>
           <View style={styles.chipsRow}>
-            {COORDINADORES_PERF.map((coord) => (
-              <Pressable
-                key={coord}
-                style={[styles.chip, b.quienSigueCaso === coord && styles.chipActivo]}
-                onPress={() => onCambio({ quienSigueCaso: coord })}
-              >
-                <Text
-                  style={[
-                    styles.chipTexto,
-                    b.quienSigueCaso === coord && styles.chipActivoText,
-                  ]}
+            {coordinadores.map((coord) => {
+              const activo =
+                (b.coordinadorId && b.coordinadorId === coord.id) ||
+                (!b.coordinadorId && b.quienSigueCaso === coord.nombre);
+              return (
+                <Pressable
+                  key={coord.id}
+                  style={[styles.chip, activo && styles.chipActivo]}
+                  onPress={() => onCambio({ quienSigueCaso: coord.nombre, coordinadorId: coord.id })}
                 >
-                  {coord}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    style={[
+                      styles.chipTexto,
+                      activo && styles.chipActivoText,
+                    ]}
+                  >
+                    {coord.nombre}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
@@ -466,27 +531,68 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
           </View>
         </View>
 
-        <View style={styles.campo}>
-          <Text style={styles.campoLabel}>Test VIF / ViLeF (Leucemia e Inmuno)</Text>
-          <View style={{ gap: 6 }}>
-            {VIRALES_OPCIONES.map((opcion) => (
-              <Pressable
-                key={opcion}
-                style={[styles.chipSmall, b.virales === opcion && styles.chipActivo]}
-                onPress={() => onCambio({ virales: opcion })}
-              >
-                <Text
-                  style={[
-                    styles.chipSmallText,
-                    b.virales === opcion && styles.chipActivoText,
-                  ]}
+        {b.especie === 'Gato' || !b.especie ? (
+          <View style={styles.campo}>
+            <Text style={styles.campoLabel}>Test VIF / ViLeF (Leucemia e Inmuno)</Text>
+            <View style={{ gap: 6 }}>
+              {VIRALES_OPCIONES.map((opcion) => (
+                <Pressable
+                  key={opcion}
+                  style={[styles.chipSmall, b.virales === opcion && styles.chipActivo]}
+                  onPress={() => onCambio({ virales: opcion })}
                 >
-                  {ETIQUETA_VIRALES[opcion]}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    style={[
+                      styles.chipSmallText,
+                      b.virales === opcion && styles.chipActivoText,
+                    ]}
+                  >
+                    {ETIQUETA_VIRALES[opcion]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={{ gap: 10 }}>
+            <Text style={styles.campoLabel}>
+              {b.especie === 'Perro'
+                ? 'Tests caninos (Parvovirus / Moquillo)'
+                : 'Control clínico y estudios generales'}
+            </Text>
+            {testsPorEspecie(b.especie).map((t) => {
+              const valorActual = b.resultadosTests?.[t.id] ?? 'PENDIENTE';
+              return (
+                <View key={t.id} style={{ gap: 6 }}>
+                  <Text style={styles.coordenadasTexto}>{t.nombre}</Text>
+                  <View style={styles.chipsRow}>
+                    {RESULTADOS_TEST_OPCIONES.map((res) => {
+                      const activo = valorActual === res;
+                      return (
+                        <Pressable
+                          key={res}
+                          style={[styles.chip, activo && styles.chipActivo]}
+                          onPress={() =>
+                            onCambio({
+                              resultadosTests: {
+                                ...(b.resultadosTests ?? {}),
+                                [t.id]: res,
+                              },
+                            })
+                          }
+                        >
+                          <Text style={[styles.chipTexto, activo && styles.chipActivoText]}>
+                            {ETIQUETA_RESULTADO_TEST[res]}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         <PlanDesparasitacionCard
           fechaPrimera={b.fechaPrimeraDesparasitacion}

@@ -80,7 +80,7 @@ export function PerfilesScreen({ navigation }: Props) {
                 onPress={() => navigation?.navigate?.('PerfilDetalle', { voluntarioId: item.id })}
                 accessibilityLabel={`Ver perfil de ${item.nombre}`}
               >
-                <AvatarIniciales nombre={item.nombre} rol={rol} />
+                <AvatarIniciales nombre={item.nombre} fotoUri={item.fotoUri} rol={rol} />
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={styles.nombre} numberOfLines={1}>{item.nombre}</Text>
                   <Text style={styles.zonas} numberOfLines={1}>

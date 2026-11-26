@@ -5,6 +5,7 @@ import {
   descripcionCorta,
   diasEnEspera,
   ETIQUETA_ESTADO,
+  etiquetaRelacionParaCaso,
   prioridadDeCaso,
 } from '../../domain/models/Caso';
 import { useCasoStore } from '../stores/useCasoStore';
@@ -17,9 +18,15 @@ const COLOR_DIAS = { urgente: colors.urgente, atencion: colors.atencion, aldia: 
 
 export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }) {
   const umbral = useCasoStore((s) => s.umbralDias);
+  const todosCasos = useCasoStore((s) => s.casos);
   const { urgencia, motivoUrgencia } = prioridadDeCaso(caso, umbral);
   const dias = diasEnEspera(caso);
   const fotoSource = fotoCasoSource(caso);
+  const nombresPorId = new Map(todosCasos.map((c) => [c.id, c.nombreProvisorio]));
+  const primeraRel =
+    caso.relaciones && caso.relaciones.length > 0
+      ? etiquetaRelacionParaCaso(caso.relaciones[0], caso.id, nombresPorId)
+      : null;
 
   return (
     <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">
@@ -29,11 +36,6 @@ export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }
           <View style={styles.nameRow}>
             <View style={styles.titleContainer}>
               <Text style={styles.nombre} numberOfLines={1}>{caso.nombreProvisorio}</Text>
-              {caso.cantidadAnimales > 1 && (
-                <View style={styles.badgeCamada}>
-                  <Text style={styles.badgeCamadaText}>x{caso.cantidadAnimales}</Text>
-                </View>
-              )}
             </View>
             <UrgenciaBadge urgencia={urgencia} motivo={motivoUrgencia} />
           </View>
@@ -56,6 +58,20 @@ export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }
           </Text>
 
           <UbicacionCaso caso={caso} />
+          {primeraRel && (
+            <View style={styles.relacionRow}>
+              <MaterialIcons name="family-restroom" size={14} color={colors.primary} />
+              <Text style={styles.relacionText} numberOfLines={1}>
+                {primeraRel.texto}
+                {caso.relaciones && caso.relaciones.length > 1 ? ` (+${caso.relaciones.length - 1})` : ''}
+              </Text>
+            </View>
+          )}
+          {!!caso.creadoPorNombre && (
+            <Text style={styles.autor} numberOfLines={1}>
+              Rescate registrado por {caso.creadoPorNombre}
+            </Text>
+          )}
 
           <View style={styles.cta}>
             <Text style={styles.ctaText}>Ver ficha completa</Text>
@@ -98,6 +114,9 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  relacionRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  relacionText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.primary, flexShrink: 1 },
+  autor: { fontFamily: fonts.regular, fontSize: 12, color: colors.textSubtle },
   species: { backgroundColor: colors.surfaceChip, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, flexShrink: 1 },
   speciesText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.textMuted },
   dot: { color: colors.textSubtle },

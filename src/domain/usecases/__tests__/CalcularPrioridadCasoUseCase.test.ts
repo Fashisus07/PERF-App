@@ -385,4 +385,78 @@ describe('CalcularPrioridadCasoUseCase (Modelo Multicriterio PERF)', () => {
       expect(res.nivelPrioridad).toBe('URGENTE');
     });
   });
+
+  describe('multi-especie y tests fijos (Perro / Otro)', () => {
+    test('un perro sano con parvo y moquillo negativos queda AL_DIA sin advertencia felina VIF/ViLeF', () => {
+      const res = useCase.ejecutar(
+        {
+          especie: 'Perro',
+          estadoCaso: 'EN_TRANSITO',
+          gravedadClinica: 'SANA',
+          vulnerabilidad: 'ESTABLE',
+          fechaRescate: AHORA,
+          sanidad: {
+            castrado: 'SI',
+            virales: 'PENDIENTE',
+            fechaPrimeraDesparasitacion: AHORA,
+            fechaSegundaDesparasitacion: AHORA,
+          },
+          testsAnimal: [
+            { id: 't1', casoId: 'c1', testId: 'parvo', resultado: 'NEGATIVO', updatedAt: AHORA },
+            { id: 't2', casoId: 'c1', testId: 'moquillo', resultado: 'NEGATIVO', updatedAt: AHORA },
+          ],
+        },
+        15,
+        AHORA
+      );
+      expect(res.nivelPrioridad).toBe('AL_DIA');
+      expect(res.factoresMedicos.some((f) => f.includes('VIF'))).toBe(false);
+    });
+
+    test('parvovirus positivo en perro eleva prioridad a URGENTE', () => {
+      const res = useCase.ejecutar(
+        {
+          especie: 'Perro',
+          estadoCaso: 'EN_TRANSITO',
+          gravedadClinica: 'LEVE',
+          vulnerabilidad: 'ESTABLE',
+          fechaRescate: AHORA,
+          sanidad: { castrado: 'SI', virales: 'PENDIENTE' },
+          testsAnimal: [
+            { id: 't1', casoId: 'c1', testId: 'parvo', resultado: 'POSITIVO', updatedAt: AHORA },
+            { id: 't2', casoId: 'c1', testId: 'moquillo', resultado: 'NEGATIVO', updatedAt: AHORA },
+          ],
+        },
+        15,
+        AHORA
+      );
+      expect(res.nivelPrioridad).toBe('URGENTE');
+      expect(res.motivoUrgencia).toBe('URGENTE • Parvovirus Positivo');
+    });
+
+    test('especie Otro usa control clínico general sin penalizar por VIF/ViLeF felino', () => {
+      const res = useCase.ejecutar(
+        {
+          especie: 'Otro',
+          estadoCaso: 'EN_TRANSITO',
+          gravedadClinica: 'SANA',
+          vulnerabilidad: 'ESTABLE',
+          fechaRescate: AHORA,
+          sanidad: {
+            castrado: 'SI',
+            virales: 'PENDIENTE',
+            fechaPrimeraDesparasitacion: AHORA,
+            fechaSegundaDesparasitacion: AHORA,
+          },
+          testsAnimal: [
+            { id: 't1', casoId: 'c1', testId: 'control_clinico', resultado: 'NEGATIVO', updatedAt: AHORA },
+          ],
+        },
+        15,
+        AHORA
+      );
+      expect(res.nivelPrioridad).toBe('AL_DIA');
+      expect(res.factoresMedicos.some((f) => f.includes('VIF'))).toBe(false);
+    });
+  });
 });

@@ -26,7 +26,7 @@ type Props = {
 const TIPOS_DISPONIBLES: { tipo: TipoEvento; icono: keyof typeof MaterialIcons.glyphMap; desc: string }[] = [
   { tipo: 'NOTA_CAMPO', icono: 'edit-note', desc: 'Comportamiento en tránsito, apetito o novedades' },
   { tipo: 'TRATAMIENTO', icono: 'medication', desc: 'Antibiótico, antiinflamatorio, colirio, etc.' },
-  { tipo: 'VACUNACION', icono: 'vaccines', desc: 'Triple felina, antirrábica o refuerzo' },
+  { tipo: 'VACUNACION', icono: 'vaccines', desc: 'Triple felina, quíntuple canina, antirrábica o refuerzo' },
   { tipo: 'VISITA_VETERINARIA', icono: 'healing', desc: 'Control postquirúrgico o revisión de heridas' },
 ];
 

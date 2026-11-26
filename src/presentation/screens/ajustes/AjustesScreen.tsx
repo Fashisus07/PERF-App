@@ -25,6 +25,7 @@ export function AjustesScreen({ navigation }: Props) {
   const [aviso, setAviso] = useState<string | null>(null);
   const [voluntario, setVoluntario] = useState<Voluntario | null>(null);
   const [candado, setCandado] = useState(true);
+  const [candadoInicial, setCandadoInicial] = useState(true);
   const [tieneBloqueo, setTieneBloqueo] = useState(true);
   const [pendientesCount, setPendientesCount] = useState<number>(0);
 
@@ -38,7 +39,10 @@ export function AjustesScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    candadoActivado().then(setCandado);
+    candadoActivado().then((activo) => {
+      setCandado(activo);
+      setCandadoInicial(activo);
+    });
     celularTieneBloqueo().then(setTieneBloqueo);
   }, []);
 
@@ -64,9 +68,16 @@ export function AjustesScreen({ navigation }: Props) {
     return () => clearTimeout(t);
   }, [aviso]);
 
+  const hayCandadoCambiado = candado !== candadoInicial;
+  const hayCambiosTotales = hayCambios || hayCandadoCambiado;
+
   const guardar = async () => {
     try {
-      await guardarCambios();
+      if (hayCambios) await guardarCambios();
+      if (hayCandadoCambiado) {
+        await guardarCandado(candado);
+        setCandadoInicial(candado);
+      }
       setAviso('Cambios guardados');
     } catch (e) {
       setAviso(e instanceof Error ? e.message : 'No se pudieron guardar los cambios');
@@ -200,10 +211,7 @@ export function AjustesScreen({ navigation }: Props) {
                 titulo="Pedir huella al abrir"
                 texto={tieneBloqueo ? 'Usa tu huella o el PIN del celular' : 'Configurá un bloqueo de pantalla en el celular para usarlo'}
                 valor={candado}
-                onChange={(v) => {
-                  setCandado(v);
-                  guardarCandado(v).catch(() => {});
-                }}
+                onChange={setCandado}
               />
             </Tarjeta>
 
@@ -331,9 +339,9 @@ export function AjustesScreen({ navigation }: Props) {
           <View style={[styles.pie, { paddingBottom: 14 + bottom }]}>
             <View style={styles.pieInfo}>
               <MaterialIcons name="info" size={14} color={colors.textMuted} />
-              <Text style={styles.pieInfoText}>Guarda los cambios en umbrales de urgencia y preferencias de notificación.</Text>
+              <Text style={styles.pieInfoText}>Guarda los cambios en umbrales, seguridad y preferencias de notificación.</Text>
             </View>
-            <Pressable style={[styles.guardar, !hayCambios && { opacity: 0.5 }]} onPress={guardar} disabled={!hayCambios}>
+            <Pressable style={[styles.guardar, !hayCambiosTotales && { opacity: 0.5 }]} onPress={guardar} disabled={!hayCambiosTotales}>
               <MaterialIcons name="save" size={20} color="#fff" />
               <Text style={styles.guardarText}>Guardar cambios</Text>
             </Pressable>

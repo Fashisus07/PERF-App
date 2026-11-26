@@ -1,4 +1,4 @@
-import { Caso } from '../../domain/models/Caso';
+import { Caso, RelacionAnimal } from '../../domain/models/Caso';
 import { calcularPrioridadCasoUseCase } from '../../domain/usecases/CalcularPrioridadCasoUseCase';
 
 const AHORA = Date.now();
@@ -19,6 +19,7 @@ type CasoSeed = Omit<Caso, 'nivelPrioridad' | 'motivoUrgencia' | 'puntajePriorid
 
 function conPrioridad(base: CasoSeed): Caso {
   const prio = calcularPrioridadCasoUseCase.ejecutar({
+    especie: base.especie,
     estadoCaso: base.estadoCaso,
     gravedadClinica: base.gravedadClinica,
     vulnerabilidad: base.vulnerabilidad,
@@ -27,6 +28,7 @@ function conPrioridad(base: CasoSeed): Caso {
   });
   return {
     ...base,
+    creadoPorNombre: base.creadoPorNombre ?? 'Voluntario Demo PERF',
     nivelPrioridad: prio.nivelPrioridad,
     motivoUrgencia: prio.motivoUrgencia,
     puntajePrioridad: prio.puntajePrioridad,
@@ -173,13 +175,13 @@ const SEEDS: CasoSeed[] = [
   },
   {
     id: '10000000-0000-4000-8000-000000000005',
-    nombreProvisorio: 'Bimba y 3 cachorros',
-    cantidadAnimales: 4,
+    nombreProvisorio: 'Bimba',
+    cantidadAnimales: 1,
     especie: 'Gato',
-    edadEstimada: 'Madre 2 años, bebés 18 días',
-    historiaOrigen: 'Familia completa rescatada del entretecho de un depósito en Colegiales.',
-    personalidad: 'Madre muy protectora pero tolera la limpieza del canil; crías vigorosas.',
-    estadoVisible: 'Madre ViLeF positiva con buen peso; camada aislada bajo protocolo.',
+    edadEstimada: '2 años',
+    historiaOrigen: 'Madre rescatada junto a sus crías del entretecho de un depósito en Colegiales.',
+    personalidad: 'Muy protectora al principio, tolera la limpieza del canil y busca caricias.',
+    estadoVisible: 'ViLeF positiva con buen peso; aislada bajo protocolo junto a sus crías.',
     barrio: 'Colegiales',
     coordenadas: { latitud: -34.5758, longitud: -58.4486 },
     fotoUri: null,
@@ -411,12 +413,12 @@ const SEEDS: CasoSeed[] = [
   },
   {
     id: '10000000-0000-4000-8000-000000000012',
-    nombreProvisorio: 'Lolo y Pippo',
-    cantidadAnimales: 2,
+    nombreProvisorio: 'Lolo',
+    cantidadAnimales: 1,
     especie: 'Gato',
     edadEstimada: '3 meses',
-    historiaOrigen: 'Hermanos rescatados en San Cristóbal de un sótano húmedo mediante jaula trampa.',
-    personalidad: 'Inseparables, juegan todo el día y duermen abrazados en el mismo cesto.',
+    historiaOrigen: 'Rescatado en San Cristóbal de un sótano húmedo mediante jaula trampa junto a su hermano.',
+    personalidad: 'Muy juguetón y sociable; duerme acompañado en su cesto.',
     estadoVisible: 'Sano aspecto general; pendientes test viral y primera desparasitación.',
     barrio: 'San Cristóbal',
     coordenadas: { latitud: -34.6231, longitud: -58.4015 },
@@ -718,3 +720,22 @@ const SEEDS: CasoSeed[] = [
 ];
 
 export const casosMock: Caso[] = SEEDS.map(conPrioridad);
+
+export const RELACIONES_DEMO: RelacionAnimal[] = [
+  {
+    id: '30000000-0000-4000-8000-000000000001',
+    casoOrigenId: '10000000-0000-4000-8000-000000000001', // Nube
+    tipoRelacion: 'HIJO_DE',
+    casoDestinoId: '10000000-0000-4000-8000-000000000005', // Bimba
+    nombreDestino: 'Bimba',
+    updatedAt: AHORA - 2 * DIA_MS,
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000002',
+    casoOrigenId: '10000000-0000-4000-8000-000000000012', // Lolo
+    tipoRelacion: 'HERMANO_DE',
+    casoDestinoId: '10000000-0000-4000-8000-000000000001', // Nube
+    nombreDestino: 'Nube',
+    updatedAt: AHORA - 1 * DIA_MS,
+  },
+];

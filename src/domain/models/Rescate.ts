@@ -7,16 +7,25 @@ import {
   EstadoCastracion,
   EstadoVirales,
   GravedadClinica,
+  ResultadoTestViral,
+  TipoRelacionAnimal,
   Vulnerabilidad,
 } from './Caso';
 
 export type Coordenadas = { latitud: number; longitud: number };
+
+export interface BorradorRelacion {
+  tipoRelacion: TipoRelacionAnimal;
+  casoDestinoId?: string | null;
+  nombreDestino: string;
+}
 
 export interface BorradorRescate {
   fotoUri?: string | null;
   nombreProvisorio: string;
   cantidadAnimales: number;
   especie: Especie | null;
+  especieDetalle?: string;
   edadEstimada: string;
   historiaOrigen: string;
   personalidad: string;
@@ -24,11 +33,14 @@ export interface BorradorRescate {
   barrio: string;
   coordenadas?: Coordenadas | null;
   quienSigueCaso: string;
+  coordinadorId?: string | null;
   transitoNombre: string;
   transitoTelefono: string;
   transitoCorreo?: string;
   castrado: EstadoCastracion;
   virales: EstadoVirales;
+  resultadosTests?: Record<string, ResultadoTestViral>;
+  relacionesIniciales?: BorradorRelacion[];
   fechaPrimeraDesparasitacion?: number | null;
   fechaSegundaDesparasitacion?: number | null;
   gravedadClinica: GravedadClinica;
@@ -41,6 +53,7 @@ export const borradorVacio = (): BorradorRescate => ({
   nombreProvisorio: '',
   cantidadAnimales: 1,
   especie: 'Gato',
+  especieDetalle: '',
   edadEstimada: '',
   historiaOrigen: '',
   personalidad: '',
@@ -48,11 +61,14 @@ export const borradorVacio = (): BorradorRescate => ({
   barrio: '',
   coordenadas: null,
   quienSigueCaso: 'Cami',
+  coordinadorId: null,
   transitoNombre: '',
   transitoTelefono: '',
   transitoCorreo: '',
   castrado: 'PENDIENTE',
   virales: 'PENDIENTE',
+  resultadosTests: {},
+  relacionesIniciales: [],
   fechaPrimeraDesparasitacion: null,
   fechaSegundaDesparasitacion: null,
   gravedadClinica: 'MODERADA',
@@ -66,6 +82,7 @@ export function faltantesDelRescate(b: BorradorRescate): string[] {
   const faltan: string[] = [];
   if (!b.nombreProvisorio.trim()) faltan.push('el nombre provisorio');
   if (!b.especie) faltan.push('la especie');
+  if (b.especie === 'Otro' && !b.especieDetalle?.trim()) faltan.push('qué animal doméstico es');
   if (!b.barrio.trim()) faltan.push('el barrio del rescate');
   return faltan;
 }

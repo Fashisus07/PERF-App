@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NavigationContext } from '@react-navigation/native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authRepository } from '../../../di/container';
 import { colors, fonts } from '../../theme';
@@ -13,41 +13,56 @@ export function obtenerIniciales(nombre?: string): string {
   return `${partes[0][0]}${partes[1][0]}`.toUpperCase();
 }
 
-let _inicialesCache = 'PF';
-const _listeners = new Set<(iniciales: string) => void>();
+type EstadoAvatar = { iniciales: string; fotoUri: string | null };
+let _avatarCache: EstadoAvatar = { iniciales: 'PF', fotoUri: null };
+const _listeners = new Set<(estado: EstadoAvatar) => void>();
 
-export function notificarCambioVoluntario(nombre?: string): void {
+export function notificarCambioVoluntario(nombre?: string, fotoUri?: string | null): void {
   if (nombre !== undefined) {
-    _inicialesCache = obtenerIniciales(nombre);
-    _listeners.forEach((fn) => fn(_inicialesCache));
+    _avatarCache = {
+      iniciales: obtenerIniciales(nombre),
+      fotoUri: fotoUri !== undefined ? fotoUri : _avatarCache.fotoUri,
+    };
+    _listeners.forEach((fn) => fn(_avatarCache));
     return;
   }
   authRepository
     .obtenerVoluntarioActual()
     .then((vol) => {
-      _inicialesCache = obtenerIniciales(vol?.nombre);
-      _listeners.forEach((fn) => fn(_inicialesCache));
+      _avatarCache = {
+        iniciales: obtenerIniciales(vol?.nombre),
+        fotoUri: vol?.fotoUri ?? null,
+      };
+      _listeners.forEach((fn) => fn(_avatarCache));
     })
     .catch(() => {});
 }
 
 export function AvatarPerfil({ size = 36, onPress }: { size?: number; onPress?: () => void }) {
   const navigation = useContext(NavigationContext);
-  const [iniciales, setIniciales] = useState(_inicialesCache);
+  const [estado, setEstado] = useState<EstadoAvatar>(_avatarCache);
+  const [errorFoto, setErrorFoto] = useState(false);
 
   const cargar = useCallback(() => {
     authRepository
       .obtenerVoluntarioActual()
       .then((vol) => {
-        const next = obtenerIniciales(vol?.nombre);
-        _inicialesCache = next;
-        setIniciales(next);
+        const next: EstadoAvatar = {
+          iniciales: obtenerIniciales(vol?.nombre),
+          fotoUri: vol?.fotoUri ?? null,
+        };
+        _avatarCache = next;
+        setErrorFoto(false);
+        setEstado(next);
       })
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    const listener = (val: string) => setIniciales(val);
+    const listener = (val: EstadoAvatar) => {
+      setErrorFoto(false);
+      setEstado(val);
+    };
     _listeners.add(listener);
     cargar();
     const unsub = (navigation as any)?.addListener?.('focus', cargar);
@@ -63,11 +78,22 @@ export function AvatarPerfil({ size = 36, onPress }: { size?: number; onPress?: 
     { width: size, height: size, borderRadius: size / 2 },
   ];
   const fontSize = Math.max(12, Math.round(size * 0.39));
+  const contenido =
+    estado.fotoUri && !errorFoto ? (
+      <Image
+        source={{ uri: estado.fotoUri }}
+        style={{ width: size, height: size }}
+        resizeMode="cover"
+        onError={() => setErrorFoto(true)}
+      />
+    ) : (
+      <Text style={[styles.avatarIniciales, { fontSize }]}>{estado.iniciales}</Text>
+    );
 
   if (!navigation && !onPress) {
     return (
-      <View style={badgeStyle} accessibilityLabel="Iniciales del voluntario">
-        <Text style={[styles.avatarIniciales, { fontSize }]}>{iniciales}</Text>
+      <View style={badgeStyle} accessibilityLabel="Avatar del voluntario">
+        {contenido}
       </View>
     );
   }
@@ -80,7 +106,7 @@ export function AvatarPerfil({ size = 36, onPress }: { size?: number; onPress?: 
       accessibilityLabel="Ver perfil del voluntario"
       hitSlop={6}
     >
-      <Text style={[styles.avatarIniciales, { fontSize }]}>{iniciales}</Text>
+      {contenido}
     </Pressable>
   );
 }
@@ -126,6 +152,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
+    overflow: 'hidden',
   },
   avatarIniciales: {
     fontFamily: fonts.bold,

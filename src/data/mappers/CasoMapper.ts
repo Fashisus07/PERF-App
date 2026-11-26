@@ -1,8 +1,12 @@
 import type { AnimalCaso } from '../../domain/models/Animal';
 import {
   Caso,
+  Coordinador,
   EVENTOS_QUE_NO_SON_REVISION,
   EventoHistorial,
+  RegistroTestAnimal,
+  RelacionAnimal,
+  ResultadoTestViral,
   SyncStatus,
   Especie,
   EstadoCaso,
@@ -10,8 +14,9 @@ import {
   EstadoVirales,
   GravedadClinica,
   Vulnerabilidad,
-  NivelPrioridad,
   TipoEvento,
+  TipoRelacionAnimal,
+  TestViralFijo,
 } from '../../domain/models/Caso';
 import { Turno } from '../../domain/models/Turno';
 import {
@@ -28,6 +33,7 @@ export interface CasoRow {
   nombre_provisorio: string;
   cantidad_animales: number;
   especie: string;
+  especie_detalle?: string | null;
   edad_estimada: string | null;
   historia_origen: string | null;
   personalidad: string | null;
@@ -41,6 +47,7 @@ export interface CasoRow {
   foto_sync_status?: string | null;
   fecha_rescate: number;
   quien_sigue_caso: string | null;
+  coordinador_id?: string | null;
   transito_nombre: string | null;
   transito_telefono: string | null;
   transito_correo: string | null;
@@ -55,11 +62,50 @@ export interface CasoRow {
   motivo_urgencia?: string | null;
   puntaje_prioridad?: number | null;
   creado_por_user_id?: string | null;
+  creado_por_nombre?: string | null;
   modificado_por_user_id?: string | null;
   es_urgente: number;
   sync_status: string;
   /** Derivado del historial (ver SQL_CASO_CON_REVISION). */
   ultima_revision?: number | null;
+  updated_at: number;
+}
+
+export interface CoordinadorRow {
+  id: string;
+  nombre: string;
+  perfil_id: string | null;
+  activo: number;
+}
+
+export interface TestViralRow {
+  id: string;
+  nombre: string;
+  especie: string;
+  orden: number;
+  activo: number;
+}
+
+export interface ResultadoTestAnimalRow {
+  id: string;
+  caso_id: string;
+  animal_id: string | null;
+  test_id: string;
+  resultado: string;
+  fecha_test: number | null;
+  observaciones: string | null;
+  registrado_por: string | null;
+  sync_status: string;
+  updated_at: number;
+}
+
+export interface RelacionAnimalRow {
+  id: string;
+  caso_origen_id: string;
+  tipo_relacion: string;
+  caso_destino_id: string | null;
+  nombre_destino: string;
+  sync_status: string;
   updated_at: number;
 }
 
@@ -113,7 +159,14 @@ export interface OperacionPendienteRow {
 
 // ─── Mappers: Row → Domain ───
 
-export function casoFromRow(row: CasoRow): Caso {
+export interface ExtrasCasoHidratado {
+  testsAnimal?: RegistroTestAnimal[];
+  coordinadorPerfilId?: string | null;
+  relaciones?: RelacionAnimal[];
+}
+
+export function casoFromRow(row: CasoRow, extras?: ExtrasCasoHidratado): Caso {
+  const especie = (row.especie as Especie) || 'Gato';
   const gravedad = (row.gravedad_clinica as GravedadClinica) || (row.es_urgente === 1 ? 'CRITICA' : 'MODERADA');
   const vulnerabilidad = (row.vulnerabilidad as Vulnerabilidad) || 'ESTABLE';
   const sanidad = {
@@ -123,14 +176,16 @@ export function casoFromRow(row: CasoRow): Caso {
     fechaSegundaDesparasitacion: row.fecha_segunda_desparasitacion,
   };
 
-  // Siempre recalcular desde el estado operativo, triaje, última revisión y ficha sanitaria actuales
+  // Siempre recalcular desde el estado operativo, especie, triaje, tests y ficha sanitaria actuales
   const calculo = calcularPrioridadCasoUseCase.ejecutar({
+    especie,
     estadoCaso: row.estado_caso,
     gravedadClinica: gravedad,
     vulnerabilidad,
     fechaRescate: row.fecha_rescate,
     fechaUltimaRevision: row.ultima_revision,
     sanidad,
+    testsAnimal: extras?.testsAnimal,
   });
 
   const nivelPrioridad = calculo.nivelPrioridad;
@@ -141,7 +196,8 @@ export function casoFromRow(row: CasoRow): Caso {
     id: row.id,
     nombreProvisorio: row.nombre_provisorio,
     cantidadAnimales: row.cantidad_animales,
-    especie: row.especie as Especie,
+    especie,
+    especieDetalle: row.especie_detalle ?? null,
     edadEstimada: row.edad_estimada ?? '',
     historiaOrigen: row.historia_origen ?? '',
     personalidad: row.personalidad ?? '',
@@ -158,12 +214,16 @@ export function casoFromRow(row: CasoRow): Caso {
     fechaRescate: row.fecha_rescate,
     fechaUltimaRevision: row.ultima_revision ?? null,
     quienSigueCaso: row.quien_sigue_caso ?? '',
+    coordinadorId: row.coordinador_id ?? null,
+    coordinadorPerfilId: extras?.coordinadorPerfilId ?? null,
     transito: {
       nombre: row.transito_nombre ?? '',
       telefono: row.transito_telefono ?? '',
       correo: row.transito_correo ?? undefined,
     },
     sanidad,
+    testsAnimal: extras?.testsAnimal,
+    relaciones: extras?.relaciones,
     estadoCaso: row.estado_caso as EstadoCaso,
     gravedadClinica: gravedad,
     vulnerabilidad,
@@ -171,10 +231,88 @@ export function casoFromRow(row: CasoRow): Caso {
     motivoUrgencia,
     puntajePrioridad,
     creadoPorUserId: row.creado_por_user_id ?? undefined,
+    creadoPorNombre: row.creado_por_nombre ?? null,
     modificadoPorUserId: row.modificado_por_user_id ?? undefined,
     esUrgente: calculo.esUrgente,
     syncStatus: row.sync_status as SyncStatus,
     updatedAt: row.updated_at,
+  };
+}
+
+export function coordinadorFromRow(row: CoordinadorRow): Coordinador {
+  return {
+    id: row.id,
+    nombre: row.nombre,
+    perfilId: row.perfil_id ?? null,
+    activo: row.activo !== 0,
+  };
+}
+
+export function testViralFromRow(row: TestViralRow): TestViralFijo {
+  return {
+    id: row.id,
+    nombre: row.nombre,
+    especie: row.especie as Especie,
+    orden: Number(row.orden ?? 0),
+    activo: row.activo !== 0,
+  };
+}
+
+export function resultadoTestFromRow(row: ResultadoTestAnimalRow): RegistroTestAnimal {
+  return {
+    id: row.id,
+    casoId: row.caso_id,
+    animalId: row.animal_id ?? null,
+    testId: row.test_id,
+    resultado: row.resultado as ResultadoTestViral,
+    fechaTest: row.fecha_test ?? null,
+    observaciones: row.observaciones ?? null,
+    registradoPor: row.registrado_por ?? null,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function resultadoTestToParams(
+  r: RegistroTestAnimal,
+  syncStatus: SyncStatus = 'PENDING'
+): SQLiteBindParams {
+  return {
+    $id: r.id,
+    $caso_id: r.casoId,
+    $animal_id: r.animalId ?? null,
+    $test_id: r.testId,
+    $resultado: r.resultado,
+    $fecha_test: r.fechaTest ?? null,
+    $observaciones: r.observaciones ?? null,
+    $registrado_por: r.registradoPor ?? null,
+    $sync_status: syncStatus,
+    $updated_at: r.updatedAt,
+  };
+}
+
+export function relacionFromRow(row: RelacionAnimalRow): RelacionAnimal {
+  return {
+    id: row.id,
+    casoOrigenId: row.caso_origen_id,
+    tipoRelacion: row.tipo_relacion as TipoRelacionAnimal,
+    casoDestinoId: row.caso_destino_id ?? null,
+    nombreDestino: row.nombre_destino,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function relacionToParams(
+  r: RelacionAnimal,
+  syncStatus: SyncStatus = 'PENDING'
+): SQLiteBindParams {
+  return {
+    $id: r.id,
+    $caso_origen_id: r.casoOrigenId,
+    $tipo_relacion: r.tipoRelacion,
+    $caso_destino_id: r.casoDestinoId ?? null,
+    $nombre_destino: r.nombreDestino,
+    $sync_status: syncStatus,
+    $updated_at: r.updatedAt,
   };
 }
 
@@ -244,12 +382,14 @@ export function casoToParams(caso: Caso, umbralDias: number = 15): SQLiteBindPar
   const vulnerabilidad = caso.vulnerabilidad || 'ESTABLE';
   const calculo = calcularPrioridadCasoUseCase.ejecutar(
     {
+      especie: caso.especie,
       estadoCaso: caso.estadoCaso,
       gravedadClinica: gravedad,
       vulnerabilidad,
       fechaRescate: caso.fechaRescate,
       fechaUltimaRevision: caso.fechaUltimaRevision,
       sanidad: caso.sanidad,
+      testsAnimal: caso.testsAnimal,
     },
     umbralDias
   );
@@ -259,6 +399,7 @@ export function casoToParams(caso: Caso, umbralDias: number = 15): SQLiteBindPar
     $nombre_provisorio: caso.nombreProvisorio,
     $cantidad_animales: caso.cantidadAnimales,
     $especie: caso.especie,
+    $especie_detalle: caso.especie === 'Otro' ? (caso.especieDetalle?.trim() || null) : null,
     $edad_estimada: caso.edadEstimada || null,
     $historia_origen: caso.historiaOrigen || null,
     $personalidad: caso.personalidad || null,
@@ -272,6 +413,7 @@ export function casoToParams(caso: Caso, umbralDias: number = 15): SQLiteBindPar
     $foto_sync_status: caso.fotoSyncStatus ?? (caso.fotoUri ? 'PENDING' : 'SYNCED'),
     $fecha_rescate: caso.fechaRescate,
     $quien_sigue_caso: caso.quienSigueCaso || null,
+    $coordinador_id: caso.coordinadorId ?? null,
     $transito_nombre: caso.transito.nombre || null,
     $transito_telefono: caso.transito.telefono || null,
     $transito_correo: caso.transito.correo ?? null,
@@ -286,6 +428,7 @@ export function casoToParams(caso: Caso, umbralDias: number = 15): SQLiteBindPar
     $motivo_urgencia: calculo.motivoUrgencia,
     $puntaje_prioridad: calculo.puntajePrioridad,
     $creado_por_user_id: caso.creadoPorUserId ?? null,
+    $creado_por_nombre: caso.creadoPorNombre ?? null,
     $modificado_por_user_id: caso.modificadoPorUserId ?? null,
     $es_urgente: calculo.esUrgente ? 1 : 0,
     $sync_status: caso.syncStatus,

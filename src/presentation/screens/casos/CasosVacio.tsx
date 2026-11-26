@@ -50,7 +50,7 @@ export function CasosVacio({ onSincronizar, onNuevoRescate }: Props) {
             <MaterialIcons name="medical-services" size={20} color={colors.atencionText} />
           </View>
           <Text style={styles.tipText}>
-            Si el felino presenta dificultades respiratorias o hemorragia, priorizá el triaje{' '}
+            Si el animal presenta dificultades respiratorias o hemorragia, priorizá el triaje{' '}
             <Text style={styles.urgente}>Urgente</Text> para notificar automáticamente a la clínica más cercana.
           </Text>
         </View>

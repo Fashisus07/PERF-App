@@ -128,7 +128,7 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
         <MaterialIcons name="search" size={22} color={colors.textMuted} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Buscar por nombre o zona..."
+          placeholder="Buscar por nombre, zona o vínculo..."
           placeholderTextColor={colors.placeholder}
           value={busqueda}
           onChangeText={setBusqueda}

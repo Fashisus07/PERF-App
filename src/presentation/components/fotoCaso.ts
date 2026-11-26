@@ -1,21 +1,36 @@
 import { ImageSourcePropType } from 'react-native';
+import { Especie } from '../../domain/models/Caso';
 
-const FOTOS_FALLBACK: ImageSourcePropType[] = [
+const FOTOS_GATOS: ImageSourcePropType[] = [
   require('../../../assets/images/casos/canela.jpg'),
   require('../../../assets/images/casos/luna.jpg'),
   require('../../../assets/images/casos/misho.jpg'),
-  require('../../../assets/images/casos/mora.jpg'),
   require('../../../assets/images/casos/oreo.jpg'),
   require('../../../assets/images/casos/pelusa.jpg'),
   require('../../../assets/images/casos/tigre.jpg'),
 ];
 
-export function fotoCasoSource(caso?: { id?: string; fotoUri?: string | null }): ImageSourcePropType {
+const FOTOS_PERROS: ImageSourcePropType[] = [
+  require('../../../assets/images/casos/mora.jpg'),
+  require('../../../assets/images/casos/kira.jpg'),
+  require('../../../assets/images/casos/toby.jpg'),
+  require('../../../assets/images/casos/coco.jpg'),
+];
+
+const FOTOS_TODAS: ImageSourcePropType[] = [...FOTOS_GATOS, ...FOTOS_PERROS];
+
+export function fotoCasoSource(caso?: { id?: string; especie?: Especie; fotoUri?: string | null }): ImageSourcePropType {
   if (caso?.fotoUri) return { uri: caso.fotoUri };
-  const id = caso?.id || '';
-  let sum = 0;
-  for (let i = 0; i < id.length; i++) {
-    sum = (sum + id.charCodeAt(i)) % 997;
+  const lista =
+    caso?.especie === 'Perro'
+      ? FOTOS_PERROS
+      : caso?.especie === 'Gato'
+        ? FOTOS_GATOS
+        : FOTOS_TODAS;
+  const seed = caso?.id ?? 'default';
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
   }
-  return FOTOS_FALLBACK[sum % FOTOS_FALLBACK.length];
+  return lista[hash % lista.length];
 }

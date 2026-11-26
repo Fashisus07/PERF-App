@@ -39,6 +39,8 @@ export interface CentroVeterinario {
   abierto: boolean;
   tipo: 'consultorio' | 'hospital' | 'quirurgico';
   horarios?: string[];
+  /** Claves 'lun'..'dom' en que atiende la veterinaria; omitido o vacío = todos los días. */
+  diasAtencion?: DiaSemana[];
 }
 
 export type Clinica = CentroVeterinario;
@@ -94,6 +96,55 @@ export function normalizarHorarios(horarios: readonly string[] | null | undefine
 export function horariosDeClinica(clinica?: Pick<CentroVeterinario, 'horarios'> | null): string[] {
   const propios = normalizarHorarios(clinica?.horarios);
   return propios.length ? propios : HORARIOS_CLINICA;
+}
+
+export type DiaSemana = 'lun' | 'mar' | 'mie' | 'jue' | 'vie' | 'sab' | 'dom';
+
+export const DIAS_SEMANA: readonly DiaSemana[] = ['lun', 'mar', 'mie', 'jue', 'vie', 'sab', 'dom'];
+
+export const ETIQUETA_DIA_SEMANA: Record<DiaSemana, string> = {
+  lun: 'Lun',
+  mar: 'Mar',
+  mie: 'Mié',
+  jue: 'Jue',
+  vie: 'Vie',
+  sab: 'Sáb',
+  dom: 'Dom',
+};
+
+const DIA_POR_GET_DAY: readonly DiaSemana[] = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'];
+const DIAS_VALIDOS = new Set<string>(DIAS_SEMANA);
+
+export function diaSemanaDeFecha(fecha: Date | number): DiaSemana {
+  const d = typeof fecha === 'number' ? new Date(fecha) : fecha;
+  return DIA_POR_GET_DAY[d.getDay()];
+}
+
+export function normalizarDiasAtencion(dias: readonly string[] | null | undefined): DiaSemana[] {
+  const set = new Set((dias ?? []).map((d) => String(d).trim().toLowerCase()).filter((d) => DIAS_VALIDOS.has(d)));
+  return DIAS_SEMANA.filter((d) => set.has(d));
+}
+
+export function diasDeClinica(clinica?: Pick<CentroVeterinario, 'diasAtencion'> | null): DiaSemana[] {
+  const propios = normalizarDiasAtencion(clinica?.diasAtencion);
+  return propios.length ? propios : [...DIAS_SEMANA];
+}
+
+export function atiendeEnFecha(
+  clinica: Pick<CentroVeterinario, 'diasAtencion'> | null | undefined,
+  fecha: Date | number,
+): boolean {
+  const propios = normalizarDiasAtencion(clinica?.diasAtencion);
+  if (propios.length === 0) return true;
+  return propios.includes(diaSemanaDeFecha(fecha));
+}
+
+export function formatearDiasAtencion(dias: readonly string[] | null | undefined): string {
+  const norm = normalizarDiasAtencion(dias);
+  if (norm.length === 0 || norm.length === DIAS_SEMANA.length) return 'Todos los días';
+  if (norm.join(',') === 'lun,mar,mie,jue,vie') return 'Lun a Vie';
+  if (norm.join(',') === 'lun,mar,mie,jue,vie,sab') return 'Lun a Sáb';
+  return norm.map((d) => ETIQUETA_DIA_SEMANA[d]).join(' · ');
 }
 
 /** Lo que dura cada turno: dos turnos a menos de esto de distancia se superponen (45 min = separación mínima entre horarios). */

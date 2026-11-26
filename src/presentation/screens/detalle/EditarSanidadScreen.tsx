@@ -17,11 +17,17 @@ import {
   EstadoVirales,
   ETIQUETA_CASTRACION,
   ETIQUETA_GRAVEDAD,
+  ETIQUETA_RESULTADO_TEST,
   ETIQUETA_VIRALES,
   ETIQUETA_VULNERABILIDAD,
   GravedadClinica,
+  RegistroTestAnimal,
+  ResultadoTestViral,
+  especieLegible,
+  testsPorEspecie,
   Vulnerabilidad,
 } from '../../../domain/models/Caso';
+import { generarUUID } from '../../../data/local/uuid';
 import { casoRepository } from '../../../di/container';
 import { resumenSanidad } from '../../../domain/services/AnimalesDelCaso';
 import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
@@ -78,21 +84,29 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   const actualizarCaso = useCasoStore((s) => s.actualizarCaso);
   const agregarEventoHistorial = useCasoStore((s) => s.agregarEventoHistorial);
   const cargarDetalleCaso = useCasoStore((s) => s.cargarDetalleCaso);
+  const guardarResultadoTest = useCasoStore((s) => s.guardarResultadoTest);
   const { animales } = useAnimales(casoId);
-  // Con varios animales la ficha es de uno por vez; con uno solo (o ninguno) se edita la del caso.
+  // Si hay varios animales en el mismo caso (camada legacy) se elige uno por vez; con 1 solo se edita todo junto.
   const varios = animales.length > 1;
   const [animalId, setAnimalId] = useState<string | null>(null);
-  const animal = varios ? animales.find((a) => a.id === animalId) ?? animales[0] : undefined;
+  const animalActual = varios ? animales.find((a) => a.id === animalId) ?? animales[0] : animales[0];
+  const animal = varios ? animalActual : undefined;
 
   const [umbralDias, setUmbralDias] = useState(15);
   const [gravedad, setGravedad] = useState<GravedadClinica | null>(null);
   const [vulnerabilidad, setVulnerabilidad] = useState<Vulnerabilidad | null>(null);
   const [castrado, setCastrado] = useState<EstadoCastracion | null>(null);
   const [virales, setVirales] = useState<EstadoVirales | null>(null);
+  const [testsDraft, setTestsDraft] = useState<Record<string, ResultadoTestViral>>({});
   const [desp1Fecha, setDesp1Fecha] = useState<number | null | undefined>(undefined);
   const [desp2Fecha, setDesp2Fecha] = useState<number | null | undefined>(undefined);
   const [fechasValidas, setFechasValidas] = useState(true);
   const [estadoVisible, setEstadoVisible] = useState<string | null>(null);
+  const [animalNombreDraft, setAnimalNombreDraft] = useState<string | null>(null);
+  const [pesoDraft, setPesoDraft] = useState<string | null>(null);
+  const [embarazadaDraft, setEmbarazadaDraft] = useState<boolean | null>(null);
+  const [fallecidoDraft, setFallecidoDraft] = useState<boolean | null>(null);
+  const [motivoFallecimientoDraft, setMotivoFallecimientoDraft] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -122,13 +136,60 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   const valorVirales = virales ?? fuente.virales ?? 'PENDIENTE';
   const fechaDesp1 = desp1Fecha !== undefined ? desp1Fecha : fuente.d1 ?? null;
   const fechaDesp2 = desp2Fecha !== undefined ? desp2Fecha : fuente.d2 ?? null;
+  const valorNombreAnimal = animalNombreDraft ?? animalActual?.nombre ?? caso?.nombreProvisorio ?? '';
+  const valorPesoTexto = pesoDraft !== null ? pesoDraft : animalActual?.pesoGramos != null ? String(animalActual.pesoGramos) : '';
+  const pesoLimpio = valorPesoTexto.trim();
+  const pesoValido = !pesoLimpio || /^\d+$/.test(pesoLimpio);
+  const valorPesoGramos = pesoLimpio && /^\d+$/.test(pesoLimpio) ? Number(pesoLimpio) : null;
+  const valorEmbarazada = embarazadaDraft ?? animalActual?.embarazada ?? false;
+  const valorFallecido = fallecidoDraft ?? animalActual?.fallecido ?? false;
+  const valorMotivoFallecimiento = motivoFallecimientoDraft ?? animalActual?.motivoFallecimiento ?? '';
+
+  const testsDeEspecie = caso ? testsPorEspecie(caso.especie) : [];
+  const resultadoTestActual = (testId: string): ResultadoTestViral => {
+    if (testsDraft[testId]) return testsDraft[testId];
+    const deEsteAnimal = animal
+      ? caso?.testsAnimal?.find((t) => t.animalId === animal.id && t.testId === testId)
+      : undefined;
+    const general = caso?.testsAnimal?.find((t) => !t.animalId && t.testId === testId)
+      ?? caso?.testsAnimal?.find((t) => t.testId === testId);
+    return (deEsteAnimal ?? general)?.resultado ?? 'PENDIENTE';
+  };
+  const testsPreview: RegistroTestAnimal[] = caso
+    ? testsDeEspecie.map((t) => {
+        let res = resultadoTestActual(t.id);
+        if (caso.especie === 'Gato') {
+          if (valorVirales === 'AMBOS_POSITIVOS') res = 'POSITIVO';
+          else if (valorVirales === 'NEGATIVO') res = 'NEGATIVO';
+          else if (t.id === 'vif') res = valorVirales === 'VIF_POSITIVO' ? 'POSITIVO' : valorVirales === 'VILEF_POSITIVO' ? 'NEGATIVO' : 'PENDIENTE';
+          else if (t.id === 'vilef') res = valorVirales === 'VILEF_POSITIVO' ? 'POSITIVO' : valorVirales === 'VIF_POSITIVO' ? 'NEGATIVO' : 'PENDIENTE';
+        }
+        const existente = animal
+          ? caso.testsAnimal?.find((r) => r.animalId === animal.id && r.testId === t.id)
+          : caso.testsAnimal?.find((r) => !r.animalId && r.testId === t.id) ?? caso.testsAnimal?.find((r) => r.testId === t.id);
+        return {
+          id: existente?.id ?? t.id,
+          casoId: caso.id,
+          animalId: animal ? animal.id : null,
+          testId: t.id,
+          resultado: res,
+          updatedAt: Date.now(),
+        };
+      })
+    : [];
 
   const elegirAnimal = (id: string) => {
     setAnimalId(id);
     setCastrado(null);
     setVirales(null);
+    setTestsDraft({});
     setDesp1Fecha(undefined);
     setDesp2Fecha(undefined);
+    setAnimalNombreDraft(null);
+    setPesoDraft(null);
+    setEmbarazadaDraft(null);
+    setFallecidoDraft(null);
+    setMotivoFallecimientoDraft(null);
   };
   const textoVisible = estadoVisible !== null ? estadoVisible : caso?.estadoVisible ?? '';
 
@@ -149,12 +210,14 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   const prioridadVista = caso
     ? calcularPrioridadCasoUseCase.ejecutar(
         {
+          especie: caso.especie,
           estadoCaso: caso.estadoCaso,
           gravedadClinica: valorGravedad,
           vulnerabilidad: valorVulnerabilidad,
           fechaRescate: caso.fechaRescate,
           fechaUltimaRevision: caso.fechaUltimaRevision,
           sanidad: sanidadGrupoPreview,
+          testsAnimal: testsPreview,
         },
         umbralDias,
         ahoraPreview
@@ -167,22 +230,57 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
       setErrorMsg('Revisá las fechas de desparasitación (formato DD/MM/AAAA).');
       return;
     }
+    if (!pesoValido) {
+      setErrorMsg('Ingresá el peso en gramos usando solo números enteros (ej: 3200).');
+      return;
+    }
     setGuardando(true);
     setErrorMsg(null);
     try {
       const ahora = Date.now();
       const despTexto1 = fechaDesp1 ? new Date(fechaDesp1).toLocaleDateString('es-AR') : 'Pendiente';
       const despTexto2 = fechaDesp2 ? new Date(fechaDesp2).toLocaleDateString('es-AR') : 'Pendiente';
+      const resumenTestsTexto =
+        caso.especie === 'Gato'
+          ? `Virales: ${ETIQUETA_VIRALES[valorVirales]}`
+          : testsDeEspecie
+              .map((t) => `${t.nombre.split(' ')[0]}: ${ETIQUETA_RESULTADO_TEST[resultadoTestActual(t.id)]}`)
+              .join(' · ');
 
       if (animal) {
-        // Ficha de un animal: se guarda la suya con sus fechas exactas y se recalcula el resumen del grupo.
+        // Ficha individual dentro de una camada: persiste todos los campos del animal y sus tests por especie.
+        const nombreFinal = valorNombreAnimal.trim() || animal.nombre;
         await casoRepository.actualizarAnimal({
           ...animal,
+          nombre: nombreFinal,
           castrado: valorCastrado,
           virales: valorVirales,
+          pesoGramos: valorPesoGramos,
+          embarazada: valorEmbarazada,
           fechaPrimeraDesparasitacion: fechaDesp1,
           fechaSegundaDesparasitacion: fechaDesp2,
+          fallecido: valorFallecido,
+          motivoFallecimiento: valorFallecido ? valorMotivoFallecimiento.trim() || null : null,
         });
+
+        const otrosTests = (caso.testsAnimal ?? []).filter(
+          (r) => !(r.animalId === animal.id && testsPreview.some((tp) => tp.testId === r.testId))
+        );
+        const testsAnimalGuardados: RegistroTestAnimal[] = [...otrosTests];
+        for (const tp of testsPreview) {
+          const existente = (caso.testsAnimal ?? []).find(
+            (r) => r.animalId === animal.id && r.testId === tp.testId
+          );
+          const reg = await guardarResultadoTest({
+            ...tp,
+            id: existente?.id ?? generarUUID(),
+            animalId: animal.id,
+            fechaTest: tp.resultado === 'PENDIENTE' ? null : ahora,
+            updatedAt: ahora,
+          });
+          testsAnimalGuardados.push(reg);
+        }
+
         const fresco = await casoRepository.obtenerPorId(caso.id);
         const base = fresco ?? caso;
         const cambioDatosCaso =
@@ -192,12 +290,14 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
 
         const prioFinal = calcularPrioridadCasoUseCase.ejecutar(
           {
+            especie: base.especie,
             estadoCaso: base.estadoCaso,
             gravedadClinica: valorGravedad,
             vulnerabilidad: valorVulnerabilidad,
             fechaRescate: base.fechaRescate,
             fechaUltimaRevision: base.fechaUltimaRevision,
             sanidad: base.sanidad,
+            testsAnimal: testsAnimalGuardados,
           },
           umbralDias,
           ahora
@@ -209,6 +309,7 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
             gravedadClinica: valorGravedad,
             vulnerabilidad: valorVulnerabilidad,
             estadoVisible: textoVisible.trim(),
+            testsAnimal: testsAnimalGuardados,
             nivelPrioridad: prioFinal.nivelPrioridad,
             motivoUrgencia: prioFinal.motivoUrgencia,
             puntajePrioridad: prioFinal.puntajePrioridad,
@@ -216,18 +317,26 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
           });
         }
 
+        const detallesIndiv: string[] = [];
+        if (valorPesoGramos != null) detallesIndiv.push(`Peso: ${valorPesoGramos}g`);
+        if (valorEmbarazada) detallesIndiv.push('Embarazada');
+        if (valorFallecido) {
+          detallesIndiv.push(valorMotivoFallecimiento.trim() ? `Fallecido (${valorMotivoFallecimiento.trim()})` : 'Fallecido');
+        }
+
         const resumenAnimal = [
-          `Animal: ${animal.nombre}`,
+          `Animal: ${nombreFinal}`,
           `Gravedad: ${ETIQUETA_GRAVEDAD[valorGravedad]}`,
           `Vulnerabilidad: ${ETIQUETA_VULNERABILIDAD[valorVulnerabilidad]}`,
           `Castración: ${ETIQUETA_CASTRACION[valorCastrado]}`,
-          `Virales: ${ETIQUETA_VIRALES[valorVirales]}`,
+          resumenTestsTexto,
           `1° Desp.: ${despTexto1}`,
           `2° Desp.: ${despTexto2}`,
+          ...detallesIndiv,
           `Prioridad: ${prioFinal.motivoUrgencia} (${prioFinal.puntajePrioridad} pts)`,
         ].join(' · ');
 
-        await agregarEventoHistorial(caso.id, 'TRATAMIENTO', `Actualización médico-sanitaria (${animal.nombre}): ${resumenAnimal}`).catch(
+        await agregarEventoHistorial(caso.id, 'TRATAMIENTO', `Actualización médico-sanitaria (${nombreFinal}): ${resumenAnimal}`).catch(
           () => {}
         );
         await cargarDetalleCaso(caso.id);
@@ -245,16 +354,32 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
 
       const prioridad = calcularPrioridadCasoUseCase.ejecutar(
         {
+          especie: caso.especie,
           estadoCaso: caso.estadoCaso,
           gravedadClinica: valorGravedad,
           vulnerabilidad: valorVulnerabilidad,
           fechaRescate: caso.fechaRescate,
           fechaUltimaRevision: caso.fechaUltimaRevision,
           sanidad: nuevaSanidad,
+          testsAnimal: testsPreview,
         },
         umbralDias,
         ahora
       );
+
+      const testsGuardados: RegistroTestAnimal[] = [];
+      for (const tp of testsPreview) {
+        const reg = await guardarResultadoTest({
+          ...tp,
+          id: caso.testsAnimal?.find((r) => !r.animalId && r.testId === tp.testId)?.id
+            ?? caso.testsAnimal?.find((r) => r.testId === tp.testId)?.id
+            ?? generarUUID(),
+          animalId: null,
+          fechaTest: tp.resultado === 'PENDIENTE' ? null : ahora,
+          updatedAt: ahora,
+        });
+        testsGuardados.push(reg);
+      }
 
       const casoActualizado = {
         ...caso,
@@ -262,6 +387,7 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
         vulnerabilidad: valorVulnerabilidad,
         estadoVisible: textoVisible.trim(),
         sanidad: nuevaSanidad,
+        testsAnimal: testsGuardados,
         nivelPrioridad: prioridad.nivelPrioridad,
         motivoUrgencia: prioridad.motivoUrgencia,
         puntajePrioridad: prioridad.puntajePrioridad,
@@ -270,13 +396,35 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
 
       await actualizarCaso(casoActualizado);
 
+      if (animalActual) {
+        await casoRepository.actualizarAnimal({
+          ...animalActual,
+          castrado: valorCastrado,
+          virales: valorVirales,
+          pesoGramos: valorPesoGramos,
+          embarazada: valorEmbarazada,
+          fechaPrimeraDesparasitacion: fechaDesp1,
+          fechaSegundaDesparasitacion: fechaDesp2,
+          fallecido: valorFallecido,
+          motivoFallecimiento: valorFallecido ? valorMotivoFallecimiento.trim() || null : null,
+        });
+      }
+
+      const extrasResumen: string[] = [];
+      if (valorPesoGramos != null) extrasResumen.push(`Peso: ${valorPesoGramos}g`);
+      if (valorEmbarazada) extrasResumen.push('Embarazada');
+      if (valorFallecido) {
+        extrasResumen.push(valorMotivoFallecimiento.trim() ? `Fallecido (${valorMotivoFallecimiento.trim()})` : 'Fallecido');
+      }
+
       const resumenCambios = [
         `Gravedad: ${ETIQUETA_GRAVEDAD[valorGravedad]}`,
         `Vulnerabilidad: ${ETIQUETA_VULNERABILIDAD[valorVulnerabilidad]}`,
         `Castración: ${ETIQUETA_CASTRACION[valorCastrado]}`,
-        `Virales: ${ETIQUETA_VIRALES[valorVirales]}`,
+        resumenTestsTexto,
         `1° Desp.: ${despTexto1}`,
         `2° Desp.: ${despTexto2}`,
+        ...extrasResumen,
         `Prioridad: ${prioridad.motivoUrgencia} (${prioridad.puntajePrioridad} pts)`,
       ].join(' · ');
 
@@ -516,47 +664,97 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
           </View>
         </View>
 
-        {/* Sección Virales VIF / ViLeF */}
-        <View style={styles.seccionCard}>
-          <View style={styles.seccionHeader}>
-            <MaterialIcons name="biotech" size={20} color={colors.primary} />
-            <Text style={styles.seccionTitulo}>Serología Virales (VIF / ViLeF)</Text>
-          </View>
-          <Text style={styles.seccionDesc}>
-            Los casos positivos (en especial ViLeF) elevan automáticamente la prioridad veterinaria y de aislamiento.
-          </Text>
+        {/* Sección Virales / Estudios por especie */}
+        {caso.especie === 'Gato' ? (
+          <View style={styles.seccionCard}>
+            <View style={styles.seccionHeader}>
+              <MaterialIcons name="biotech" size={20} color={colors.primary} />
+              <Text style={styles.seccionTitulo}>Serología Virales (VIF / ViLeF)</Text>
+            </View>
+            <Text style={styles.seccionDesc}>
+              Los casos positivos (en especial ViLeF) elevan automáticamente la prioridad veterinaria y de aislamiento.
+            </Text>
 
-          <View style={styles.viralesList}>
-            {OPCIONES_VIRALES.map((opcion) => {
-              const activo = valorVirales === opcion;
-              const esPositivo = opcion.includes('POSITIVO');
-              return (
-                <Pressable
-                  key={opcion}
-                  style={[
-                    styles.radioItem,
-                    activo && styles.radioItemActivo,
-                    activo && esPositivo && styles.radioItemUrgente,
-                  ]}
-                  onPress={() => setVirales(opcion)}
-                >
-                  <View style={[styles.radioDot, activo && styles.radioDotActivo]}>
-                    {activo && <View style={styles.radioDotInner} />}
-                  </View>
-                  <Text
+            <View style={styles.viralesList}>
+              {OPCIONES_VIRALES.map((opcion) => {
+                const activo = valorVirales === opcion;
+                const esPositivo = opcion.includes('POSITIVO');
+                return (
+                  <Pressable
+                    key={opcion}
                     style={[
-                      styles.radioLabel,
-                      activo && styles.radioLabelActivo,
-                      activo && esPositivo && { color: colors.urgente },
+                      styles.radioItem,
+                      activo && styles.radioItemActivo,
+                      activo && esPositivo && styles.radioItemUrgente,
                     ]}
+                    onPress={() => setVirales(opcion)}
                   >
-                    {ETIQUETA_VIRALES[opcion]}
-                  </Text>
-                </Pressable>
+                    <View style={[styles.radioDot, activo && styles.radioDotActivo]}>
+                      {activo && <View style={styles.radioDotInner} />}
+                    </View>
+                    <Text
+                      style={[
+                        styles.radioLabel,
+                        activo && styles.radioLabelActivo,
+                        activo && esPositivo && { color: colors.urgente },
+                      ]}
+                    >
+                      {ETIQUETA_VIRALES[opcion]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.seccionCard}>
+            <View style={styles.seccionHeader}>
+              <MaterialIcons name="biotech" size={20} color={colors.primary} />
+              <Text style={styles.seccionTitulo}>Estudios y Tests ({especieLegible(caso)})</Text>
+            </View>
+            <Text style={styles.seccionDesc}>
+              {caso.especie === 'Perro'
+                ? 'Resultados fijos de Parvovirus y Moquillo / Distemper registrados en la ficha.'
+                : 'Control clínico y estudios veterinarios generales del animal.'}
+            </Text>
+            {testsDeEspecie.map((t) => {
+              const valorActual = resultadoTestActual(t.id);
+              return (
+                <View key={t.id} style={{ gap: 8, marginTop: 6 }}>
+                  <Text style={styles.radioLabel}>{t.nombre}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {(['PENDIENTE', 'NEGATIVO', 'POSITIVO', 'NO_APLICA'] as ResultadoTestViral[]).map((res) => {
+                      const activo = valorActual === res;
+                      const esPos = res === 'POSITIVO';
+                      return (
+                        <Pressable
+                          key={res}
+                          style={[
+                            styles.radioItem,
+                            { paddingHorizontal: 14, paddingVertical: 10 },
+                            activo && styles.radioItemActivo,
+                            activo && esPos && styles.radioItemUrgente,
+                          ]}
+                          onPress={() => setTestsDraft((prev) => ({ ...prev, [t.id]: res }))}
+                        >
+                          <Text
+                            style={[
+                              styles.radioLabel,
+                              activo && styles.radioLabelActivo,
+                              activo && esPos && { color: colors.urgente },
+                            ]}
+                          >
+                            {ETIQUETA_RESULTADO_TEST[res]}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
               );
             })}
           </View>
-        </View>
+        )}
 
         {/* Sección Desparasitaciones */}
         <View style={styles.seccionCard}>
@@ -569,6 +767,89 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
             onValidityChange={setFechasValidas}
           />
         </View>
+
+        {/* Datos individuales del animal (peso, gestación, estado vital y nombre en camada) */}
+        {animalActual ? (
+          <View style={styles.seccionCard}>
+            <View style={styles.seccionHeader}>
+              <MaterialIcons name="monitor-weight" size={20} color={colors.primary} />
+              <Text style={styles.seccionTitulo}>Datos Clínicos Individuales</Text>
+            </View>
+            <Text style={styles.seccionDesc}>
+              Registrá peso aproximado, gestación o fallecimiento de {animal ? animal.nombre : caso.nombreProvisorio}. Se guardan al presionar Guardar.
+            </Text>
+
+            {varios && (
+              <View style={{ gap: 6 }}>
+                <Text style={styles.toggleSub}>Nombre del animal en la camada</Text>
+                <TextInput
+                  style={[styles.textArea, { minHeight: 46, paddingVertical: 10 }]}
+                  value={valorNombreAnimal}
+                  onChangeText={setAnimalNombreDraft}
+                  placeholder="Nombre del animal"
+                  placeholderTextColor={colors.placeholderField}
+                />
+              </View>
+            )}
+
+            <View style={{ gap: 6 }}>
+              <Text style={styles.toggleSub}>
+                Peso aproximado en gramos{valorPesoGramos != null && valorPesoGramos > 0 ? ` (${(valorPesoGramos / 1000).toFixed(2).replace('.', ',')} kg)` : ''}
+              </Text>
+              <TextInput
+                style={[styles.textArea, { minHeight: 46, paddingVertical: 10 }]}
+                value={valorPesoTexto}
+                onChangeText={setPesoDraft}
+                keyboardType="numeric"
+                placeholder="Ej: 3200 (equivale a 3,2 kg)"
+                placeholderTextColor={colors.placeholderField}
+              />
+            </View>
+
+            <Pressable
+              style={styles.toggleRow}
+              onPress={() => setEmbarazadaDraft(!valorEmbarazada)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: valorEmbarazada }}
+            >
+              <View style={[styles.checkbox, valorEmbarazada && styles.checkboxActivo]}>
+                {valorEmbarazada && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleTitulo}>Embarazada / Preñada</Text>
+                <Text style={styles.toggleSub}>Afecta cirugía de castración y cuidados nutricionales.</Text>
+              </View>
+            </Pressable>
+
+            <View style={styles.divider} />
+
+            <Pressable
+              style={styles.toggleRow}
+              onPress={() => setFallecidoDraft(!valorFallecido)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: valorFallecido }}
+            >
+              <View style={[styles.checkbox, valorFallecido && { backgroundColor: colors.urgente, borderColor: colors.urgente }]}>
+                {valorFallecido && <MaterialIcons name="close" size={16} color={colors.onPrimary} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.toggleTitulo, valorFallecido && { color: colors.urgenteText }]}>Fallecido</Text>
+                <Text style={styles.toggleSub}>Marca individual de fallecimiento (si falleció todo el caso, actualizá también el estado general).</Text>
+              </View>
+            </Pressable>
+
+            {valorFallecido && (
+              <TextInput
+                style={[styles.textArea, { minHeight: 60 }]}
+                value={valorMotivoFallecimiento}
+                onChangeText={setMotivoFallecimientoDraft}
+                placeholder="Motivo o detalle del fallecimiento (opcional)..."
+                placeholderTextColor={colors.placeholderField}
+                multiline
+              />
+            )}
+          </View>
+        ) : null}
 
         {/* Condición Visible y Observaciones Clínicas */}
         <View style={styles.seccionCard}>

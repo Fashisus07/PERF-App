@@ -1,12 +1,14 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 import { Caso } from '../../domain/models/Caso';
+import { esTextoCoordenadas } from '../hooks/useUbicacion';
 import { colors, fonts } from '../theme';
 
 export function UbicacionCaso({ caso, detalle }: { caso: Caso; detalle?: boolean }) {
+  const barrioVisible = esTextoCoordenadas(caso.barrio) ? 'Sin confirmar (solo GPS)' : caso.barrio;
   const ubicacionActual = caso.transito.nombre
     ? `Tránsito: ${caso.transito.nombre}`
-    : `Rescate: ${caso.barrio}`;
+    : `Rescate: ${barrioVisible}`;
 
   return (
     <View style={styles.box}>
@@ -25,7 +27,7 @@ export function UbicacionCaso({ caso, detalle }: { caso: Caso; detalle?: boolean
         <MaterialIcons name="place" size={16} color={colors.textSubtle} />
         <Text style={styles.texto} numberOfLines={1}>
           <Text style={styles.rotulo}>Barrio: </Text>
-          {caso.barrio}
+          {barrioVisible}
         </Text>
       </View>
     </View>

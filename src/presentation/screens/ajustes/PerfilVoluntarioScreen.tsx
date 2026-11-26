@@ -1,7 +1,9 @@
 import { MaterialIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -50,6 +52,8 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
   const [zonaInicial, setZonaInicial] = useState('');
   const [brigada, setBrigada] = useState('');
   const [recursos, setRecursos] = useState<string[]>([]);
+  const [fotoUri, setFotoUri] = useState<string | null>(null);
+  const [errorFoto, setErrorFoto] = useState(false);
 
   useEffect(() => {
     authRepository
@@ -63,11 +67,35 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
           setZonas(parsearZonas(v.zona));
           setBrigada(v.brigada);
           setRecursos(v.recursos ?? []);
+          setFotoUri(v.fotoUri ?? null);
         }
         setCargando(false);
       })
       .catch(() => setCargando(false));
   }, []);
+
+  const elegirFotoPerfil = async () => {
+    try {
+      const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!granted) {
+        setErrorMsg('Necesitamos permiso para abrir la galería y elegir tu foto de perfil.');
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!res.canceled && res.assets[0]?.uri) {
+        setErrorFoto(false);
+        setFotoUri(res.assets[0].uri);
+        if (errorMsg) setErrorMsg(null);
+      }
+    } catch {
+      setErrorMsg('No se pudo seleccionar la imagen.');
+    }
+  };
 
   const onCambioZonas = (nuevasZonas: string[]) => {
     const anteriorSerializada = serializarZonas(zonas);
@@ -109,11 +137,12 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
         zona: zonaTexto,
         brigada: brigada.trim() || `Brigada ${zonaTexto || 'Central'}`,
         recursos,
+        fotoUri,
         email: voluntario?.email,
       };
 
-      await authRepository.actualizarVoluntario(actualizado);
-      notificarCambioVoluntario(actualizado.nombre);
+      const guardado = await authRepository.actualizarVoluntario(actualizado);
+      notificarCambioVoluntario(guardado.nombre, guardado.fotoUri ?? null);
       if (navigation?.canGoBack?.()) {
         navigation.goBack();
       } else {
@@ -152,7 +181,16 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
         {/* Cabecera del Voluntario (MD3 Surface Container Card) */}
         <View style={styles.avatarCard}>
           <View style={styles.avatarCircle}>
-            <Text style={styles.avatarIniciales}>{iniciales}</Text>
+            {fotoUri && !errorFoto ? (
+              <Image
+                source={{ uri: fotoUri }}
+                style={styles.avatarImagen}
+                resizeMode="cover"
+                onError={() => setErrorFoto(true)}
+              />
+            ) : (
+              <Text style={styles.avatarIniciales}>{iniciales}</Text>
+            )}
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.avatarNombre}>{nombre || 'Voluntario'}</Text>
@@ -160,6 +198,23 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
             <View style={styles.rolBadge}>
               <MaterialIcons name="verified" size={14} color={colors.primary} />
               <Text style={styles.rolText}>{ETIQUETA_ROL[voluntario?.rol ?? 'voluntario']} · PERF</Text>
+            </View>
+            <View style={styles.fotoAccionesRow}>
+              <Pressable style={styles.fotoBtn} onPress={elegirFotoPerfil}>
+                <MaterialIcons name="photo-camera" size={15} color={colors.primary} />
+                <Text style={styles.fotoBtnTexto}>{fotoUri ? 'Cambiar foto' : 'Subir foto'}</Text>
+              </Pressable>
+              {fotoUri && (
+                <Pressable
+                  style={styles.fotoBtnSec}
+                  onPress={() => {
+                    setFotoUri(null);
+                    setErrorFoto(false);
+                  }}
+                >
+                  <Text style={styles.fotoBtnSecTexto}>Usar iniciales</Text>
+                </Pressable>
+              )}
             </View>
           </View>
         </View>
@@ -296,14 +351,50 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   avatarCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.primary,
+    overflow: 'hidden',
+  },
+  avatarImagen: {
+    width: 68,
+    height: 68,
+  },
+  fotoAccionesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  fotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  fotoBtnTexto: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.primary,
+  },
+  fotoBtnSec: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceChip,
+  },
+  fotoBtnSecTexto: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.textMuted,
   },
   avatarIniciales: {
     fontFamily: fonts.bold,

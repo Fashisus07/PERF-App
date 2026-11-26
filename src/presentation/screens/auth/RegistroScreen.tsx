@@ -169,7 +169,7 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
           <View style={styles.heroBody}>
             <View style={styles.heroTags}>
               <View style={styles.tag}>
-                <Text style={styles.tagText}>PERF RED FELINA</Text>
+                <Text style={styles.tagText}>PERF RED DE RESCATE</Text>
               </View>
               <View style={styles.dot} />
               <Text style={styles.zonaText}>CABA · AMBA</Text>

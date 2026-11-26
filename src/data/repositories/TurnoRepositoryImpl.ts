@@ -1,44 +1,56 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Clinica, SolicitudTurno, Turno } from '../../domain/models/Turno';
 import { TurnoRepository } from '../../domain/repositories/TurnoRepository';
 import { getDatabase } from '../local/Database';
+import { esModoDemo, purgarDatosDemoDeDb } from '../local/ModoDemo';
 import { generarUUID } from '../local/uuid';
 import { turnoFromRow, turnoToParams, TurnoRow } from '../mappers/CasoMapper';
 import {
   clinicasMock,
   IDS_TURNOS_MOCK_ANTERIORES,
-  reservasDeOtrasGuardias,
   turnosIniciales,
 } from '../mock/turnosMock';
 
 export class TurnoRepositoryImpl implements TurnoRepository {
-  private seeded = false;
+  private seededDemo = false;
   private siembra: Promise<void> | null = null;
 
-  // Varias pantallas la llaman a la vez: compartimos una sola siembra para no insertar dos veces.
-  private asegurarSemilla(): Promise<void> {
-    if (this.seeded) return Promise.resolve();
-    this.siembra ??= this.sembrar().catch((e) => {
-      this.siembra = null; // permitir reintentar si falló
+  // En modo real no sembramos datos de ejemplo; en Modo Demo poblamos una sola vez.
+  private async asegurarSemilla(): Promise<void> {
+    const demo = await esModoDemo();
+    if (!demo) {
+      if (this.seededDemo) {
+        const db = await getDatabase();
+        await purgarDatosDemoDeDb(
+          db as any,
+          [],
+          clinicasMock.map((c) => c.id)
+        );
+        this.seededDemo = false;
+      }
+      return;
+    }
+    if (this.seededDemo) return;
+    this.siembra ??= this.sembrarDemo().catch((e) => {
+      this.siembra = null;
       throw e;
     });
     return this.siembra;
   }
 
-  private async sembrar(): Promise<void> {
+  private async sembrarDemo(): Promise<void> {
     const db = await getDatabase();
 
-    // Poblar centros veterinarios si no existen
+    // Poblar centros veterinarios de ejemplo si no existen en Modo Demo
     const centrosCount = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM centros_veterinarios;'
     );
     if (!centrosCount || centrosCount.count === 0) {
       for (const c of clinicasMock) {
         await db.runAsync(
-          `INSERT INTO centros_veterinarios (
-            id, nombre, medico, barrio, direccion, telefono, detalle, distancia, abierto, tipo, horarios
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+          `INSERT OR IGNORE INTO centros_veterinarios (
+            id, nombre, medico, barrio, direccion, telefono, detalle, distancia, abierto, tipo, horarios, dias_atencion
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
           [
             c.id,
             c.nombre,
@@ -51,18 +63,16 @@ export class TurnoRepositoryImpl implements TurnoRepository {
             c.abierto ? 1 : 0,
             c.tipo,
             JSON.stringify(c.horarios ?? ['09:00', '10:30', '11:15', '12:15', '16:00', '18:30']),
+            c.diasAtencion?.length ? JSON.stringify(c.diasAtencion) : null,
           ]
         );
       }
     }
 
-    const CLAVE_SEMILLA = '@perf_seed_turnos_version';
-    const VERSION_SEMILLA = 'v2_20_casos';
-    const versionActual = await AsyncStorage.getItem(CLAVE_SEMILLA).catch(() => null);
     const countResult = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM turnos;'
     );
-    if (versionActual !== VERSION_SEMILLA || !countResult || countResult.count === 0) {
+    if (!countResult || countResult.count === 0) {
       for (const oldTurnoId of IDS_TURNOS_MOCK_ANTERIORES) {
         await db.runAsync('DELETE FROM turnos WHERE id = ?;', [oldTurnoId]);
       }
@@ -81,9 +91,8 @@ export class TurnoRepositoryImpl implements TurnoRepository {
           turnoToParams(t)
         );
       }
-      await AsyncStorage.setItem(CLAVE_SEMILLA, VERSION_SEMILLA).catch(() => {});
     }
-    this.seeded = true;
+    this.seededDemo = true;
   }
 
   async obtenerTurnos(): Promise<Turno[]> {
@@ -120,36 +129,41 @@ export class TurnoRepositoryImpl implements TurnoRepository {
       abierto: number;
       tipo: 'consultorio' | 'hospital' | 'quirurgico';
       horarios: string;
+      dias_atencion?: string | null;
     }>('SELECT * FROM centros_veterinarios ORDER BY nombre ASC;');
 
-    if (rows.length === 0) return clinicasMock;
+    if (rows.length === 0) return [];
 
-    return rows.map((r) => ({
-      id: r.id,
-      nombre: r.nombre,
-      medico: r.medico || undefined,
-      barrio: r.barrio,
-      direccion: r.direccion,
-      telefono: r.telefono,
-      detalle: r.detalle || undefined,
-      distancia: r.distancia || undefined,
-      abierto: Boolean(r.abierto),
-      tipo: r.tipo,
-      horarios: r.horarios ? JSON.parse(r.horarios) : undefined,
-    }));
+    return rows.map((r) => {
+      let diasAtencion: Clinica['diasAtencion'];
+      if (r.dias_atencion) {
+        try {
+          const parsed = Array.isArray(r.dias_atencion) ? r.dias_atencion : JSON.parse(r.dias_atencion);
+          if (Array.isArray(parsed) && parsed.length) diasAtencion = parsed;
+        } catch {}
+      }
+      return {
+        id: r.id,
+        nombre: r.nombre,
+        medico: r.medico || undefined,
+        barrio: r.barrio,
+        direccion: r.direccion,
+        telefono: r.telefono,
+        detalle: r.detalle || undefined,
+        distancia: r.distancia || undefined,
+        abierto: Boolean(r.abierto),
+        tipo: r.tipo,
+        horarios: r.horarios ? JSON.parse(r.horarios) : undefined,
+        diasAtencion,
+      };
+    });
   }
 
   async horariosOcupados(clinicaId: string): Promise<Date[]> {
     const turnos = await this.obtenerTurnos();
-    const otras = reservasDeOtrasGuardias();
-    const ocupadosTurnos = turnos
+    return turnos
       .filter((t) => t.centroVeterinarioId === clinicaId)
       .map((t) => new Date(t.fechaHora));
-    const ocupadasOtras = otras
-      .filter((o) => o.clinicaId === clinicaId)
-      .map((o) => o.fecha);
-
-    return [...ocupadosTurnos, ...ocupadasOtras];
   }
 
   async agregar(solicitud: SolicitudTurno, titulo?: string): Promise<Turno> {

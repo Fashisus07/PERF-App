@@ -4,7 +4,7 @@
 
 > **Si entrás a revisar el PR #1 o a unir ramas:** el estado de cada pendiente está en el [**Checklist del proyecto**](#checklist-del-proyecto) de este archivo, lo que se hizo en la última etapa (seguridad sin `service_role`, animales por caso, prioridad con última revisión, veterinarias con horarios) está en [`Cambios.md`](Cambios.md) (Fase 8) y la **guía para unir con la rama de Facu** (`feature/triaje-dinamico-zonas-20casos`, 15 archivos en conflicto) está en `Cambios.md`, sección 11.7. Criterio acordado: donde hicimos lo mismo, **manda lo de Facu** y lo nuestro se monta encima.
 
-Desarrollada para los voluntarios de refugios y redes de rescate animal en la vía pública (foco en felinos). Permite registrar rescates en el momento, gestionar el historial sanitario, coordinar hogares de tránsito o atención veterinaria, y mantener la continuidad operativa **incluso en zonas sin cobertura de red**.
+Desarrollada para los voluntarios de refugios y redes de rescate animal en la vía pública (gatos, perros y otros animales domésticos). Permite registrar rescates en el momento, gestionar el historial sanitario, coordinar hogares de tránsito o atención veterinaria, y mantener la continuidad operativa **incluso en zonas sin cobertura de red**.
 
 ---
 
@@ -104,7 +104,7 @@ PERF-App/
 1. **Base de Datos SQLite Local (`expo-sqlite`):**
    - Base de datos relacional local en archivo `perf.db` con `PRAGMA journal_mode = WAL;` y `PRAGMA foreign_keys = ON;`.
    - **Tablas y Columnas Clave:**
-     - `casos`: almacena la información integral del felino.
+     - `casos`: almacena la información integral del animal rescatado.
        - Identificación: `id` (UUID v4 generado en el cliente).
        - Datos básicos: `nombre_provisorio`, `especie`, `cantidad_animales`, `edad_estimada`, `estado_general`, `temperamento`.
        - Multicriterio de Urgencia: `gravedad_clinica` (`CRITICA` | `MODERADA` | `LEVE` | `SANA`), `vulnerabilidad` (`LACTANTE_SIN_MADRE` | `SIN_TRANSITO` | `EN_TRATAMIENTO` | `ESTABLE`), `nivel_prioridad` (`URGENTE` | `ATENCION` | `AL_DIA`), `motivo_urgencia` (texto legible, ej: "URGENTE • Crítico"), `puntaje_prioridad` (número entero para ordenamiento determinístico), `fecha_rescate`.
@@ -180,7 +180,7 @@ El motor de sincronización (`src/data/remote/sincronizacion/`) resuelve los pro
 
 ### 2. Resolución de Conflictos sin Pérdida de Datos
 - **Registros Inmutables / Append-Only (`turnos`, `eventos_historial`):**
-  - Los eventos clínicos y turnos no se sobreescriben. Si dos voluntarios agregan evoluciones en el mismo felino sin conexión, al sincronizar ambos registros coexisten ordenados cronológicamente sin pisarse.
+  - Los eventos clínicos y turnos no se sobreescriben. Si dos voluntarios agregan evoluciones en el mismo animal sin conexión, al sincronizar ambos registros coexisten ordenados cronológicamente sin pisarse.
 - **Fusión Parcial por Campos (Field-Level / Delta Merge):**
   - Al editar un caso, el cliente no envía la fila completa sino un delta con `changed_fields` y su `updated_at`.
   - La función remota `aplicar_cambios_caso()` en PostgreSQL aplica un merge campo por campo. Si el *Voluntario A* modificó el teléfono de tránsito y el *Voluntario B* actualizó la gravedad clínica, ambos cambios se fusionan e integran íntegros.
@@ -235,15 +235,15 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 | — | Vistas de perfiles | ✅ Lista de voluntarios con buscador y perfil de cada uno |
 | 11 | Prioridad por nivel de estado | ✅ Triaje multicriterio (gravedad clínica, vulnerabilidad y días desde la última revisión), ver "Criterio de Urgencia" |
 | — | Aprobación de voluntarios y cambio de clave | ✅ Correo a coordinadores, Panel de Coordinación y `CambiarClaveScreen` |
-| 13 | Seguridad y acceso desde el backend | 🟡 Hecho: login con JWT, RLS en todas las tablas, fotos privadas. Falta sacar la clave `service_role` de la app (ver "Base de datos compartida") |
+| 13 | Seguridad y acceso desde el backend | ✅ Login con JWT, RLS en todas las tablas, fotos privadas y sin `service_role` en la app (`Edge Functions` desplegadas; falta rotar clave y cargar secrets de Resend en Supabase) |
 | 10 | Un único administrador | ✅ Migración `20261112000000_administrador_unico.sql` aplicada en Supabase |
-| 1 | Animales con seguimiento individual | 🟡 Hecho en la app: tabla `animales` sincronizada y ficha sanitaria por animal (selector cuando el caso tiene varios). La migración `20261126000000` ya está aplicada en Supabase: todos los casos existentes tienen sus animales |
-| 2 | Coordinador responsable como registro fijo | ❌ Falta |
-| 3 | Tests virales como registro fijo | ❌ Falta |
-| 7 | Registro de veterinarios | ✅ El administrador carga y edita veterinarias desde el Directorio Veterinario (`EditarClinicaScreen`); se guardan en `centros_veterinarios` y todos los celulares las bajan al sincronizar |
-| 8 | Horarios según el veterinario | ✅ Cada veterinaria tiene sus horarios: la pantalla de agendar ofrece solo esos y el caso de uso rechaza reservar fuera de ellos |
+| 1 | Animales con seguimiento individual | ✅ Registro individual por animal con parentesco/camada (`relaciones_animales`), edición completa de ficha (peso, gestación, fallecimiento y tests por especie) y compatibilidad retroactiva |
+| 2 | Coordinador responsable como registro fijo | ✅ Catálogo fijo `coordinadores` integrado en la app y migración `20261127` (pendiente aplicar migración en Supabase y vincular cuentas) |
+| 3 | Tests virales como registro fijo | ✅ Catálogo fijo `tests_virales` y `resultados_tests_animal` por especie (`VIF/ViLeF`, `Parvo/Moquillo`, `Control clínico`); falta aplicar migraciones en Supabase |
+| 7 | Registro de veterinarios | ✅ El administrador carga y edita veterinarias (días de atención y horarios) desde el Directorio Veterinario (`EditarClinicaScreen`); pendiente cargar veterinarias reales desde la app |
+| 8 | Horarios y días según el veterinario | ✅ Cada veterinaria define días de atención y horarios: `AgendarTurnoScreen` y `AgendarTurno` impiden reservar fuera de ambos |
 | 9 | Recordatorio configurable | ✅ Se elige la anticipación (30 min, 1 h, 2 h, 1 día o 2 días) al agendar y el valor por defecto en Ajustes |
-| 12 | Que el cambio requiera tocar **Guardar** | ❌ Falta (hay que definir en qué pantallas) |
+| 12 | Que el cambio requiera tocar **Guardar** | ✅ Ajustes (incluido el candado de huella/PIN), ficha sanitaria, edición del caso, veterinaria y perfil recién guardan al tocar **Guardar** |
 | 14/15 | Sacar al veterinario al guardar un rescate | ✅ Se quitó el botón de `RescateGuardadoScreen` |
 
 ### Checklist del proyecto
@@ -269,35 +269,36 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 
 - [x] **Sacar al veterinario del guardado de rescate** (14/15): se quitó el botón "Agendar primer turno veterinario" de `RescateGuardadoScreen`; el turno se sigue agendando desde la agenda.
 - [x] **Recordatorio configurable** (9): se elige con cuánta anticipación avisar (30 min, 1 h, 2 h, 1 día o 2 días) al agendar el turno; en Ajustes se define cuál viene marcado por defecto.
-- [ ] **Botón Guardar** (12): que los cambios no se apliquen solos, sino al tocar Guardar. Definir en qué pantallas.
+- [x] **Botón Guardar**: los cambios en ajustes (umbral, recordatorio, modo offline y candado de huella), edición del caso, ficha sanitaria y perfil recién se persisten al tocar **Guardar**.
+- [x] **Registro individual y relaciones entre animales**: cada animal se registra en forma individual (sin manadas) con vínculos de parentesco/camada (`relaciones_animales`, ej: *Hijo de Mora*, *Hermana de Lolo*, *Mamá de Coco*, *Papá de Nube*) y acceso directo para cargar familiares tras guardar.
 - [x] **Administrador único** (10): migración `20261112000000_administrador_unico.sql` aplicada en Supabase (había un solo coordinador, así que no cambió el rol de nadie).
-- [x] **Registro de veterinarios y horarios por veterinario** (7, 8): el administrador carga y edita veterinarias (nombre, veterinario/a a cargo, barrio, dirección, teléfono, tipo, detalle, si atiende y **sus horarios**) desde el Directorio Veterinario (botón **+** y "Editar veterinaria y horarios", solo visibles para el administrador). Se guardan en Supabase con conexión (la política RLS `centros_administrar` solo deja escribir al administrador) y los demás celulares las bajan al sincronizar; al llegar la primera veterinaria del servidor se reemplaza el catálogo de prueba local. Agendar un turno ofrece solo los horarios de esa veterinaria y no deja reservar fuera de ellos. Las veterinarias no se borran: se las marca como "no atiende". **Falta cargar las veterinarias reales** en la app (hoy solo está el catálogo de prueba) y decidir con el refugio si cada veterinario necesita además días de la semana.
-- [x] **Animales con seguimiento individual** (1): en la app, el caso guarda y sincroniza sus animales; la ficha sanitaria se edita animal por animal (selector cuando hay varios) y la del caso es el resumen del grupo (lo peor de cada uno). `20261126000000_cargar_animales_de_casos_existentes.sql` aplicada en Supabase (verificado: ningún caso quedó sin animales). Falta, si se quiere, editar nombre, peso, embarazo y fallecimiento de cada animal.
-- [ ] **Coordinador responsable y tests virales como registros fijos** (2, 3): con ID propio. Con eso "Mis casos" deja de comparar por nombre.
-- [x] **Prioridad con "última revisión"** (11): cada caso tiene la fecha de su última revisión (el evento más reciente del historial que sea visita veterinaria, nota, tratamiento, desparasitación, vacunación o cirugía; **no** cuentan los cambios de tránsito ni las adopciones). Se deriva del historial al leer (`SQL_CASO_CON_REVISION`), así que no hay columna nueva ni migración. Los días del cálculo se cuentan desde esa revisión (sin revisiones, desde el rescate): un caso viejo pero revisado hace poco no sube a urgente solo por los días. El detalle muestra "Última revisión". **Validar con el refugio** si 7/11 días sin revisión (el 70% y el 100% del umbral de Ajustes) es lo que necesitan.
+- [x] **Registro de veterinarios, días y horarios por veterinario** (7, 8): el administrador carga y edita veterinarias (nombre, veterinario/a a cargo, barrio, dirección, teléfono, tipo, detalle, si atiende, **días de atención** `Lun..Dom` y **horarios**) desde el Directorio Veterinario (botón **+** y "Editar veterinaria, días y horarios", solo visibles para el administrador). Se guardan en Supabase con conexión (la política RLS `centros_administrar` solo deja escribir al administrador) y los demás celulares las bajan al sincronizar; al llegar la primera veterinaria del servidor se reemplaza el catálogo de prueba local. Agendar un turno valida día habilitado y horarios de esa veterinaria. **Falta aplicar migración `20261130` y cargar las veterinarias reales** en la app.
+- [x] **Animales con seguimiento individual** (1): cada caso representa ahora un animal individual; `EditarSanidadScreen` y `DetalleCasoScreen` permiten editar/visualizar además peso, gestación, fallecimiento y estudios por especie tanto en fichas individuales como en camadas previas (`animales`).
+- [x] **Coordinador responsable y tests virales como registros fijos** (2, 3): integrados en código y base (`coordinadores`, `tests_virales`, `resultados_tests_animal`); *"Mis casos"* enlaza por `coordinadorPerfilId` cuando existe cuenta asignada (y mantiene compatibilidad por nombre). **Falta aplicar migraciones `20261127`, `20261128`, `20261129` y `20261130` en Supabase** y vincular `perfil_id`.
+- [x] **Prioridad con "última revisión"** (11): cada caso tiene la fecha de su última revisión (el evento más reciente del historial que sea visita veterinaria, nota, tratamiento, desparasitación, vacunación o cirugía; **no** cuentan los cambios de tránsito ni las adopciones). Se deriva del historial al leer (`SQL_CASO_CON_REVISION`), así que no hay columna nueva ni migración. Los días del cálculo se cuentan desde esa revisión (sin revisiones, desde el rescate): un caso viejo pero revisado hace poco no sube a urgente solo por los días. El detalle muestra "Última revisión". **Validar con el refugio** si 11/15 días sin revisión (el 70% y el 100% del umbral de Ajustes) es lo que necesitan.
 - [x] **Unificar el cálculo de prioridad**: hay una sola fuente, `CalcularPrioridadCasoUseCase` (se borró `domain/services/PrioridadCaso.ts`, que no usaba nadie). `prioridadDeCaso()` y `calcularUrgencia()` de `Caso.ts` la usan, y las tarjetas, el detalle y los filtros **calculan al mostrar** con el umbral de Ajustes (antes leían el nivel guardado, que quedaba viejo con los días y no respondía al umbral).
-- [ ] **Validar los pesos de la prioridad con el refugio** (el profesor pidió que responda a necesidades reales): hoy son 1000 crítico, 900 lactante sin madre, 800 sin tránsito, 700 por días de espera, 500 moderado, 450 en tratamiento y 400 por espera. Los pendientes por animal (cirugía, estudio, castración) todavía no suman al puntaje.
-- [ ] **Aplicar `20261031000000_animales_pendientes_adopciones.sql`** y `20261124000000_compatibilidad_etapa2.sql` en el Supabase de Tobías (`kdnosvxrgoxsopmzkghh`, es producción: avisar antes). Siempre se usa la base de Tobías, no la de Facu.
+- [ ] **Validar los pesos de la prioridad con el refugio** (el profesor pidió que responda a necesidades reales): hoy son 1000 crítico, 900 lactante sin madre, 850/835/830 virales o caninos positivos, 800 sin tránsito, 700 por días de espera, 500 moderado, 450 en tratamiento y 400 por espera.
+- [ ] **Aplicar en Supabase las migraciones pendientes** (`20261127…coordinadores_responsables`, `20261128…especies_tests_avatares_autor`, `20261129…relaciones_animales`, `20261130…dias_atencion_veterinaria`) en el proyecto compartido (`kdnosvxrgoxsopmzkghh`).
 
 🟠 **Seguridad y riesgos para la demo**
 
 - [x] **Sacar la clave `service_role` de la app** (en el código; ver "Por qué no hay clave `service_role` en la app"). Desplegado en Supabase: migración `20261125…sin_service_role` aplicada y las 2 Edge Functions activas. **Falta** cargar los secrets `RESEND_API_KEY` y `APP_URL` (sin ellos el correo no sale), **rotar la clave `service_role`** y probar el correo y el enlace de aprobación.
 - [x] **Cerrar el acceso anónimo** (en el código): migración `20261125000100_cerrar_acceso_anonimo.sql`, que le saca al rol `anon` el permiso sobre todas las tablas (segunda barrera además de RLS). Aplicada en Supabase y verificada (el rol `anon` ya no tiene permisos sobre ninguna tabla).
-- [ ] **Botón "Voluntario Demo (Modo Offline)"** del login: entra sin contraseña. Quitarlo o dejarlo solo en modo desarrollo (`__DEV__`).
-- [x] **Contraseñas fuera del README**: se sacó la del voluntario de prueba (el administrador ya no la tenía). Decisión del equipo: las cuentas de prueba se dejan como están (la clave del voluntario quedó en el historial de git de un repo público; es una base de TP). Nunca borrar al único administrador.
+- [x] **Modo Demo aislado del arranque real**: los mocks (`casosMock`, `clinicasMock`, `turnosIniciales`) solo se cargan al ingresar con el botón Demo (`voluntario-demo`); en uso real la app inicia vacía y limpia datos demo al salir. (Definir antes de entregar si el botón Demo queda habilitado para docentes).
+- [x] **Contraseñas fuera del README**: se sacaron del README. Falta rotar contraseñas en Supabase Auth y limpiar cuentas/datos de prueba antes de la entrega final.
 - [x] **Error de notificaciones** "Custom sound 'default' not found": el canal se creaba con `sound: 'default'`, que la librería busca como archivo. Ahora se omite y se usa el sonido del sistema, en un canal nuevo (`turnos-veterinarios`) porque Android no deja modificar un canal ya creado.
-- [ ] **Datos locales de versiones anteriores**: un celular con una instalación vieja muestra mal la urgencia (las columnas de triaje quedan con valores por defecto). Recalcular la prioridad en la migración de la base local, o limpiar los datos de la app.
+- [x] **Recálculo local automático para datos de versiones anteriores**: al abrir SQLite/WebDB, `MigracionPrioridades.ts` (`recalcularPrioridadesLocales`) recalcula una sola vez (`meta_migraciones`) las columnas de prioridad guardadas en dispositivos actualizados desde versiones viejas.
 
 🟡 **Mejoras**
 
-- [ ] Algunos rescates guardan el barrio como coordenadas (por ejemplo `-34.60940, -58.41060`): revisar la geocodificación inversa y su valor de respaldo.
-- [ ] Foto de perfil propia: hoy es una imagen fija y las iniciales.
-- [x] Pruebas de lo nuevo: `sigueElCaso`, zonas y roles (`ZonasYMisCasos.test.ts`, 16 tests). Además hay tests de animales, prioridad, recordatorios, horarios de veterinarias y del esquema de Supabase: 78 en total (`npx jest`). Quedan sin prueba automática las pantallas (se probaron a mano en el emulador).
-- [x] Una sola fuente de verdad del esquema: las migraciones. `supabase/schema.sql` se genera con `node supabase/generar-schema.js` y un test (`SchemaSupabase.test.ts`) falla si se desalinean. Se comprobó que las 8 migraciones y el `schema.sql` completo corren en orden sobre una base vacía (PGlite). **Ojo:** la versión anterior de `schema.sql` (la del esquema integral de la Etapa 2) queda en el historial de git.
-- [ ] Eliminar `data/mock/` y el `MockRemoteApiClient`, y **probar el circuito completo (registro, consulta y actualización) en dos celulares físicos**, la recuperación de datos tras reinstalar y los recordatorios en dispositivos reales (lo pidió el profesor).
-- [ ] Nombre de paquete de la app (`com.anonymous.PERFtmp`, hoy un valor de prueba; la app se llama "PERF-tmp"). **El APK de entrega ya se genera** (ver "Cómo generar el APK"): falta decidir el nombre definitivo y, si se cambia el paquete, regenerar la carpeta `android`.
-- [ ] **Limpiar datos de prueba en Supabase**: el usuario de prueba, los casos "PRUEBA SYNC 1/2/3", sus eventos y el conflicto de prueba.
-- [ ] **Más animales, no solo gatos**: el formulario ya permite Gato, Perro y Otro, pero "Otro" no pide qué animal es. Que al elegir **Otro** se pueda indicar qué animal doméstico es (conejo, cobayo, ave, tortuga, etc.) con una lista y texto libre, ampliar el `check` de `especie` en `schema.sql` y en la migración, y sacar el "foco felino" de los textos. Los tests virales (FIV/FeLV) son de gatos: para perros definir con el refugio qué estudios y pendientes aplican (parvovirus, moquillo, desparasitación).
+- [x] **Geocodificación del barrio**: no guarda más coordenadas crudas (`lat, lng`) en `barrio`, suma respaldo online con OpenStreetMap Nominatim y permite escribir el barrio manualmente si no hay red.
+- [x] **Foto de perfil propia con iniciales de respaldo**: permite elegir foto desde galería (`avatares/{userId}/avatar.jpg`), escalada en avatar circular (`cover`), y muestra iniciales si no tiene foto o sin conexión.
+- [x] **Pruebas automáticas ampliadas**: tests unitarios y de renderizado de pantallas UI (`PantallasRender.test.ts`, filtros/`Mis casos`, zonas, desparasitación, geocodificación, modo demo, migración de prioridades, fotos por especie, prioridad multi-especie, relaciones entre animales y esquema SQL con `npm test`).
+- [x] **Una sola fuente de verdad del esquema**: las 11 migraciones generan `supabase/schema.sql` (`node supabase/generar-schema.js`) verificado por `SchemaSupabase.test.ts`.
+- [x] **Limpieza de `MockRemoteApiClient` y reservas falsas**: eliminados; los mocks viven aislados para el Modo Demo. Falta **probar el circuito completo en dos celulares físicos** (registro, recuperación de datos tras reinstalar y recordatorios reales).
+- [x] **Nombre definitivo e ID de paquete (`app.json`)**: `PERF Móvil` / `org.perf.movil`. Falta **regenerar la carpeta nativa `android` (`npx expo prebuild`) y compilar el APK de entrega**.
+- [ ] **Limpiar datos de prueba en Supabase**: usuario de prueba, casos "PRUEBA SYNC 1/2/3", sus eventos y conflictos de prueba.
+- [x] **Más animales, no solo gatos**: especie **"Otro"** con sugerencias y texto libre, estudios caninos fijos (**Parvovirus**, **Moquillo / Distemper**) y control clínico general para otros animales domésticos.
 
 ### Cómo generar el APK
 Se arma en la máquina, sin Expo ni cuenta de EAS. Necesita JDK 17 y el SDK de Android (el mismo del emulador).
@@ -315,26 +316,26 @@ El archivo queda en `android/app/build/outputs/apk/release/app-release.apk` (uno
 ### Roles y perfiles
 - **Dos roles:** un **único administrador** y el resto voluntarios. En la base el rol del administrador se llama `coordinador` (así lo usan `es_coordinador()`, las políticas RLS, el panel de aprobaciones y los correos); la app lo muestra como **Administrador** (`ETIQUETA_ROL`, `esAdministrador()` en `domain/models/Ajustes.ts`). La migración `20261112000000_administrador_unico.sql` agrega un índice único parcial para que haya uno solo; ya está aplicada en Supabase.
 - **Zonas múltiples:** cada voluntario elige una o más zonas (`SelectorZonas`). Se guardan en la columna `perfiles.zona` separadas por coma (`"Caballito, Almagro"`), así que no cambió el esquema. Helpers: `zonasDesdeTexto` y `zonasATexto`.
-- **Mis casos:** un caso es "de" un voluntario si `quienSigueCaso` coincide con su nombre o su primer nombre (`sigueElCaso()`). Es una coincidencia por texto hasta que el coordinador responsable pase a ser un registro con ID propio.
+- **Mis casos:** un caso es "de" un voluntario si `coordinadorPerfilId` coincide con el `id` del usuario en sesión o, por compatibilidad, si `quienSigueCaso` coincide con su nombre o su primer nombre (`sigueElCaso()`).
 - **Vistas de perfiles:** `PerfilesScreen` lista a los voluntarios aprobados y `PerfilDetalleScreen` muestra el perfil completo. Leen `perfiles`, que solo responde a usuarios autenticados y aprobados: sin sesión la lista sale vacía.
 - **Para quienes corrigen el TP:** hay dos formas de probar la app, y ninguna requiere esperar una aprobación.
-  1. **Con la cuenta de evaluación** (voluntario ya aprobado): permite probar el login real, la sincronización con Supabase, el historial, los turnos, las fichas sanitarias por animal y las veterinarias. **El correo y la contraseña se entregan junto con el TP, no en este repositorio** (es público).
-  2. **Sin cuenta:** el botón **"Ingresar como Voluntario Demo (Modo Offline)"** del login abre la app con datos locales. Es una sesión solo del teléfono, sin acceso a Supabase, así que no muestra la sincronización.
+  1. **Con la cuenta de evaluación** (voluntario ya aprobado): permite probar el login real, la sincronización con Supabase, el historial, los turnos, las fichas sanitarias y las veterinarias. **El correo y la contraseña se entregan junto con el TP, no en este repositorio** (es público).
+  2. **Sin cuenta:** el botón **"Ingresar como Voluntario Demo (Modo Offline)"** del login abre la app con los datos de ejemplo (`casosMock`, `clinicasMock`, `turnosIniciales`) exclusivamente locales. En modo real la aplicación arranca completamente vacía.
 
   Un registro nuevo queda **pendiente** hasta que el único administrador lo apruebe (le llega un correo con los botones Aprobar y Rechazar), por eso para evaluar conviene usar la cuenta de evaluación y no registrarse.
 - **Si la app no conecta:** los proyectos gratuitos de Supabase se **pausan tras una semana sin uso**. Entrar a https://supabase.com/dashboard/project/kdnosvxrgoxsopmzkghh y apretar **Restore project**; no se pierden datos.
 - **Cuentas de evaluación** (se entregan junto con el TP; **las contraseñas no están en este repositorio**):
-  - **Voluntario:** `perf.voluntario.test@example.com`, ya aprobado. Prueba el login real, la sincronización, el historial, los turnos, las fichas por animal y las veterinarias.
+  - **Voluntario:** `perf.voluntario.test@example.com`, ya aprobado. Prueba el login real, la sincronización, el historial, los turnos, las fichas sanitarias y las veterinarias.
   - **Administrador:** la cuenta del único administrador (`rol = coordinador`; el índice `perfiles_un_solo_administrador` no permite crear otro). Permite ver el panel de **Solicitudes de Voluntarios** (aprobar y rechazar) y **cargar o editar veterinarias**. Rechazar una solicitud borra esa cuenta: probar solo con cuentas de prueba.
-  - La contraseña del voluntario estuvo publicada en el historial de git. Se decidió **dejar las cuentas como están**, porque es una base de prueba del TP. Si el proyecto siguiera en uso, habría que cambiarla (`update auth.users set encrypted_password = crypt('<nueva>', gen_salt('bf')) where email = '<correo>';`). **No se borra ninguna de las dos cuentas.**
+  - Si el proyecto pasara a producción pública después de la entrega, rotar contraseñas (`update auth.users set encrypted_password = crypt('<nueva>', gen_salt('bf')) where email = '<correo>';`) y limpiar las cuentas de prueba manteniendo al administrador.
 
 ### Base de datos compartida
 - **Proyecto de Supabase del equipo:** el de Tobías (`kdnosvxrgoxsopmzkghh`). Es el valor por defecto de `src/data/remote/supabaseClient.ts`; se puede cambiar con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` en `.env`.
 - **Si se pausa:** los proyectos gratuitos se pausan tras una semana sin uso. Se restaura desde el panel con **Restore project** y no se pierden datos.
-- **Migraciones, en este orden** (SQL Editor, una vez cada una): `20261030…esquema_inicial`, `20261031…animales_pendientes_adopciones`, `20261112…administrador_unico` y `20261124…compatibilidad_etapa2` `20261125…sin_service_role`, `20261125…cerrar_acceso_anonimo` y `20261126…cargar_animales_de_casos_existentes` (esta última crea los animales de los casos que ya existían). Esta última adapta la base al código de la Etapa 2 (columnas de triaje en `casos`, bucket `casos-fotos`, `aplicar_cambios_caso()` nueva y las funciones `aprobar_voluntario` / `rechazar_voluntario`).
+- **Migraciones ya aplicadas en orden histórico:** `20261030…esquema_inicial`, `20261031…animales_pendientes_adopciones`, `20261112…administrador_unico`, `20261124…compatibilidad_etapa2`, `20261125…sin_service_role`, `20261125…cerrar_acceso_anonimo` y `20261126…cargar_animales_de_casos_existentes`.
+- **Migraciones nuevas integradas en la app (pendientes de correr en el SQL Editor del proyecto compartido):** `20261127000000_coordinadores_responsables.sql`, `20261128000000_especies_tests_avatares_autor.sql`, `20261129000000_relaciones_animales.sql` y `20261130000000_dias_atencion_veterinaria.sql`.
 - `supabase/schema.sql` es el script completo para un proyecto **vacío** y se **genera** a partir de las migraciones (`node supabase/generar-schema.js`); en el proyecto existente se usan solo las migraciones que falten, nunca los dos. Para cambiar el esquema: agregar una migración, volver a generar y commitear ambos.
-- `20261127…coordinadores_responsables` está **escrita y validada pero NO aplicada** en Supabase, y la app todavía no la usa (queda para después de unir con la rama de Facu).
-- **Seguridad:** la app ya no usa la clave `service_role` (ver la sección siguiente). Las migraciones y las Edge Functions ya están aplicadas; para que salga el correo faltan los secrets `RESEND_API_KEY` y `APP_URL`.
+- **Seguridad:** la app ya no usa la clave `service_role`. Las Edge Functions están desplegadas; para que salga el correo faltan cargar los secrets `RESEND_API_KEY` y `APP_URL` y rotar `service_role`.
 
 ---
 
@@ -347,17 +348,18 @@ El archivo queda en `android/app/build/outputs/apk/release/app-release.apk` (uno
 
 ### 2. Gestión de Casos (`presentation/screens/casos/` & `detalle/`)
 - **`CasosScreen`**: Pantalla principal con:
-  - Buscador reactivo por nombre provisorio o ubicación.
+  - Buscador reactivo por nombre provisorio, zona o animal vinculado.
   - Selector **Todos / Mis casos** (solo los que sigue el voluntario de la sesión) y, debajo, filtros de urgencia **Urgentes**, **Atención** y **Al día** (tocar de nuevo para quitarlos).
   - Tarjeta destacada de casos críticos urgentes.
-  - Pull-to-refresh y lista optimizada de tarjetas (`CasoCard`).
+  - Pull-to-refresh y lista optimizada de tarjetas (`CasoCard`, con especie legible, vínculo principal y autor del rescate).
 - **Estados de Pantalla:**
   - `CasosCargando`: estado de carga (skeleton / shimmer).
   - `CasosVacio`: estado sin casos coincidentes con sugerencias.
   - `CasosError`: pantalla de captura de fallos con reintento.
 - **`DetalleCasoScreen`**:
-  - Fotografía ampliada del rescate.
-  - Reseña sanitaria: estado de castración, test VIF/ViLeF y fechas de desparasitaciones.
+  - Fotografía ampliada del rescate y autor del registro.
+  - Reseña sanitaria por especie: estado de castración, peso/embarazo/fallecimiento, tests fijos (`VIF/ViLeF`, `Parvovirus/Moquillo` o `Control clínico`) y fechas exactas de desparasitaciones.
+  - Tarjeta **Parentesco y Camada** con navegación directa a animales relacionados (*Hijo de*, *Hermana de*, *Mamá de*, etc.).
   - Ubicación de rescate y domicilio actual de tránsito con geolocalización.
   - Línea de tiempo con historial de eventos (`eventos_historial`).
   - Accesos directos para agendar turno o solicitar cambio de estado.
@@ -370,13 +372,13 @@ Asistente guiado de 3 pasos con barra de progreso superior (`BarraRescate`):
   - Acceso alternativo a la galería multimedia del teléfono (`expo-image-picker`).
   - Opción de "Omitir foto por urgencia" para situaciones críticas en la calle.
 - **Paso 2: Datos del Animal (`PasoDatos`)**
-  - Nombre provisorio, especie (gato, perro u otro), cantidad de animales, edad estimada, estado visible y temperamento.
-  - Preguntas de triaje que calculan automáticamente la urgencia del caso.
-  - Botón **"Usar mi ubicación"**: obtiene coordenadas GPS mediante `expo-location` y ejecuta geocodificación inversa para obtener la calle y barrio de forma legible (con límite de 15 segundos para no bloquear la app).
+  - Registro individual por animal: nombre provisorio, especie (`Gato`, `Perro`, `Otro` con detalle libre y sugerencias), edad estimada, parentesco/camada opcional con otros animales, estado visible y temperamento.
+  - Preguntas de triaje que calculan automáticamente la urgencia del caso según la especie.
+  - Botón **"Capturar GPS puntual"**: obtiene coordenadas GPS mediante `expo-location` y resuelve calle y barrio sin guardar coordenadas crudas en el campo barrio.
 - **Paso 3: Confirmación (`PasoConfirmar`)**
   - Resumen completo de la información antes de guardar.
 - **Pantallas de Resultado:**
-  - `RescateGuardadoScreen`: confirmación con indicador de guardado local / pendiente de sincronizar.
+  - `RescateGuardadoScreen`: confirmación con botón **"Registrar familiar / camada de ..."** para encadenar rescates emparentados sin recargar barrio ni tránsito.
   - `ErrorGuardadoScreen`: manejo de fallos con opción de reintentar sin perder los datos ingresados.
 
 ### 4. Cambio de Estado (`presentation/screens/estado/`)
@@ -503,14 +505,15 @@ Antes de instalar y correr la aplicación, asegurate de tener instalado en tu co
    npx tsc --noEmit
    ```
 
-6. **Ejecutar Suite de Tests Unitarios (Jest):**
+6. **Ejecutar Suite de Tests Unitarios y de Pantallas UI (Jest):**
    ```bash
    npm test
    ```
-   Ejecuta 17 pruebas unitarias automatizadas cubriendo:
-   - `CalcularPrioridadCasoUseCase.test.ts`: Modelo multicriterio (casos críticos inmediatos vs. transcurso de días, lactantes sin madre, umbral configurable, exclusión de casos adoptados/fallecidos).
-   - `DeltaMerge.test.ts`: Fusión parcial de campos concurrentes, diferencias delta y bloqueo de casos cerrados.
-   - `ColaOffline.test.ts`: Idempotencia de cola local, coexistencia *append-only* de turnos/historial e hidratación *Pull Sync* para dispositivos nuevos.
+   Ejecuta las suites automatizadas cubriendo dominio, sincronización, migraciones locales/Supabase y componentes UI:
+   - `CalcularPrioridadCasoUseCase.test.ts` / `PrioridadDeCaso.test.ts`: Modelo multicriterio multi-especie, lactantes sin madre, umbral configurable, exclusión de casos adoptados/fallecidos.
+   - `AgendarTurno.test.ts`: Validación de días de atención (`Lun..Dom`) y horarios configurables por clínica.
+   - `DeltaMerge.test.ts` / `ColaOffline.test.ts` / `MigracionPrioridades.test.ts`: Fusión campo a campo, idempotencia de cola, *Pull Sync* y recálculo local único en instalaciones previas.
+   - `PantallasRender.test.ts` / `SchemaSupabase.test.ts`: Renderizado de pantallas/componentes `.tsx` clave e integridad `migrations/ -> schema.sql`.
 
 ---
 
@@ -602,7 +605,7 @@ Para defender ante los profesores el cumplimiento integral de los requerimientos
 ### Paso 1: Operación Offline en Campo (Dispositivo A)
 1. Activar el **Modo Avión** en el Dispositivo A.
 2. Iniciar el flujo **"Nuevo Rescate"**:
-   - Tomar o seleccionar una fotografía felina (se comprime y guarda como `foto_local_uri`).
+   - Tomar o seleccionar una fotografía del animal (se comprime y guarda como `foto_local_uri`).
    - Cargar datos: nombre *"Michi Callejero"*, ubicación obtenida por GPS.
    - En el Triaje Multicriterio, seleccionar chips: **Gravedad Clínica: CRITICA** y **Vulnerabilidad: SIN_TRANSITO**.
    - La app muestra inmediatamente el banner accesible: *"Prioridad Calculada: URGENTE • Crítico"*.
@@ -656,7 +659,7 @@ Para defender ante los profesores el cumplimiento integral de los requerimientos
   ```
 - **Recordatorios / Notificaciones:** Podés inspeccionar las alarmas locales programadas por la app en Android mediante:
   ```bash
-  adb shell dumpsys alarm | grep PERFtmp
+  adb shell dumpsys alarm | grep org.perf.movil
   ```
 - **Modo Sin Conexión (Offline):** Podés activar el Modo Avión en el teléfono o emulador; la aplicación continuará permitiendo registrar rescates, consultar detalles y agendar turnos, guardando todo en SQLite.
 
@@ -667,7 +670,7 @@ Para defender ante los profesores el cumplimiento integral de los requerimientos
 | Comando | Descripción |
 |---|---|
 | `npm start` | Inicia el servidor de desarrollo de Metro con Expo. |
-| `npm test` | Ejecuta la suite de pruebas unitarias automatizadas con Jest (17 tests). |
+| `npm test` | Ejecuta la suite de pruebas unitarias y de renderizado UI automatizadas con Jest. |
 | `npm run android` | Compila y ejecuta el proyecto nativo en Android. |
 | `npm run ios` | Compila y ejecuta el proyecto nativo en iOS (requiere macOS). |
 | `npm run web` | Inicia el servidor para previsualización web en el navegador. |

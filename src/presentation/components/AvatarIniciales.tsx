@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { esAdministrador, RolVoluntario } from '../../domain/models/Ajustes';
 import { colors, fonts } from '../theme';
 
@@ -13,11 +14,19 @@ export function iniciales(nombre: string) {
   return letras || 'VO';
 }
 
-type Props = { nombre: string; rol?: RolVoluntario; tamano?: number };
+type Props = { nombre: string; fotoUri?: string | null; rol?: RolVoluntario; tamano?: number };
 
-/** Círculo con las iniciales; el administrador se distingue con el color de acento. */
-export function AvatarIniciales({ nombre, rol = 'voluntario', tamano = 52 }: Props) {
+/** Foto de perfil circular (cover) con respaldo automático en las iniciales si no hay imagen o falla la carga. */
+export function AvatarIniciales({ nombre, fotoUri, rol = 'voluntario', tamano = 52 }: Props) {
   const admin = esAdministrador(rol);
+  const [errorFoto, setErrorFoto] = useState(false);
+
+  useEffect(() => {
+    setErrorFoto(false);
+  }, [fotoUri]);
+
+  const mostrarFoto = !!fotoUri && !errorFoto;
+
   return (
     <View
       style={[
@@ -26,9 +35,18 @@ export function AvatarIniciales({ nombre, rol = 'voluntario', tamano = 52 }: Pro
         admin && styles.circuloAdmin,
       ]}
     >
-      <Text style={[styles.texto, { fontSize: tamano * 0.37 }, admin && { color: colors.onPrimary }]}>
-        {iniciales(nombre)}
-      </Text>
+      {mostrarFoto ? (
+        <Image
+          source={{ uri: fotoUri! }}
+          style={{ width: tamano, height: tamano }}
+          resizeMode="cover"
+          onError={() => setErrorFoto(true)}
+        />
+      ) : (
+        <Text style={[styles.texto, { fontSize: tamano * 0.37 }, admin && { color: colors.onPrimary }]}>
+          {iniciales(nombre)}
+        </Text>
+      )}
     </View>
   );
 }
@@ -40,6 +58,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   circuloAdmin: { backgroundColor: colors.primary },
   texto: { fontFamily: fonts.bold, color: colors.primary },

@@ -1,9 +1,14 @@
 import { create } from 'zustand';
 import {
   Caso,
+  Coordinador,
+  Especie,
   EstadoCaso,
   EventoHistorial,
   GravedadClinica,
+  RegistroTestAnimal,
+  RelacionAnimal,
+  TestViralFijo,
   TipoEvento,
   UMBRAL_URGENTE_DIAS,
   Urgencia,
@@ -13,6 +18,7 @@ import { BorradorRescate } from '../../domain/models/Rescate';
 import { generarUUID } from '../../data/local/uuid';
 import {
   ajustesRepository,
+  authRepository,
   casoRepository,
   listarCasosPorUrgencia,
   obtenerCasoUseCase,
@@ -57,6 +63,11 @@ interface CasoState {
     destinoOrOpciones?: string | OpcionesCambioEstadoStore
   ) => Promise<Caso>;
   actualizarCaso: (caso: Caso) => Promise<Caso>;
+  guardarResultadoTest: (registro: RegistroTestAnimal) => Promise<RegistroTestAnimal>;
+  guardarRelacion: (relacion: RelacionAnimal) => Promise<RelacionAnimal>;
+  eliminarRelacion: (relacionId: string) => Promise<void>;
+  obtenerCoordinadores: () => Promise<Coordinador[]>;
+  obtenerCatalogoTests: (especie?: Especie) => Promise<TestViralFijo[]>;
   agregarEventoHistorial: (casoId: string, tipo: TipoEvento, descripcion: string) => Promise<void>;
   sincronizar: () => Promise<number>;
   setFiltroUrgencia: (filtro: FiltroUrgencia) => void;
@@ -121,11 +132,15 @@ export const useCasoStore = create<CasoState>((set, get) => ({
   registrarRescate: async (borrador: BorradorRescate, sinConexion = false) => {
     set({ cargando: true, error: null });
     try {
-      const nuevo = await registrarRescateUseCase.ejecutar(borrador, sinConexion);
-      set((state) => ({
-        casos: [nuevo, ...state.casos].sort((a, b) => b.puntajePrioridad - a.puntajePrioridad || b.fechaRescate - a.fechaRescate),
-        cargando: false,
-      }));
+      const autor = await authRepository.obtenerVoluntarioActual().catch(() => null);
+      const nuevo = await registrarRescateUseCase.ejecutar(
+        borrador,
+        sinConexion,
+        autor ? { id: autor.id, nombre: autor.nombre } : null
+      );
+      const umbral = await leerUmbralConfigurado();
+      const lista = await listarCasosPorUrgencia.ejecutar(umbral);
+      set({ casos: lista, umbralDias: umbral, cargando: false });
       return nuevo;
     } catch (e: any) {
       set({ cargando: false, error: e?.message || 'Error al guardar rescate' });
@@ -189,6 +204,43 @@ export const useCasoStore = create<CasoState>((set, get) => ({
       throw e;
     }
   },
+
+  guardarResultadoTest: async (registro: RegistroTestAnimal) => {
+    const guardado = await casoRepository.guardarResultadoTest(registro);
+    const umbral = await leerUmbralConfigurado();
+    const actualizado = await obtenerCasoUseCase.ejecutar(registro.casoId, umbral);
+    if (actualizado) {
+      set((state) => ({
+        casoSeleccionado: state.casoSeleccionado?.id === registro.casoId ? actualizado : state.casoSeleccionado,
+        casos: state.casos
+          .map((c) => (c.id === registro.casoId ? actualizado : c))
+          .sort((a, b) => b.puntajePrioridad - a.puntajePrioridad || b.fechaRescate - a.fechaRescate),
+      }));
+    }
+    return guardado;
+  },
+
+  guardarRelacion: async (relacion: RelacionAnimal) => {
+    const guardada = await casoRepository.guardarRelacion(relacion);
+    const umbral = await leerUmbralConfigurado();
+    const lista = await listarCasosPorUrgencia.ejecutar(umbral);
+    const seleccionadoId = get().casoSeleccionado?.id;
+    const seleccionadoActualizado = seleccionadoId ? lista.find((c) => c.id === seleccionadoId) ?? get().casoSeleccionado : null;
+    set({ casos: lista, casoSeleccionado: seleccionadoActualizado });
+    return guardada;
+  },
+
+  eliminarRelacion: async (relacionId: string) => {
+    await casoRepository.eliminarRelacion(relacionId);
+    const umbral = await leerUmbralConfigurado();
+    const lista = await listarCasosPorUrgencia.ejecutar(umbral);
+    const seleccionadoId = get().casoSeleccionado?.id;
+    const seleccionadoActualizado = seleccionadoId ? lista.find((c) => c.id === seleccionadoId) ?? get().casoSeleccionado : null;
+    set({ casos: lista, casoSeleccionado: seleccionadoActualizado });
+  },
+
+  obtenerCoordinadores: () => casoRepository.obtenerCoordinadores(),
+  obtenerCatalogoTests: (especie?: Especie) => casoRepository.obtenerCatalogoTests(especie),
 
   agregarEventoHistorial: async (casoId: string, tipo: TipoEvento, descripcion: string) => {
     try {

@@ -114,7 +114,7 @@ export function RecuperarClaveScreen({ navigation }: Props) {
             <View style={styles.infoBox}>
               <MaterialIcons name="shield" size={18} color={colors.primary} />
               <Text style={styles.infoText}>
-                Por seguridad de la red de rescate felino, el enlace expira en 60 minutos.
+                Por seguridad de la red de rescate animal, el enlace expira en 60 minutos.
               </Text>
             </View>
 

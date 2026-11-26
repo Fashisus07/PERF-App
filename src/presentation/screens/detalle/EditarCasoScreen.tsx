@@ -13,12 +13,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  COORDINADORES_PERF,
+  COORDINADORES_FIJOS,
+  Coordinador,
   Especie,
+  ESPECIES_OTRO_SUGERIDAS,
   ETIQUETA_ESPECIE,
   Vulnerabilidad,
 } from '../../../domain/models/Caso';
 import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
+import { generarUUID } from '../../../data/local/uuid';
+import { RelacionEditable, SelectorRelacionesAnimal } from '../../components/SelectorRelacionesAnimal';
 import { StackHeader } from '../../components/StackHeader';
 import { obtenerAjustes } from '../../hooks/useAjustes';
 import { useCaso } from '../../hooks/useCaso';
@@ -40,15 +44,22 @@ export function EditarCasoScreen({ route, navigation }: Props) {
   const { bottom } = useSafeAreaInsets();
   const casoId = route?.params?.casoId ?? '';
   const { caso, cargando } = useCaso(casoId);
+  const todosCasos = useCasoStore((s) => s.casos);
   const actualizarCaso = useCasoStore((s) => s.actualizarCaso);
+  const guardarRelacion = useCasoStore((s) => s.guardarRelacion);
+  const eliminarRelacion = useCasoStore((s) => s.eliminarRelacion);
+  const obtenerCoordinadores = useCasoStore((s) => s.obtenerCoordinadores);
 
+  const [coordinadores, setCoordinadores] = useState<Coordinador[]>(COORDINADORES_FIJOS);
   const [umbralDias, setUmbralDias] = useState(15);
   const [nombreProvisorio, setNombreProvisorio] = useState<string | null>(null);
   const [especie, setEspecie] = useState<Especie | null>(null);
-  const [cantidadAnimales, setCantidadAnimales] = useState<number | null>(null);
+  const [especieDetalle, setEspecieDetalle] = useState<string | null>(null);
+  const [relacionesDraft, setRelacionesDraft] = useState<RelacionEditable[] | null>(null);
   const [edadEstimada, setEdadEstimada] = useState<string | null>(null);
   const [barrio, setBarrio] = useState<string | null>(null);
   const [quienSigueCaso, setQuienSigueCaso] = useState<string | null>(null);
+  const [coordinadorId, setCoordinadorId] = useState<string | null | undefined>(undefined);
   const [transitoNombre, setTransitoNombre] = useState<string | null>(null);
   const [transitoTelefono, setTransitoTelefono] = useState<string | null>(null);
   const [transitoCorreo, setTransitoCorreo] = useState<string | null>(null);
@@ -64,7 +75,12 @@ export function EditarCasoScreen({ route, navigation }: Props) {
     obtenerAjustes()
       .then((a) => setUmbralDias(a.umbralUrgenteDias))
       .catch(() => {});
-  }, []);
+    obtenerCoordinadores()
+      .then((lista) => {
+        if (lista.length > 0) setCoordinadores(lista);
+      })
+      .catch(() => {});
+  }, [obtenerCoordinadores]);
 
   if (cargando || !caso) {
     return (
@@ -79,10 +95,20 @@ export function EditarCasoScreen({ route, navigation }: Props) {
 
   const valNombre = nombreProvisorio !== null ? nombreProvisorio : caso.nombreProvisorio;
   const valEspecie = especie ?? caso.especie;
-  const valCantidad = cantidadAnimales ?? caso.cantidadAnimales ?? 1;
+  const valEspecieDetalle = especieDetalle !== null ? especieDetalle : caso.especieDetalle ?? '';
+  const relacionesOriginales = (caso.relaciones ?? []).filter((r) => r.casoOrigenId === caso.id);
+  const valRelaciones: RelacionEditable[] =
+    relacionesDraft ??
+    relacionesOriginales.map((r) => ({
+      id: r.id,
+      tipoRelacion: r.tipoRelacion,
+      casoDestinoId: r.casoDestinoId,
+      nombreDestino: r.nombreDestino,
+    }));
   const valEdad = edadEstimada !== null ? edadEstimada : caso.edadEstimada;
   const valBarrio = barrio !== null ? barrio : caso.barrio;
   const valCoord = quienSigueCaso !== null ? quienSigueCaso : caso.quienSigueCaso;
+  const valCoordId = coordinadorId !== undefined ? coordinadorId : caso.coordinadorId ?? null;
   const valTransitoNombre = transitoNombre !== null ? transitoNombre : caso.transito.nombre;
   const valTransitoTel = transitoTelefono !== null ? transitoTelefono : caso.transito.telefono;
   const valTransitoCorreo = transitoCorreo !== null ? transitoCorreo : caso.transito.correo ?? '';
@@ -102,6 +128,10 @@ export function EditarCasoScreen({ route, navigation }: Props) {
       setErrorMsg('El nombre provisorio y el barrio del hallazgo son obligatorios.');
       return;
     }
+    if (valEspecie === 'Otro' && !valEspecieDetalle.trim()) {
+      setErrorMsg('Indicá qué animal doméstico es cuando elegís "Otro".');
+      return;
+    }
 
     setGuardando(true);
     setErrorMsg(null);
@@ -109,12 +139,14 @@ export function EditarCasoScreen({ route, navigation }: Props) {
       const ahora = Date.now();
       const prioridad = calcularPrioridadCasoUseCase.ejecutar(
         {
+          especie: valEspecie,
           estadoCaso: caso.estadoCaso,
           gravedadClinica: caso.gravedadClinica,
           vulnerabilidad: valVulnerabilidad,
           fechaRescate: caso.fechaRescate,
           fechaUltimaRevision: caso.fechaUltimaRevision,
           sanidad: caso.sanidad,
+          testsAnimal: caso.testsAnimal,
         },
         umbralDias,
         ahora
@@ -124,10 +156,12 @@ export function EditarCasoScreen({ route, navigation }: Props) {
         ...caso,
         nombreProvisorio: valNombre.trim(),
         especie: valEspecie,
-        cantidadAnimales: valCantidad,
+        especieDetalle: valEspecie === 'Otro' ? valEspecieDetalle.trim() : null,
+        cantidadAnimales: 1,
         edadEstimada: valEdad.trim(),
         barrio: valBarrio.trim(),
         quienSigueCaso: valCoord.trim() || 'PERF',
+        coordinadorId: valCoordId,
         transito: {
           nombre: valTransitoNombre.trim(),
           telefono: valTransitoTel.trim(),
@@ -142,6 +176,25 @@ export function EditarCasoScreen({ route, navigation }: Props) {
         puntajePrioridad: prioridad.puntajePrioridad,
         esUrgente: prioridad.esUrgente,
       });
+
+      const idsActuales = new Set(valRelaciones.map((r) => r.id).filter(Boolean));
+      for (const orig of relacionesOriginales) {
+        if (!idsActuales.has(orig.id)) {
+          await eliminarRelacion(orig.id);
+        }
+      }
+      for (const rel of valRelaciones) {
+        if (!rel.id) {
+          await guardarRelacion({
+            id: generarUUID(),
+            casoOrigenId: caso.id,
+            tipoRelacion: rel.tipoRelacion,
+            casoDestinoId: rel.casoDestinoId ?? null,
+            nombreDestino: rel.nombreDestino.trim(),
+            updatedAt: ahora,
+          });
+        }
+      }
 
       navigation?.navigate?.('DetalleCaso', { casoId: caso.id, estadoActualizado: true });
     } catch (e: any) {
@@ -205,26 +258,32 @@ export function EditarCasoScreen({ route, navigation }: Props) {
                 );
               })}
             </View>
-          </View>
-
-          <View style={styles.campo}>
-            <Text style={styles.label}>Cantidad de animales</Text>
-            <View style={styles.chipsRow}>
-              {[1, 2, 3, 4, 5].map((n) => {
-                const activo = valCantidad === n;
-                return (
-                  <Pressable
-                    key={n}
-                    style={[styles.contadorChip, activo && styles.chipActivo]}
-                    onPress={() => setCantidadAnimales(n)}
-                  >
-                    <Text style={[styles.chipText, activo && styles.chipTextActivo]}>
-                      {n === 5 ? '5+' : n}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            {valEspecie === 'Otro' && (
+              <View style={{ gap: 8, marginTop: 8 }}>
+                <Text style={styles.label}>¿Qué animal doméstico es? *</Text>
+                <View style={styles.chipsRow}>
+                  {ESPECIES_OTRO_SUGERIDAS.map((sug) => {
+                    const act = valEspecieDetalle.trim().toLowerCase() === sug.toLowerCase();
+                    return (
+                      <Pressable
+                        key={sug}
+                        style={[styles.chip, act && styles.chipActivo]}
+                        onPress={() => setEspecieDetalle(sug)}
+                      >
+                        <Text style={[styles.chipText, act && styles.chipTextActivo]}>{sug}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <TextInput
+                  style={styles.input}
+                  value={valEspecieDetalle}
+                  onChangeText={setEspecieDetalle}
+                  placeholder="Ej: Conejo, cobayo, canario, tortuga..."
+                  placeholderTextColor={colors.placeholder}
+                />
+              </View>
+            )}
           </View>
 
           <View style={styles.campo}>
@@ -235,6 +294,17 @@ export function EditarCasoScreen({ route, navigation }: Props) {
               onChangeText={setEdadEstimada}
               placeholder="Ej: 8 meses, Adulto (2 años aprox.)"
               placeholderTextColor={colors.placeholder}
+            />
+          </View>
+
+          <View style={styles.campo}>
+            <Text style={styles.label}>Parentesco / Camada con otros animales</Text>
+            <SelectorRelacionesAnimal
+              relaciones={valRelaciones}
+              casosDisponibles={todosCasos}
+              casoActualId={caso.id}
+              onAgregar={(rel) => setRelacionesDraft([...valRelaciones, rel])}
+              onQuitar={(idx) => setRelacionesDraft(valRelaciones.filter((_, i) => i !== idx))}
             />
           </View>
         </View>
@@ -260,15 +330,20 @@ export function EditarCasoScreen({ route, navigation }: Props) {
           <View style={styles.campo}>
             <Text style={styles.label}>Coordinador PERF responsable</Text>
             <View style={styles.chipsRow}>
-              {COORDINADORES_PERF.map((coord) => {
-                const activo = valCoord === coord;
+              {coordinadores.map((coord) => {
+                const activo =
+                  (valCoordId && valCoordId === coord.id) ||
+                  (!valCoordId && valCoord === coord.nombre);
                 return (
                   <Pressable
-                    key={coord}
+                    key={coord.id}
                     style={[styles.chip, activo && styles.chipActivo]}
-                    onPress={() => setQuienSigueCaso(coord)}
+                    onPress={() => {
+                      setQuienSigueCaso(coord.nombre);
+                      setCoordinadorId(coord.id);
+                    }}
                   >
-                    <Text style={[styles.chipText, activo && styles.chipTextActivo]}>{coord}</Text>
+                    <Text style={[styles.chipText, activo && styles.chipTextActivo]}>{coord.nombre}</Text>
                   </Pressable>
                 );
               })}
@@ -276,7 +351,13 @@ export function EditarCasoScreen({ route, navigation }: Props) {
             <TextInput
               style={[styles.input, { marginTop: 6 }]}
               value={valCoord}
-              onChangeText={setQuienSigueCaso}
+              onChangeText={(txt) => {
+                setQuienSigueCaso(txt);
+                const match = coordinadores.find(
+                  (c) => c.nombre.toLowerCase() === txt.trim().toLowerCase()
+                );
+                setCoordinadorId(match ? match.id : null);
+              }}
               placeholder="Otro nombre de coordinador..."
               placeholderTextColor={colors.placeholder}
             />

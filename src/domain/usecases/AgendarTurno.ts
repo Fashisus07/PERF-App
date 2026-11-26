@@ -1,8 +1,14 @@
 import {
+  atiendeEnFecha,
   Clinica,
   conHora,
+  DiaSemana,
+  diasDeClinica,
+  diaSemanaDeFecha,
   DURACION_TURNO_MIN,
+  ETIQUETA_DIA_SEMANA,
   ETIQUETA_MOTIVO,
+  formatearDiasAtencion,
   formatoTurnoCorto,
   HORARIOS_CLINICA,
   horariosDeClinica,
@@ -30,10 +36,13 @@ export function proximosLibres(
   ocupados: Date[],
   cantidad = 2,
   horarios: readonly string[] = HORARIOS_CLINICA,
+  diasAtencion?: readonly DiaSemana[],
 ): OpcionTurno[] {
+  const permitidos = diasAtencion && diasAtencion.length ? diasAtencion : null;
   const libres: OpcionTurno[] = [];
-  for (let d = 0; d < 7 && libres.length < cantidad; d++) {
+  for (let d = 0; d < 14 && libres.length < cantidad; d++) {
     const dia = sumarDias(desde, d);
+    if (permitidos && !permitidos.includes(diaSemanaDeFecha(dia))) continue;
     for (const hora of horarios) {
       const f = conHora(dia, hora);
       if (f.getTime() > desde.getTime() && !ocupado(f, ocupados)) {
@@ -79,12 +88,19 @@ export class AgendarTurno {
       const ocupados = await this.repo.horariosOcupados(clinicaId);
       const fechaCita = new Date(ts);
       const horarios = horariosDeClinica(clinica);
+      // Validar día de atención configurado en la veterinaria (si eligió días puntuales).
+      if (clinica && !atiendeEnFecha(clinica, fechaCita)) {
+        const diaTexto = ETIQUETA_DIA_SEMANA[diaSemanaDeFecha(fechaCita)];
+        throw new Error(
+          `${clinica.nombre} no atiende los ${diaTexto}. Días de atención: ${formatearDiasAtencion(clinica.diasAtencion)}.`,
+        );
+      }
       // Cada veterinario atiende en sus horarios: no se puede reservar fuera de ellos.
       if (clinica && !horarios.includes(horaDe(fechaCita))) {
         throw new Error(`${clinica.nombre} no atiende a las ${horaDe(fechaCita)}. Horarios: ${horarios.join(', ')}.`);
       }
       if (ocupado(fechaCita, ocupados)) {
-        throw new CupoNoDisponible(s, proximosLibres(fechaCita, ocupados, 2, horarios));
+        throw new CupoNoDisponible(s, proximosLibres(fechaCita, ocupados, 2, horarios, diasDeClinica(clinica)));
       }
     }
 

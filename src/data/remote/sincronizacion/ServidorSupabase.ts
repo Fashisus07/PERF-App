@@ -80,11 +80,39 @@ export const servidorSupabase: ServidorRemoto = {
     if (error) throw traducir(error);
   },
 
+  async guardarResultadoTest(fila) {
+    const { error } = await supabase.from('resultados_tests_animal').upsert(fila, { onConflict: 'id' });
+    if (!error) return;
+    if (error.code === '23505') {
+      // Mismo (caso_id, test_id) creado desde otro dispositivo con distinto UUID: actualizar por clave lógica
+      const { id: _id, caso_id, test_id, ...campos } = fila;
+      const { error: errUpd } = await supabase
+        .from('resultados_tests_animal')
+        .update(campos)
+        .eq('caso_id', caso_id)
+        .eq('test_id', test_id);
+      if (errUpd) throw traducir(errUpd);
+      return;
+    }
+    throw traducir(error);
+  },
+
   async idsCentros() {
     return new Set((await listar('centros_veterinarios')).map((c) => c.id as string));
   },
 
   listarCentros: () => listar('centros_veterinarios'),
+  listarCoordinadores: () => listar('coordinadores'),
+  listarTestsVirales: () => listar('tests_virales'),
+  listarResultadosTests: (desdeIso) => listar('resultados_tests_animal', 'updated_at', desdeIso),
+  listarRelaciones: (desdeIso) => listar('relaciones_animales', 'updated_at', desdeIso),
+  guardarRelacion: async (fila) => {
+    await insertar('relaciones_animales', fila);
+  },
+  borrarRelacion: async (id) => {
+    const { error } = await supabase.from('relaciones_animales').delete().eq('id', id);
+    if (error) throw traducir(error);
+  },
   listarCasos: (desdeIso) => listar('casos', 'updated_at', desdeIso),
   listarEventos: (desdeIso) => listar('eventos_historial', 'created_at', desdeIso),
   listarTurnos: (desdeIso) => listar('turnos', 'updated_at', desdeIso),

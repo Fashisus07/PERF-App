@@ -1,5 +1,16 @@
 import { AnimalCaso } from '../models/Animal';
-import { Caso, EventoHistorial, EstadoCaso, GravedadClinica, Vulnerabilidad } from '../models/Caso';
+import {
+  Caso,
+  Coordinador,
+  Especie,
+  EventoHistorial,
+  EstadoCaso,
+  GravedadClinica,
+  RegistroTestAnimal,
+  RelacionAnimal,
+  TestViralFijo,
+  Vulnerabilidad,
+} from '../models/Caso';
 import { ResumenAlmacenamiento } from '../models/Ajustes';
 
 export interface OpcionesActualizacionEstado {
@@ -43,4 +54,15 @@ export interface CasoRepository {
   // Historial de eventos
   obtenerHistorial(casoId: string): Promise<EventoHistorial[]>;
   agregarEvento(evento: EventoHistorial): Promise<void>;
+
+  // Coordinadores responsables y tests fijos por especie
+  obtenerCoordinadores(): Promise<Coordinador[]>;
+  obtenerCatalogoTests(especie?: Especie): Promise<TestViralFijo[]>;
+  obtenerResultadosTests(casoId: string): Promise<RegistroTestAnimal[]>;
+  guardarResultadoTest(registro: RegistroTestAnimal): Promise<RegistroTestAnimal>;
+
+  // Relaciones familiares / de camada entre animales individuales
+  obtenerRelaciones(casoId: string): Promise<RelacionAnimal[]>;
+  guardarRelacion(relacion: RelacionAnimal): Promise<RelacionAnimal>;
+  eliminarRelacion(relacionId: string): Promise<void>;
 }

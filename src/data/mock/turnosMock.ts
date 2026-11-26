@@ -105,10 +105,4 @@ export function turnosIniciales(): Turno[] {
   ];
 }
 
-// Horarios que otras guardias reservaron y que no aparecen en esta agenda (se usan para el aviso de cupo agotado).
-export function reservasDeOtrasGuardias(): { clinicaId: string; fecha: Date }[] {
-  const h = hoy();
-  return [{ clinicaId: 'patitas', fecha: conHora(sumarDias(h, 1), '11:15') }];
-}
-
 export type { SolicitudTurno };

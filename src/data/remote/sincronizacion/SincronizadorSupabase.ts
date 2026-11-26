@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { esModoDemo } from '../../local/ModoDemo';
 import { almacenSqlite } from './AlmacenSqlite';
 import { Comparable } from './mapeo';
 import { EstadoSync, ResultadoSync, sincronizar } from './MotorSincronizacion';
@@ -28,8 +29,11 @@ const estadoAsyncStorage: EstadoSync = {
 
 let enCurso: Promise<ResultadoSync> | null = null;
 
-/** Sincroniza con Supabase. Si ya hay una en curso (auto-sync + botón manual) se reutiliza. */
-export function sincronizarConSupabase(): Promise<ResultadoSync> {
+/** Sincroniza con Supabase. En Modo Demo no sincroniza para no mezclar datos de ejemplo con la base real. */
+export async function sincronizarConSupabase(): Promise<ResultadoSync> {
+  if (await esModoDemo()) {
+    return { enviadas: 0, descargadas: 0, conflictos: [], fallidas: 0, eventos: 0 };
+  }
   if (!enCurso) {
     enCurso = sincronizar({ servidor: servidorSupabase, almacen: almacenSqlite, estado: estadoAsyncStorage })
       .then(async (resultado) => {

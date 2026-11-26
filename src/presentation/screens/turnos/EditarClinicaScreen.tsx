@@ -17,8 +17,12 @@ import { authRepository, turnoRepository } from '../../../di/container';
 import { esAdministrador } from '../../../domain/models/Ajustes';
 import {
   CentroVeterinario,
+  DIAS_SEMANA,
+  DiaSemana,
   esHorarioValido,
+  ETIQUETA_DIA_SEMANA,
   HORARIOS_CLINICA,
+  normalizarDiasAtencion,
   normalizarHorarios,
 } from '../../../domain/models/Turno';
 import { centroNuevo, guardarCentro } from '../../../data/remote/CentrosVeterinariosService';
@@ -83,8 +87,16 @@ export function EditarClinicaScreen({ route, navigation }: Props) {
 
   const cambiar = (parcial: Partial<CentroVeterinario>) => setCentro({ ...centro, ...parcial });
   const horarios = normalizarHorarios(centro.horarios);
+  const diasAtencion = normalizarDiasAtencion(centro.diasAtencion);
   // Los de siempre más los que ya cargó este veterinario, para poder sacarlos.
   const opciones = normalizarHorarios([...HORARIOS_CLINICA, ...horarios]);
+
+  const alternarDia = (d: DiaSemana) =>
+    cambiar({
+      diasAtencion: diasAtencion.includes(d)
+        ? diasAtencion.filter((x) => x !== d)
+        : normalizarDiasAtencion([...diasAtencion, d]),
+    });
 
   const alternarHorario = (h: string) =>
     cambiar({ horarios: horarios.includes(h) ? horarios.filter((x) => x !== h) : normalizarHorarios([...horarios, h]) });
@@ -119,7 +131,7 @@ export function EditarClinicaScreen({ route, navigation }: Props) {
     setGuardando(true);
     setError(null);
     try {
-      await guardarCentro({ ...centro, horarios });
+      await guardarCentro({ ...centro, horarios, diasAtencion });
       navigation?.goBack?.();
     } catch (e: any) {
       setError(e?.message || 'No se pudo guardar la veterinaria.');
@@ -153,6 +165,29 @@ export function EditarClinicaScreen({ route, navigation }: Props) {
               return (
                 <Pressable key={t.valor} style={[styles.chip, activo && styles.chipActivo]} onPress={() => cambiar({ tipo: t.valor })} accessibilityRole="radio" accessibilityState={{ selected: activo }}>
                   <Text style={[styles.chipText, activo && { color: colors.onPrimary }]}>{t.etiqueta}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.bloque}>
+          <Text style={styles.etiqueta}>Días de atención</Text>
+          <Text style={styles.ayuda}>
+            Si no marcás ningún día en particular, se asume atención todos los días.
+          </Text>
+          <View style={styles.chips}>
+            {DIAS_SEMANA.map((d) => {
+              const activo = diasAtencion.includes(d);
+              return (
+                <Pressable
+                  key={d}
+                  style={[styles.chip, activo && styles.chipActivo]}
+                  onPress={() => alternarDia(d)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: activo }}
+                >
+                  <Text style={[styles.chipText, activo && { color: colors.onPrimary }]}>{ETIQUETA_DIA_SEMANA[d]}</Text>
                 </Pressable>
               );
             })}

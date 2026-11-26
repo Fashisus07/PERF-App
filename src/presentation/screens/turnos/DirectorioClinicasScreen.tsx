@@ -14,7 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authRepository, turnoRepository } from '../../../di/container';
 import { esAdministrador } from '../../../domain/models/Ajustes';
-import { Clinica, horariosDeClinica } from '../../../domain/models/Turno';
+import { Clinica, formatearDiasAtencion, horariosDeClinica } from '../../../domain/models/Turno';
 import { StackHeader } from '../../components/StackHeader';
 import { colors, fonts } from '../../theme';
 
@@ -257,7 +257,9 @@ export function DirectorioClinicasScreen({ navigation }: Props) {
 
                   <View style={styles.ubicacionRow}>
                     <MaterialIcons name="schedule" size={18} color={colors.textSubtle} />
-                    <Text style={styles.direccionText}>Turnos: {horariosDeClinica(c).join(' · ')}</Text>
+                    <Text style={styles.direccionText}>
+                      {formatearDiasAtencion(c.diasAtencion)} · Turnos: {horariosDeClinica(c).join(' · ')}
+                    </Text>
                   </View>
 
                   {/* Estado y horario */}
@@ -305,7 +307,7 @@ export function DirectorioClinicasScreen({ navigation }: Props) {
                       accessibilityLabel={`Editar ${c.nombre}`}
                     >
                       <MaterialIcons name="edit" size={18} color={colors.primary} />
-                      <Text style={styles.btnAccionSecundarioText}>Editar veterinaria y horarios</Text>
+                      <Text style={styles.btnAccionSecundarioText}>Editar veterinaria, días y horarios</Text>
                     </Pressable>
                   ) : null}
                 </View>

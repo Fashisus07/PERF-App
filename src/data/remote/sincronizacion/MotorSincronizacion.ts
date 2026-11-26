@@ -1,4 +1,11 @@
-import type { Caso, EventoHistorial } from '../../../domain/models/Caso';
+import type {
+  Caso,
+  Coordinador,
+  EventoHistorial,
+  RegistroTestAnimal,
+  RelacionAnimal,
+  TestViralFijo,
+} from '../../../domain/models/Caso';
 import type { AnimalCaso } from '../../../domain/models/Animal';
 import type { CentroVeterinario, Turno } from '../../../domain/models/Turno';
 import {
@@ -6,6 +13,7 @@ import {
   FilaServidor,
   animalDesdeServidor,
   centroDesdeServidor,
+  coordinadorDesdeServidor,
   filaAnimalParaServidor,
   camposComparables,
   casoDesdeServidor,
@@ -13,7 +21,12 @@ import {
   eventoDesdeServidor,
   filaCasoParaServidor,
   filaEventoParaServidor,
+  filaRelacionParaServidor,
+  filaResultadoTestParaServidor,
   filaTurnoParaServidor,
+  relacionDesdeServidor,
+  resultadoTestDesdeServidor,
+  testViralDesdeServidor,
   turnoDesdeServidor,
 } from './mapeo';
 
@@ -24,7 +37,7 @@ import {
 export interface OperacionCola {
   id: number;
   idempotencyKey?: string;
-  entidad: 'CASO' | 'TURNO' | 'HISTORIAL' | 'ANIMAL';
+  entidad: 'CASO' | 'TURNO' | 'HISTORIAL' | 'ANIMAL' | 'TEST_ANIMAL' | 'RELACION';
   operacion: 'CREATE' | 'UPDATE' | 'DELETE';
   payload: string;
   reintentos: number;
@@ -60,6 +73,13 @@ export interface ServidorRemoto {
   borrarTurno(id: string): Promise<void>;
   idsCentros(): Promise<Set<string>>;
   listarCentros(): Promise<FilaServidor[]>;
+  listarCoordinadores?(): Promise<FilaServidor[]>;
+  listarTestsVirales?(): Promise<FilaServidor[]>;
+  listarResultadosTests?(desdeIso?: string): Promise<FilaServidor[]>;
+  guardarResultadoTest?(fila: FilaServidor): Promise<void>;
+  listarRelaciones?(desdeIso?: string): Promise<FilaServidor[]>;
+  guardarRelacion?(fila: FilaServidor): Promise<void>;
+  borrarRelacion?(id: string): Promise<void>;
   listarCasos(desdeIso?: string): Promise<FilaServidor[]>;
   listarEventos(desdeIso?: string): Promise<FilaServidor[]>;
   listarTurnos(desdeIso?: string): Promise<FilaServidor[]>;
@@ -76,6 +96,14 @@ export interface AlmacenLocal {
   guardarTurno(turno: Turno): Promise<void>;
   /** Deja los centros del servidor (alta, cambios y bajas); si el servidor no tiene ninguno no se llama. */
   reemplazarCentros(centros: CentroVeterinario[]): Promise<void>;
+  reemplazarCoordinadores?(coords: Coordinador[]): Promise<void>;
+  reemplazarCatalogoTests?(tests: TestViralFijo[]): Promise<void>;
+  guardarResultadoTest?(reg: RegistroTestAnimal): Promise<void>;
+  leerResultadosTestsDeCaso?(casoId: string): Promise<RegistroTestAnimal[]>;
+  marcarResultadoTestSincronizado?(id: string): Promise<void>;
+  guardarRelacion?(rel: RelacionAnimal): Promise<void>;
+  leerRelacionesDeCaso?(casoId: string): Promise<RelacionAnimal[]>;
+  marcarRelacionSincronizada?(id: string): Promise<void>;
   guardarAnimal(animal: AnimalCaso): Promise<void>;
   /** Animales de un caso, sin mirar su marca: se suben junto con el caso al crearlo. */
   leerAnimalesDeCaso(casoId: string): Promise<AnimalCaso[]>;
@@ -127,13 +155,37 @@ export async function pullRemoteChanges(
   const bases = await estado.leerBases();
   let descargadas = 0;
 
-  // 0. Veterinarias que carga el administrador (pocas filas: se bajan completas)
+  // 0. Veterinarias y catálogos fijos (coordinadores y tests virales)
   try {
     const filasCentros = await servidor.listarCentros();
     if (filasCentros.length) await almacen.reemplazarCentros(filasCentros.map(centroDesdeServidor));
   } catch (e) {
     if (e instanceof ErrorDeRed) throw e;
     console.warn('[sync] no se pudieron bajar las veterinarias:', (e as Error).message);
+  }
+
+  try {
+    if (servidor.listarCoordinadores && almacen.reemplazarCoordinadores) {
+      const filasCoords = await servidor.listarCoordinadores();
+      if (filasCoords.length) {
+        await almacen.reemplazarCoordinadores(filasCoords.map(coordinadorDesdeServidor));
+      }
+    }
+  } catch (e) {
+    if (e instanceof ErrorDeRed) throw e;
+    console.warn('[sync] no se pudieron bajar los coordinadores:', (e as Error).message);
+  }
+
+  try {
+    if (servidor.listarTestsVirales && almacen.reemplazarCatalogoTests) {
+      const filasTests = await servidor.listarTestsVirales();
+      if (filasTests.length) {
+        await almacen.reemplazarCatalogoTests(filasTests.map(testViralDesdeServidor));
+      }
+    }
+  } catch (e) {
+    if (e instanceof ErrorDeRed) throw e;
+    console.warn('[sync] no se pudo bajar el catálogo de tests:', (e as Error).message);
   }
 
   // 1. Casos
@@ -158,6 +210,34 @@ export async function pullRemoteChanges(
   for (const fila of filasAnimales) {
     if (casosPendientes.has(fila.caso_id)) continue;
     await almacen.guardarAnimal(animalDesdeServidor(fila));
+  }
+
+  // 3b. Registros fijos de tests virales por animal/caso
+  if (servidor.listarResultadosTests && almacen.guardarResultadoTest) {
+    try {
+      const filasRes = await servidor.listarResultadosTests(desdeIso);
+      for (const fila of filasRes) {
+        if (casosPendientes.has(fila.caso_id)) continue;
+        await almacen.guardarResultadoTest(resultadoTestDesdeServidor(fila));
+      }
+    } catch (e) {
+      if (e instanceof ErrorDeRed) throw e;
+      console.warn('[sync] no se pudieron bajar resultados de tests:', (e as Error).message);
+    }
+  }
+
+  // 3c. Relaciones familiares / de camada entre animales
+  if (servidor.listarRelaciones && almacen.guardarRelacion) {
+    try {
+      const filasRels = await servidor.listarRelaciones(desdeIso);
+      for (const fila of filasRels) {
+        if (casosPendientes.has(fila.caso_origen_id)) continue;
+        await almacen.guardarRelacion(relacionDesdeServidor(fila));
+      }
+    } catch (e) {
+      if (e instanceof ErrorDeRed) throw e;
+      console.warn('[sync] no se pudieron bajar relaciones entre animales:', (e as Error).message);
+    }
   }
 
   // 4. Turnos (inmutables / append-only)
@@ -224,6 +304,7 @@ export async function sincronizar({ servidor, almacen, estado, ahora = Date.now 
       if (op.entidad === 'TURNO' && p.id) turnosPendientes.add(p.id);
       if (op.entidad === 'HISTORIAL' && p.casoId) casosPendientes.add(p.casoId);
       if (op.entidad === 'ANIMAL' && p.casoId) casosPendientes.add(p.casoId);
+      if (op.entidad === 'TEST_ANIMAL' && p.casoId) casosPendientes.add(p.casoId);
     } catch {}
   }
 
@@ -262,6 +343,16 @@ async function subirOperacion(op: OperacionCola, ctx: ContextoSubida): Promise<v
       for (const animal of await almacen.leerAnimalesDeCaso(caso.id)) {
         await servidor.insertarAnimal(filaAnimalParaServidor(animal));
         await almacen.marcarAnimalSincronizado(animal.id);
+      }
+      // Y con sus registros fijos de tests virales / estudios por especie.
+      for (const reg of (await almacen.leerResultadosTestsDeCaso?.(caso.id)) ?? []) {
+        await servidor.guardarResultadoTest?.(filaResultadoTestParaServidor(reg));
+        await almacen.marcarResultadoTestSincronizado?.(reg.id);
+      }
+      // Y con sus relaciones familiares / de camada.
+      for (const rel of (await almacen.leerRelacionesDeCaso?.(caso.id)) ?? []) {
+        await servidor.guardarRelacion?.(filaRelacionParaServidor(rel));
+        await almacen.marcarRelacionSincronizada?.(rel.id);
       }
       bases[caso.id] = camposComparables(caso);
       return;
@@ -309,6 +400,25 @@ async function subirOperacion(op: OperacionCola, ctx: ContextoSubida): Promise<v
       await almacen.marcarAnimalSincronizado(animal.id);
       return;
     }
+
+    case 'TEST_ANIMAL:CREATE':
+    case 'TEST_ANIMAL:UPDATE': {
+      const reg = payload as RegistroTestAnimal;
+      await servidor.guardarResultadoTest?.(filaResultadoTestParaServidor(reg));
+      await almacen.marcarResultadoTestSincronizado?.(reg.id);
+      return;
+    }
+
+    case 'RELACION:CREATE':
+    case 'RELACION:UPDATE': {
+      const rel = payload as RelacionAnimal;
+      await servidor.guardarRelacion?.(filaRelacionParaServidor(rel));
+      await almacen.marcarRelacionSincronizada?.(rel.id);
+      return;
+    }
+    case 'RELACION:DELETE':
+      await servidor.borrarRelacion?.(payload.id);
+      return;
 
     case 'HISTORIAL:CREATE':
       await servidor.insertarEvento(filaEventoParaServidor(payload as EventoHistorial));

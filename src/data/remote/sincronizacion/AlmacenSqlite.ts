@@ -1,4 +1,11 @@
-import { Caso, EventoHistorial } from '../../../domain/models/Caso';
+import {
+  Caso,
+  Coordinador,
+  EventoHistorial,
+  RegistroTestAnimal,
+  RelacionAnimal,
+  TestViralFijo,
+} from '../../../domain/models/Caso';
 import { AnimalCaso } from '../../../domain/models/Animal';
 import { CentroVeterinario, Turno } from '../../../domain/models/Turno';
 import { getDatabase } from '../../local/Database';
@@ -6,6 +13,8 @@ import {
   AnimalRow,
   CasoRow,
   EventoHistorialRow,
+  RelacionAnimalRow,
+  ResultadoTestAnimalRow,
   SQL_CASO_CON_REVISION,
   TurnoRow,
   animalFromRow,
@@ -14,6 +23,10 @@ import {
   casoToParams,
   eventoFromRow,
   eventoToParams,
+  relacionFromRow,
+  relacionToParams,
+  resultadoTestFromRow,
+  resultadoTestToParams,
   turnoFromRow,
   turnoToParams,
 } from '../../mappers/CasoMapper';
@@ -50,30 +63,31 @@ export const almacenSqlite: AlmacenLocal = {
     const db = await getDatabase();
     await db.runAsync(
       `INSERT INTO casos (
-         id, nombre_provisorio, cantidad_animales, especie, edad_estimada,
+         id, nombre_provisorio, cantidad_animales, especie, especie_detalle, edad_estimada,
          historia_origen, personalidad, estado_visible, barrio, latitud,
          longitud, foto_uri, foto_local_uri, foto_remote_path, foto_sync_status,
-         fecha_rescate, quien_sigue_caso, transito_nombre,
+         fecha_rescate, quien_sigue_caso, coordinador_id, transito_nombre,
          transito_telefono, transito_correo, castrado, virales_vif_vilef,
          fecha_primera_desparasitacion, fecha_segunda_desparasitacion,
          estado_caso, gravedad_clinica, vulnerabilidad, nivel_prioridad,
-         motivo_urgencia, puntaje_prioridad, creado_por_user_id, modificado_por_user_id,
+         motivo_urgencia, puntaje_prioridad, creado_por_user_id, creado_por_nombre, modificado_por_user_id,
          es_urgente, sync_status, updated_at
        ) VALUES (
-         $id, $nombre_provisorio, $cantidad_animales, $especie, $edad_estimada,
+         $id, $nombre_provisorio, $cantidad_animales, $especie, $especie_detalle, $edad_estimada,
          $historia_origen, $personalidad, $estado_visible, $barrio, $latitud,
          $longitud, $foto_uri, $foto_local_uri, $foto_remote_path, $foto_sync_status,
-         $fecha_rescate, $quien_sigue_caso, $transito_nombre,
+         $fecha_rescate, $quien_sigue_caso, $coordinador_id, $transito_nombre,
          $transito_telefono, $transito_correo, $castrado, $virales_vif_vilef,
          $fecha_primera_desparasitacion, $fecha_segunda_desparasitacion,
          $estado_caso, $gravedad_clinica, $vulnerabilidad, $nivel_prioridad,
-         $motivo_urgencia, $puntaje_prioridad, $creado_por_user_id, $modificado_por_user_id,
+         $motivo_urgencia, $puntaje_prioridad, $creado_por_user_id, $creado_por_nombre, $modificado_por_user_id,
          $es_urgente, $sync_status, $updated_at
        )
        ON CONFLICT(id) DO UPDATE SET
          nombre_provisorio = excluded.nombre_provisorio,
          cantidad_animales = excluded.cantidad_animales,
          especie = excluded.especie,
+         especie_detalle = excluded.especie_detalle,
          edad_estimada = excluded.edad_estimada,
          historia_origen = excluded.historia_origen,
          personalidad = excluded.personalidad,
@@ -84,6 +98,7 @@ export const almacenSqlite: AlmacenLocal = {
          foto_remote_path = coalesce(excluded.foto_remote_path, casos.foto_remote_path),
          fecha_rescate = excluded.fecha_rescate,
          quien_sigue_caso = excluded.quien_sigue_caso,
+         coordinador_id = excluded.coordinador_id,
          transito_nombre = excluded.transito_nombre,
          transito_telefono = excluded.transito_telefono,
          transito_correo = excluded.transito_correo,
@@ -97,6 +112,7 @@ export const almacenSqlite: AlmacenLocal = {
          nivel_prioridad = excluded.nivel_prioridad,
          motivo_urgencia = excluded.motivo_urgencia,
          puntaje_prioridad = excluded.puntaje_prioridad,
+         creado_por_nombre = coalesce(excluded.creado_por_nombre, casos.creado_por_nombre),
          modificado_por_user_id = excluded.modificado_por_user_id,
          es_urgente = excluded.es_urgente,
          sync_status = 'SYNCED',
@@ -208,19 +224,119 @@ export const almacenSqlite: AlmacenLocal = {
       turnoToParams(turno)
     );
   },
+
+  async reemplazarCoordinadores(coords: Coordinador[]) {
+    const db = await getDatabase();
+    for (const c of coords) {
+      await db.runAsync(
+        `INSERT INTO coordinadores (id, nombre, perfil_id, activo)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           nombre = excluded.nombre,
+           perfil_id = excluded.perfil_id,
+           activo = excluded.activo;`,
+        [c.id, c.nombre, c.perfilId ?? null, c.activo ? 1 : 0]
+      );
+    }
+    if (coords.length > 0) {
+      const marcas = coords.map(() => '?').join(', ');
+      await db.runAsync(`DELETE FROM coordinadores WHERE id NOT IN (${marcas});`, coords.map((c) => c.id));
+    }
+  },
+
+  async reemplazarCatalogoTests(tests: TestViralFijo[]) {
+    const db = await getDatabase();
+    for (const t of tests) {
+      await db.runAsync(
+        `INSERT INTO tests_virales (id, nombre, especie, orden, activo)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           nombre = excluded.nombre,
+           especie = excluded.especie,
+           orden = excluded.orden,
+           activo = excluded.activo;`,
+        [t.id, t.nombre, t.especie, t.orden, t.activo ? 1 : 0]
+      );
+    }
+  },
+
+  async guardarResultadoTest(reg: RegistroTestAnimal) {
+    const db = await getDatabase();
+    await db.runAsync(
+      `INSERT INTO resultados_tests_animal (
+         id, caso_id, animal_id, test_id, resultado, fecha_test, observaciones, registrado_por, sync_status, updated_at
+       ) VALUES (
+         $id, $caso_id, $animal_id, $test_id, $resultado, $fecha_test, $observaciones, $registrado_por, $sync_status, $updated_at
+       )
+       ON CONFLICT(id) DO UPDATE SET
+         resultado = excluded.resultado,
+         fecha_test = excluded.fecha_test,
+         observaciones = excluded.observaciones,
+         registrado_por = excluded.registrado_por,
+         sync_status = 'SYNCED',
+         updated_at = excluded.updated_at;`,
+      resultadoTestToParams(reg, 'SYNCED')
+    );
+  },
+
+  async leerResultadosTestsDeCaso(casoId: string) {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<ResultadoTestAnimalRow>(
+      'SELECT * FROM resultados_tests_animal WHERE caso_id = ?;',
+      [casoId]
+    );
+    return rows.map(resultadoTestFromRow);
+  },
+
+  async marcarResultadoTestSincronizado(id: string) {
+    const db = await getDatabase();
+    await db.runAsync(`UPDATE resultados_tests_animal SET sync_status = 'SYNCED' WHERE id = ?;`, [id]);
+  },
+
+  async guardarRelacion(rel: RelacionAnimal) {
+    const db = await getDatabase();
+    await db.runAsync(
+      `INSERT INTO relaciones_animales (
+         id, caso_origen_id, tipo_relacion, caso_destino_id, nombre_destino, sync_status, updated_at
+       ) VALUES (
+         $id, $caso_origen_id, $tipo_relacion, $caso_destino_id, $nombre_destino, $sync_status, $updated_at
+       )
+       ON CONFLICT(id) DO UPDATE SET
+         tipo_relacion = excluded.tipo_relacion,
+         caso_destino_id = excluded.caso_destino_id,
+         nombre_destino = excluded.nombre_destino,
+         sync_status = 'SYNCED',
+         updated_at = excluded.updated_at;`,
+      relacionToParams(rel, 'SYNCED')
+    );
+  },
+
+  async leerRelacionesDeCaso(casoId: string) {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<RelacionAnimalRow>(
+      'SELECT * FROM relaciones_animales WHERE caso_origen_id = ?;',
+      [casoId]
+    );
+    return rows.map(relacionFromRow);
+  },
+
+  async marcarRelacionSincronizada(id: string) {
+    const db = await getDatabase();
+    await db.runAsync(`UPDATE relaciones_animales SET sync_status = 'SYNCED' WHERE id = ?;`, [id]);
+  },
 };
 
 /** Alta o cambio de una veterinaria en la base del teléfono. */
 export async function guardarCentroLocal(c: CentroVeterinario): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
-    `INSERT INTO centros_veterinarios (id, nombre, medico, barrio, direccion, telefono, detalle, distancia, abierto, tipo, horarios)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO centros_veterinarios (id, nombre, medico, barrio, direccion, telefono, detalle, distancia, abierto, tipo, horarios, dias_atencion)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        nombre = excluded.nombre, medico = excluded.medico, barrio = excluded.barrio,
        direccion = excluded.direccion, telefono = excluded.telefono, detalle = excluded.detalle,
        distancia = excluded.distancia, abierto = excluded.abierto, tipo = excluded.tipo,
-       horarios = excluded.horarios;`,
+       horarios = excluded.horarios, dias_atencion = excluded.dias_atencion;`,
     [
       c.id,
       c.nombre,
@@ -233,6 +349,7 @@ export async function guardarCentroLocal(c: CentroVeterinario): Promise<void> {
       c.abierto ? 1 : 0,
       c.tipo,
       JSON.stringify(c.horarios ?? []),
+      c.diasAtencion?.length ? JSON.stringify(c.diasAtencion) : null,
     ]
   );
 }

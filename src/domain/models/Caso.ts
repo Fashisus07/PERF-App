@@ -7,6 +7,179 @@ import {
 
 export type Especie = 'Gato' | 'Perro' | 'Otro';
 
+export const ESPECIES_OTRO_SUGERIDAS = [
+  'Conejo',
+  'Cobayo',
+  'Ave / Pájaro',
+  'Tortuga',
+  'Hámster',
+  'Hurón',
+  'Erizo',
+] as const;
+
+export type ResultadoTestViral = 'PENDIENTE' | 'NEGATIVO' | 'POSITIVO' | 'NO_APLICA';
+
+export const ETIQUETA_RESULTADO_TEST: Record<ResultadoTestViral, string> = {
+  PENDIENTE: 'Pendiente',
+  NEGATIVO: 'Negativo',
+  POSITIVO: 'Positivo',
+  NO_APLICA: 'No aplica',
+};
+
+export interface Coordinador {
+  id: string;
+  nombre: string;
+  perfilId?: string | null;
+  activo: boolean;
+}
+
+export const COORDINADORES_FIJOS: Coordinador[] = [
+  { id: 'coord-cami', nombre: 'Cami', perfilId: null, activo: true },
+  { id: 'coord-juli', nombre: 'Juli', perfilId: null, activo: true },
+  { id: 'coord-martu', nombre: 'Martu', perfilId: null, activo: true },
+  { id: 'coord-nay', nombre: 'Nay', perfilId: null, activo: true },
+];
+
+export interface TestViralFijo {
+  id: string;
+  nombre: string;
+  especie: Especie;
+  orden: number;
+  activo: boolean;
+}
+
+export const TESTS_VIRALES_FIJOS: TestViralFijo[] = [
+  { id: 'vif', nombre: 'VIF (Inmunodeficiencia felina)', especie: 'Gato', orden: 1, activo: true },
+  { id: 'vilef', nombre: 'ViLeF (Leucemia felina)', especie: 'Gato', orden: 2, activo: true },
+  { id: 'parvo', nombre: 'Parvovirus canino', especie: 'Perro', orden: 1, activo: true },
+  { id: 'moquillo', nombre: 'Moquillo / Distemper', especie: 'Perro', orden: 2, activo: true },
+  { id: 'control_clinico', nombre: 'Control clínico / estudios generales', especie: 'Otro', orden: 1, activo: true },
+];
+
+export function testsPorEspecie(especie: Especie, catalogo: TestViralFijo[] = TESTS_VIRALES_FIJOS): TestViralFijo[] {
+  return catalogo
+    .filter((t) => t.activo && t.especie === especie)
+    .sort((a, b) => a.orden - b.orden);
+}
+
+export interface RegistroTestAnimal {
+  id: string;
+  casoId: string;
+  animalId?: string | null;
+  testId: string;
+  resultado: ResultadoTestViral;
+  fechaTest?: number | null;
+  observaciones?: string | null;
+  registradoPor?: string | null;
+  updatedAt: number;
+}
+
+export type TipoRelacionAnimal =
+  | 'HIJO_DE'
+  | 'HIJA_DE'
+  | 'HERMANO_DE'
+  | 'HERMANA_DE'
+  | 'MAMA_DE'
+  | 'PAPA_DE'
+  | 'CAMADA_DE'
+  | 'OTRA';
+
+export const TIPOS_RELACION_LISTA: TipoRelacionAnimal[] = [
+  'HIJO_DE',
+  'HIJA_DE',
+  'HERMANO_DE',
+  'HERMANA_DE',
+  'MAMA_DE',
+  'PAPA_DE',
+  'CAMADA_DE',
+];
+
+export const ETIQUETA_RELACION: Record<TipoRelacionAnimal, string> = {
+  HIJO_DE: 'Hijo de',
+  HIJA_DE: 'Hija de',
+  HERMANO_DE: 'Hermano de',
+  HERMANA_DE: 'Hermana de',
+  MAMA_DE: 'Mamá de',
+  PAPA_DE: 'Papá de',
+  CAMADA_DE: 'Camada de',
+  OTRA: 'Vinculado con',
+};
+
+export interface RelacionAnimal {
+  id: string;
+  casoOrigenId: string;
+  tipoRelacion: TipoRelacionAnimal;
+  casoDestinoId?: string | null;
+  nombreDestino: string;
+  updatedAt: number;
+}
+
+export interface RelacionVisible {
+  relacionId: string;
+  texto: string;
+  targetCasoId?: string | null;
+  targetNombre: string;
+  esSaliente: boolean;
+}
+
+/**
+ * Devuelve cómo debe leerse un vínculo familiar desde la ficha de `casoActualId`.
+ * Ejemplo: si Toto cargó `HIJO_DE` -> Mora, en Toto se lee "Hijo de Mora" y en Mora se lee "Cría / Hijo(a): Toto".
+ */
+export function etiquetaRelacionParaCaso(
+  relacion: RelacionAnimal,
+  casoActualId: string,
+  nombresPorId?: Record<string, string> | Map<string, string>
+): RelacionVisible {
+  const resolverNombre = (id?: string | null, respaldo?: string) => {
+    if (!id) return (respaldo ?? '').trim() || 'Otro animal';
+    if (nombresPorId instanceof Map) return nombresPorId.get(id) ?? (respaldo || 'Animal');
+    if (nombresPorId && nombresPorId[id]) return nombresPorId[id];
+    return (respaldo ?? '').trim() || 'Animal';
+  };
+
+  if (relacion.casoOrigenId === casoActualId) {
+    const targetNombre = resolverNombre(relacion.casoDestinoId, relacion.nombreDestino);
+    return {
+      relacionId: relacion.id,
+      texto: `${ETIQUETA_RELACION[relacion.tipoRelacion]} ${targetNombre}`,
+      targetCasoId: relacion.casoDestinoId ?? null,
+      targetNombre,
+      esSaliente: true,
+    };
+  }
+
+  const origenNombre = resolverNombre(relacion.casoOrigenId);
+  let prefijo = 'Vinculado:';
+  switch (relacion.tipoRelacion) {
+    case 'HIJO_DE':
+    case 'HIJA_DE':
+      prefijo = 'Cría / Hijo(a):';
+      break;
+    case 'HERMANO_DE':
+    case 'HERMANA_DE':
+      prefijo = 'Hermano/a:';
+      break;
+    case 'MAMA_DE':
+      prefijo = 'Mamá:';
+      break;
+    case 'PAPA_DE':
+      prefijo = 'Papá:';
+      break;
+    case 'CAMADA_DE':
+      prefijo = 'Camada:';
+      break;
+  }
+
+  return {
+    relacionId: relacion.id,
+    texto: `${prefijo} ${origenNombre}`,
+    targetCasoId: relacion.casoOrigenId,
+    targetNombre: origenNombre,
+    esSaliente: false,
+  };
+}
+
 export type EstadoCaso =
   | 'EN_TRANSITO'
   | 'EN_CLINICA'
@@ -60,6 +233,7 @@ export interface Caso {
   nombreProvisorio: string;
   cantidadAnimales: number;
   especie: Especie;
+  especieDetalle?: string | null;
   edadEstimada: string;
   historiaOrigen: string;
   personalidad: string;
@@ -77,8 +251,12 @@ export interface Caso {
   /** Última visita, nota o tratamiento del historial. Se deriva de los eventos: no se guarda aparte. */
   fechaUltimaRevision?: number | null;
   quienSigueCaso: string;
+  coordinadorId?: string | null;
+  coordinadorPerfilId?: string | null;
   transito: HogarTransito;
   sanidad: FichaSanitariaFelina;
+  testsAnimal?: RegistroTestAnimal[];
+  relaciones?: RelacionAnimal[];
   estadoCaso: EstadoCaso;
   gravedadClinica: GravedadClinica;
   vulnerabilidad: Vulnerabilidad;
@@ -86,6 +264,7 @@ export interface Caso {
   motivoUrgencia: string;
   puntajePrioridad: number;
   creadoPorUserId?: string;
+  creadoPorNombre?: string | null;
   modificadoPorUserId?: string;
   esUrgente: boolean; // Retrocompatibilidad
   syncStatus: SyncStatus;
@@ -176,12 +355,14 @@ export type PrioridadCaso = ResultadoCalculoPrioridad & { urgencia: Urgencia };
 export function prioridadDeCaso(caso: Partial<Caso>, umbralDias: number = UMBRAL_URGENTE_DIAS): PrioridadCaso {
   const calculo = calcularPrioridadCasoUseCase.ejecutar(
     {
+      especie: caso.especie,
       estadoCaso: caso.estadoCaso ?? 'EN_TRANSITO',
       gravedadClinica: caso.gravedadClinica,
       vulnerabilidad: caso.vulnerabilidad,
       fechaRescate: caso.fechaRescate ?? Date.now(),
       fechaUltimaRevision: caso.fechaUltimaRevision,
       sanidad: caso.sanidad,
+      testsAnimal: caso.testsAnimal,
     },
     umbralDias
   );
@@ -198,9 +379,17 @@ export function diasEnEspera(caso: Pick<Caso, 'fechaRescate'>): number {
   return Math.max(0, Math.floor((Date.now() - caso.fechaRescate) / (1000 * 60 * 60 * 24)));
 }
 
-/** Descripción corta para tarjetas: "Gato · 45 días" */
-export function descripcionCorta(caso: Pick<Caso, 'especie' | 'edadEstimada'>): string {
-  return [ETIQUETA_ESPECIE[caso.especie], caso.edadEstimada].filter(Boolean).join(' · ');
+/** Nombre visible de especie ("Conejo" si eligió "Otro" con detalle, si no "Gato" / "Perro" / "Otro"). */
+export function especieLegible(caso: Pick<Caso, 'especie' | 'especieDetalle'>): string {
+  if (caso.especie === 'Otro' && caso.especieDetalle?.trim()) {
+    return caso.especieDetalle.trim();
+  }
+  return ETIQUETA_ESPECIE[caso.especie];
+}
+
+/** Descripción corta para tarjetas: "Gato · 45 días" o "Conejo · 6 meses" */
+export function descripcionCorta(caso: Pick<Caso, 'especie' | 'especieDetalle' | 'edadEstimada'>): string {
+  return [especieLegible(caso), caso.edadEstimada].filter(Boolean).join(' · ');
 }
 
 // ─── Historial del caso ───

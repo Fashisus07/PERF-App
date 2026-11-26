@@ -7,7 +7,11 @@ import {
   ResultadoRegistro,
   SolicitudVoluntarioPendiente,
 } from '../../domain/repositories/AuthRepository';
+import { getDatabase } from '../local/Database';
+import { activarModoDemo, esModoDemo, purgarDatosDemoDeDb } from '../local/ModoDemo';
 import { generarUUID } from '../local/uuid';
+import { casosMock, IDS_CASOS_MOCK_ANTERIORES } from '../mock/casosMock';
+import { clinicasMock } from '../mock/turnosMock';
 import { notificarCoordinadoresNuevoVoluntario } from './NotificacionesCoordinadoresService';
 import { supabase } from './supabaseClient';
 
@@ -18,10 +22,14 @@ export const VOLUNTARIO_DEMO: Voluntario = {
   email: 'facuperezespinosa@gmail.com',
   telefono: '1155551234',
   zona: 'Caballito',
+  fotoUri: null,
+  fotoPath: null,
   recursos: ['canil', 'transito'],
 };
 
 const CLAVE_SESION_LOCAL = '@perf_sesion_local';
+const BUCKET_AVATARES = 'avatares';
+const VIGENCIA_AVATAR_SEG = 7 * 24 * 3600;
 
 interface PerfilRow {
   id: string;
@@ -30,12 +38,36 @@ interface PerfilRow {
   telefono: string | null;
   brigada: string;
   zona: string | null;
+  foto_url?: string | null;
   recursos: string[] | null;
   rol?: string | null;
   aprobado: boolean;
 }
 
-const COLUMNAS_PERFIL = 'id, nombre, email, telefono, brigada, zona, recursos, rol, aprobado';
+const COLUMNAS_PERFIL = 'id, nombre, email, telefono, brigada, zona, foto_url, recursos, rol, aprobado';
+
+async function resolverUrlAvatar(fotoUrl?: string | null): Promise<string | null> {
+  if (!fotoUrl) return null;
+  if (/^(https?:|file:|content:|data:)/i.test(fotoUrl)) return fotoUrl;
+  try {
+    const { data } = await supabase.storage.from(BUCKET_AVATARES).createSignedUrl(fotoUrl, VIGENCIA_AVATAR_SEG);
+    return data?.signedUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function limpiarDatosDemoAlSalir(): Promise<void> {
+  await activarModoDemo(false);
+  try {
+    const db = await getDatabase();
+    await purgarDatosDemoDeDb(
+      db as any,
+      [...casosMock.map((c) => c.id), ...IDS_CASOS_MOCK_ANTERIORES],
+      clinicasMock.map((c) => c.id)
+    );
+  } catch {}
+}
 
 const MENSAJE_PENDIENTE =
   'Tu cuenta todavía no fue aprobada. Un coordinador de PERF tiene que habilitarla para que puedas ver los casos.';
@@ -45,7 +77,8 @@ function aRol(rol?: string | null): RolVoluntario {
   return rol === 'coordinador' || rol === 'administrador' ? 'coordinador' : 'voluntario';
 }
 
-function aVoluntario(p: PerfilRow): Voluntario {
+function aVoluntario(p: PerfilRow, fotoUriResuelta?: string | null): Voluntario {
+  const path = p.foto_url ?? null;
   return {
     id: p.id,
     nombre: p.nombre,
@@ -53,6 +86,8 @@ function aVoluntario(p: PerfilRow): Voluntario {
     email: p.email,
     telefono: p.telefono ?? '',
     zona: p.zona ?? '',
+    fotoPath: path,
+    fotoUri: fotoUriResuelta ?? (path && /^(https?:|file:|content:|data:)/i.test(path) ? path : null),
     recursos: p.recursos ?? [],
     rol: aRol(p.rol),
     aprobado: p.aprobado,
@@ -92,6 +127,7 @@ export class SupabaseAuthRepository implements AuthRepository {
 
     // Acceso para voluntario de prueba / demo
     if (email === 'demo@perfelino.org' || email === 'voluntario@perfelino.org') {
+      await activarModoDemo(true);
       await AsyncStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(VOLUNTARIO_DEMO));
       return VOLUNTARIO_DEMO;
     }
@@ -100,23 +136,33 @@ export class SupabaseAuthRepository implements AuthRepository {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password: clave });
       if (error) throw error;
 
+      // Garantizar arranque limpio en modo real
+      await limpiarDatosDemoAlSalir();
+
       const perfil = await this.leerPerfil(data.user.id);
       if (perfil && !perfil.aprobado && perfil.rol !== 'coordinador') {
         await supabase.auth.signOut();
         throw new Error(MENSAJE_PENDIENTE);
       }
       if (perfil) {
-        return aVoluntario(perfil);
+        const fotoUri = await resolverUrlAvatar(perfil.foto_url);
+        const vol = aVoluntario(perfil, fotoUri);
+        await AsyncStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(vol));
+        return vol;
       }
-      return {
+      const volFallback: Voluntario = {
         id: data.user.id,
         nombre: data.user.user_metadata?.nombre || 'Voluntario',
         brigada: data.user.user_metadata?.brigada || 'Brigada General',
         email,
         telefono: data.user.user_metadata?.telefono || '',
         zona: data.user.user_metadata?.zona || '',
+        fotoUri: null,
+        fotoPath: null,
         recursos: [],
       };
+      await AsyncStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(volFallback));
+      return volFallback;
     } catch (err: any) {
       // Si hay una cuenta local previa creada sin conexión con este correo
       const local = await AsyncStorage.getItem(CLAVE_SESION_LOCAL);
@@ -124,6 +170,8 @@ export class SupabaseAuthRepository implements AuthRepository {
         try {
           const vol: Voluntario = JSON.parse(local);
           if (vol.email?.toLowerCase() === email) {
+            if (vol.id === 'voluntario-demo') await activarModoDemo(true);
+            else await activarModoDemo(false);
             return vol;
           }
         } catch {}
@@ -133,6 +181,7 @@ export class SupabaseAuthRepository implements AuthRepository {
   }
 
   async iniciarSesionComoDemo(): Promise<Voluntario> {
+    await activarModoDemo(true);
     await AsyncStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(VOLUNTARIO_DEMO));
     return VOLUNTARIO_DEMO;
   }
@@ -180,6 +229,7 @@ export class SupabaseAuthRepository implements AuthRepository {
   }
 
   async registrarOffline(datos: CredencialesRegistro): Promise<Voluntario> {
+    await limpiarDatosDemoAlSalir();
     const email = datos.email.trim().toLowerCase();
     const nuevoVoluntario: Voluntario = {
       id: generarUUID(),
@@ -188,6 +238,8 @@ export class SupabaseAuthRepository implements AuthRepository {
       email,
       telefono: datos.telefono.trim(),
       zona: datos.zona.trim(),
+      fotoUri: null,
+      fotoPath: null,
       recursos: datos.recursos ?? [],
     };
     await AsyncStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(nuevoVoluntario));
@@ -201,9 +253,20 @@ export class SupabaseAuthRepository implements AuthRepository {
       if (data?.session) {
         try {
           const perfil = await this.leerPerfil(data.session.user.id);
-          if (perfil?.aprobado) return aVoluntario(perfil);
+          if (perfil?.aprobado) {
+            await activarModoDemo(false);
+            const fotoUri = await resolverUrlAvatar(perfil.foto_url);
+            const vol = aVoluntario(perfil, fotoUri);
+            await AsyncStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(vol));
+            return vol;
+          }
         } catch {
-          // En modo avión sin conexión a base, pero con token válido
+          // En modo avión sin conexión a base, preferimos copia local si pertenece a este usuario
+          const localRaw = await AsyncStorage.getItem(CLAVE_SESION_LOCAL);
+          if (localRaw) {
+            const local: Voluntario = JSON.parse(localRaw);
+            if (local.id === data.session.user.id) return local;
+          }
           const u = data.session.user;
           const m = u.user_metadata ?? {};
           return {
@@ -213,17 +276,21 @@ export class SupabaseAuthRepository implements AuthRepository {
             email: u.email ?? '',
             telefono: m.telefono ?? '',
             zona: m.zona ?? '',
+            fotoUri: null,
+            fotoPath: null,
             recursos: Array.isArray(m.recursos) ? m.recursos : [],
           };
         }
       }
     } catch {}
 
-    // 2. Verificar si existe una sesión de voluntario local en AsyncStorage (Modo Offline)
+    // 2. Verificar si existe una sesión de voluntario local en AsyncStorage (Modo Offline o Demo)
     try {
       const local = await AsyncStorage.getItem(CLAVE_SESION_LOCAL);
       if (local) {
-        return JSON.parse(local);
+        const parsed: Voluntario = JSON.parse(local);
+        if (parsed.id === 'voluntario-demo') await activarModoDemo(true);
+        return parsed;
       }
     } catch {}
 
@@ -232,6 +299,7 @@ export class SupabaseAuthRepository implements AuthRepository {
 
   async cerrarSesion(): Promise<void> {
     await AsyncStorage.removeItem(CLAVE_SESION_LOCAL);
+    await limpiarDatosDemoAlSalir();
     try {
       await supabase.auth.signOut();
     } catch {}
@@ -240,24 +308,64 @@ export class SupabaseAuthRepository implements AuthRepository {
   async actualizarVoluntario(voluntario: Voluntario): Promise<Voluntario> {
     if (!voluntario.id) throw new Error('No hay un voluntario con sesión iniciada.');
 
+    const demo = (await esModoDemo()) || voluntario.id === 'voluntario-demo';
+    let fotoPath = voluntario.fotoPath ?? null;
+    let fotoUri = voluntario.fotoUri ?? null;
+
+    if (fotoUri && /^(file:|content:|data:)/i.test(fotoUri) && !demo) {
+      // Subir foto de perfil al bucket privado 'avatares/{userId}/avatar.jpg'
+      try {
+        const resp = await fetch(fotoUri);
+        const bytes = await resp.arrayBuffer();
+        const ruta = `${voluntario.id}/avatar.jpg`;
+        const subida = await supabase.storage.from(BUCKET_AVATARES).upload(ruta, bytes, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+        if (!subida.error) {
+          fotoPath = ruta;
+          const signed = await resolverUrlAvatar(ruta);
+          if (signed) fotoUri = signed;
+        }
+      } catch {
+        // Si falla offline, conservamos la foto local igual
+      }
+    } else if (fotoUri === null) {
+      if (fotoPath && !demo) {
+        try {
+          await supabase.storage.from(BUCKET_AVATARES).remove([fotoPath]);
+        } catch {}
+      }
+      fotoPath = null;
+    }
+
+    const actualizado: Voluntario = {
+      ...voluntario,
+      fotoPath,
+      fotoUri,
+    };
+
     // Actualiza en almacenamiento local
-    await AsyncStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(voluntario));
+    await AsyncStorage.setItem(CLAVE_SESION_LOCAL, JSON.stringify(actualizado));
 
-    // Si hay conexión con Supabase, actualiza también en la nube
-    try {
-      await supabase
-        .from('perfiles')
-        .update({
-          nombre: voluntario.nombre,
-          telefono: voluntario.telefono ?? '',
-          zona: voluntario.zona ?? '',
-          brigada: voluntario.brigada,
-          recursos: voluntario.recursos ?? [],
-        })
-        .eq('id', voluntario.id);
-    } catch {}
+    // Si hay conexión con Supabase y no es demo, actualiza también en la nube
+    if (!demo) {
+      try {
+        await supabase
+          .from('perfiles')
+          .update({
+            nombre: actualizado.nombre,
+            telefono: actualizado.telefono ?? '',
+            zona: actualizado.zona ?? '',
+            brigada: actualizado.brigada,
+            recursos: actualizado.recursos ?? [],
+            foto_url: fotoPath,
+          })
+          .eq('id', actualizado.id);
+      } catch {}
+    }
 
-    return voluntario;
+    return actualizado;
   }
 
   async listarVoluntarios(): Promise<Voluntario[]> {
@@ -267,14 +375,18 @@ export class SupabaseAuthRepository implements AuthRepository {
       .eq('aprobado', true)
       .order('nombre', { ascending: true });
     if (error) throw traducirError(error);
-    const lista = ((data ?? []) as PerfilRow[]).map(aVoluntario);
+    const rows = (data ?? []) as PerfilRow[];
+    const lista = await Promise.all(
+      rows.map(async (p) => aVoluntario(p, await resolverUrlAvatar(p.foto_url)))
+    );
     // El administrador primero, después el resto por orden alfabético.
     return lista.sort((a, b) => Number(esAdministrador(b.rol)) - Number(esAdministrador(a.rol)));
   }
 
   async obtenerVoluntario(id: string): Promise<Voluntario | null> {
     const perfil = await this.leerPerfil(id);
-    return perfil ? aVoluntario(perfil) : null;
+    if (!perfil) return null;
+    return aVoluntario(perfil, await resolverUrlAvatar(perfil.foto_url));
   }
 
   async recuperarClave(email: string): Promise<boolean> {

@@ -10,7 +10,8 @@ module.exports = {
         tsconfig: {
           esModuleInterop: true,
           allowJs: true,
-          types: ['jest'],
+          jsx: 'react-jsx',
+          types: ['jest', 'node'],
         },
       },
     ],

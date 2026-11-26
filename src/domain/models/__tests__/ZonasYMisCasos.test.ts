@@ -68,9 +68,13 @@ describe('"Mis casos": un caso es del voluntario si lo sigue por su nombre', () 
     expect(sigueElCaso('Pérez', voluntario)).toBe(false);
   });
 
-  test('un diminutivo no coincide con el nombre completo (hoy se compara por texto, no por ID)', () => {
-    // "Cami" (el coordinador de PERF) no es "Camila": por eso falta el coordinador como registro con ID.
+  test('un diminutivo no coincide con el nombre completo cuando no hay ID de coordinador', () => {
     expect(sigueElCaso('Cami', voluntario)).toBe(false);
+  });
+
+  test('cuando el coordinador tiene coordinadorPerfilId enlazado al usuario, coincide aunque use diminutivo', () => {
+    expect(sigueElCaso('Cami', { id: 'uid-cami', nombre: 'Camila Pérez' }, 'uid-cami')).toBe(true);
+    expect(sigueElCaso('Cami', { id: 'uid-otro', nombre: 'Camila Pérez' }, 'uid-cami')).toBe(false);
   });
 
   test('limitación conocida: otra persona con el mismo primer nombre también coincide', () => {

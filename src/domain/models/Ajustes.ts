@@ -83,6 +83,8 @@ export type Voluntario = {
   email?: string;
   telefono?: string;
   zona?: string; // zonas que cubre, separadas por coma
+  fotoUri?: string | null; // URI local o URL firmada lista para renderizar
+  fotoPath?: string | null; // Ruta en bucket Storage 'avatares'
   recursos?: string[];
   rol?: RolVoluntario;
   aprobado?: boolean;
@@ -90,8 +92,18 @@ export type Voluntario = {
   tokenAprobacion?: string;
 };
 
-/** Un caso es "de" un voluntario si el nombre de quien lo sigue coincide con su nombre o su primer nombre. */
-export function sigueElCaso(quienSigue: string, voluntario: Pick<Voluntario, 'nombre'> | null): boolean {
+/**
+ * Un caso es "de" un voluntario si el coordinador responsable enlaza con su perfilId,
+ * o (compatibilidad con registros previos) si el nombre coincide con su nombre o primer nombre.
+ */
+export function sigueElCaso(
+  quienSigue: string,
+  voluntario: Pick<Voluntario, 'nombre' | 'id'> | null,
+  coordinadorPerfilId?: string | null
+): boolean {
+  if (voluntario?.id && coordinadorPerfilId && voluntario.id === coordinadorPerfilId) {
+    return true;
+  }
   const sigue = quienSigue.trim().toLowerCase();
   const nombre = (voluntario?.nombre ?? '').trim().toLowerCase();
   if (!sigue || !nombre) return false;

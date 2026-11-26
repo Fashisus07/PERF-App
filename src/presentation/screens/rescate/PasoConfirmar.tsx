@@ -2,8 +2,11 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ETIQUETA_CASTRACION,
-  ETIQUETA_ESPECIE,
+  ETIQUETA_RELACION,
+  ETIQUETA_RESULTADO_TEST,
   ETIQUETA_VIRALES,
+  especieLegible,
+  testsPorEspecie,
 } from '../../../domain/models/Caso';
 import { BorradorRescate } from '../../../domain/models/Rescate';
 import { colors, fonts } from '../../theme';
@@ -70,9 +73,8 @@ export function PasoConfirmar({ borrador: b, sinConexion, guardando, onVolver, o
             <View style={{ flex: 1 }}>
               <Text style={styles.nombre}>{nombre}</Text>
               <Text style={styles.sub}>
-                {b.especie ? ETIQUETA_ESPECIE[b.especie] : 'Animal'}
+                {b.especie ? especieLegible({ especie: b.especie, especieDetalle: b.especieDetalle }) : 'Animal'}
                 {b.edadEstimada ? ` · ${b.edadEstimada}` : ''}
-                {b.cantidadAnimales > 1 ? ` (Camada x${b.cantidadAnimales})` : ''}
               </Text>
             </View>
             <View style={styles.pata}>
@@ -121,7 +123,12 @@ export function PasoConfirmar({ borrador: b, sinConexion, guardando, onVolver, o
               <View style={styles.filaInfo}>
                 <Text style={styles.filaLabel}>Sanidad</Text>
                 <Text style={styles.filaValor}>
-                  Castrado: {ETIQUETA_CASTRACION[b.castrado || 'PENDIENTE']} · Virales: {ETIQUETA_VIRALES[b.virales || 'PENDIENTE']}
+                  Castrado: {ETIQUETA_CASTRACION[b.castrado || 'PENDIENTE']} ·{' '}
+                  {b.especie === 'Gato' || !b.especie
+                    ? `Virales: ${ETIQUETA_VIRALES[b.virales || 'PENDIENTE']}`
+                    : testsPorEspecie(b.especie)
+                        .map((t) => `${t.nombre.split(' ')[0]}: ${ETIQUETA_RESULTADO_TEST[b.resultadosTests?.[t.id] ?? 'PENDIENTE']}`)
+                        .join(' · ')}
                 </Text>
                 {(b.fechaPrimeraDesparasitacion || b.fechaSegundaDesparasitacion) && (
                   <Text style={styles.filaSub}>
@@ -130,6 +137,20 @@ export function PasoConfirmar({ borrador: b, sinConexion, guardando, onVolver, o
                 )}
               </View>
             </View>
+
+            {b.relacionesIniciales && b.relacionesIniciales.length > 0 ? (
+              <View style={styles.fila}>
+                <MaterialIcons name="family-restroom" size={18} color={colors.primary} />
+                <View style={styles.filaInfo}>
+                  <Text style={styles.filaLabel}>Parentesco / Camada</Text>
+                  <Text style={styles.filaValor}>
+                    {b.relacionesIniciales
+                      .map((r) => `${ETIQUETA_RELACION[r.tipoRelacion]} ${r.nombreDestino}`)
+                      .join(' · ')}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
 
             {b.historiaOrigen ? (
               <View style={styles.fila}>

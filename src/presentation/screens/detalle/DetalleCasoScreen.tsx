@@ -13,18 +13,23 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   diasEnEspera,
+  especieLegible,
+  etiquetaRelacionParaCaso,
   ETIQUETA_CASTRACION,
   ETIQUETA_ESTADO,
   ETIQUETA_EVENTO,
   ETIQUETA_GRAVEDAD,
+  ETIQUETA_RESULTADO_TEST,
   ETIQUETA_VIRALES,
   ETIQUETA_VULNERABILIDAD,
   EventoHistorial,
   prioridadDeCaso,
+  testsPorEspecie,
 } from '../../../domain/models/Caso';
 import { fotoCasoSource } from '../../components/fotoCaso';
 import { StackHeader } from '../../components/StackHeader';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
+import { esTextoCoordenadas } from '../../hooks/useUbicacion';
 import { obtenerAjustes } from '../../hooks/useAjustes';
 import { useAnimales } from '../../hooks/useAnimales';
 import { useCaso } from '../../hooks/useCaso';
@@ -52,6 +57,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
   const casoId = route?.params?.casoId ?? '';
   const { caso, historial, cargando } = useCaso(casoId);
   const { animales } = useAnimales(casoId);
+  const todosCasos = useCasoStore((s) => s.casos);
   const umbral = useCasoStore((s) => s.umbralDias);
   const [favorito, setFavorito] = useState(false);
   const [aviso, setAviso] = useState(false);
@@ -177,15 +183,15 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
             <View style={styles.nameInfo}>
               <View style={styles.nameLine}>
                 <Text style={styles.nombre}>{caso.nombreProvisorio}</Text>
-                {caso.cantidadAnimales > 1 && (
-                  <View style={styles.badgeCamada}>
-                    <Text style={styles.badgeCamadaText}>Camada x{caso.cantidadAnimales}</Text>
-                  </View>
-                )}
               </View>
               <Text style={styles.subtitulo}>
-                {caso.especie} · {caso.edadEstimada || 'Edad a determinar'} · Coordina: {caso.quienSigueCaso || 'PERF'}
+                {especieLegible(caso)} · {caso.edadEstimada || 'Edad a determinar'} · Coordina: {caso.quienSigueCaso || 'PERF'}
               </Text>
+              {!!caso.creadoPorNombre && (
+                <Text style={[styles.subtitulo, { opacity: 0.9 }]}>
+                  Registrado por {caso.creadoPorNombre}
+                </Text>
+              )}
             </View>
             <Pressable
               style={styles.star}
@@ -219,7 +225,9 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
             </View>
             <View style={[styles.infoText, { flex: 1 }]}>
               <Text style={styles.infoLabel}>Barrio Hallazgo</Text>
-              <Text style={styles.infoValue} numberOfLines={1}>{caso.barrio}</Text>
+              <Text style={styles.infoValue} numberOfLines={1}>
+                {esTextoCoordenadas(caso.barrio) ? 'Barrio sin confirmar (GPS)' : caso.barrio}
+              </Text>
               {caso.coordenadas ? (
                 <Text style={styles.infoSub}>Ver en mapa GPS</Text>
               ) : null}
@@ -354,7 +362,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
           )}
         </View>
 
-        {/* Ficha Sanitaria Felina */}
+        {/* Ficha Sanitaria */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.cardTitulo}>
@@ -371,32 +379,28 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
             </Pressable>
           </View>
 
-          {animales.length > 1 ? (
-            <View style={{ gap: 10 }}>
-              {animales.map((a) => (
-                <View key={a.id} style={styles.animalFila}>
-                  <Text style={styles.animalNombre}>{a.nombre}</Text>
-                  <Text style={styles.animalDato}>
-                    {ETIQUETA_CASTRACION[a.castrado]} · Virales: {ETIQUETA_VIRALES[a.virales]}
-                  </Text>
-                  <Text style={styles.animalDato}>
-                    1° desp.: {a.fechaPrimeraDesparasitacion ? new Date(a.fechaPrimeraDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'} · 2° desp.:{' '}
-                    {a.fechaSegundaDesparasitacion ? new Date(a.fechaSegundaDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : (
           <View style={styles.sanidadGrid}>
             <View style={styles.sanidadItem}>
               <Text style={styles.sanidadLabel}>Castración</Text>
               <Text style={styles.sanidadValor}>{ETIQUETA_CASTRACION[caso.sanidad.castrado]}</Text>
             </View>
 
-            <View style={styles.sanidadItem}>
-              <Text style={styles.sanidadLabel}>Virales VIF / ViLeF</Text>
-              <Text style={styles.sanidadValor}>{ETIQUETA_VIRALES[caso.sanidad.virales]}</Text>
-            </View>
+            {caso.especie === 'Gato' ? (
+              <View style={styles.sanidadItem}>
+                <Text style={styles.sanidadLabel}>Virales VIF / ViLeF</Text>
+                <Text style={styles.sanidadValor}>{ETIQUETA_VIRALES[caso.sanidad.virales]}</Text>
+              </View>
+            ) : (
+              testsPorEspecie(caso.especie).map((t) => {
+                const res = caso.testsAnimal?.find((r) => r.testId === t.id)?.resultado ?? 'PENDIENTE';
+                return (
+                  <View key={t.id} style={styles.sanidadItem}>
+                    <Text style={styles.sanidadLabel} numberOfLines={1}>{t.nombre}</Text>
+                    <Text style={styles.sanidadValor}>{ETIQUETA_RESULTADO_TEST[res]}</Text>
+                  </View>
+                );
+              })
+            )}
 
             <View style={styles.sanidadItem}>
               <Text style={styles.sanidadLabel}>1° Desparasitación</Text>
@@ -415,7 +419,66 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
                   : 'Pendiente'}
               </Text>
             </View>
+
+            {animales.length <= 1 && animales[0]?.pesoGramos != null && (
+              <View style={styles.sanidadItem}>
+                <Text style={styles.sanidadLabel}>Peso</Text>
+                <Text style={styles.sanidadValor}>
+                  {animales[0].pesoGramos >= 1000
+                    ? `${(animales[0].pesoGramos / 1000).toFixed(2).replace('.', ',')} kg (${animales[0].pesoGramos} g)`
+                    : `${animales[0].pesoGramos} g`}
+                </Text>
+              </View>
+            )}
+
+            {animales.length <= 1 && animales[0]?.embarazada && (
+              <View style={styles.sanidadItem}>
+                <Text style={styles.sanidadLabel}>Gestación</Text>
+                <Text style={styles.sanidadValor}>Embarazada / Preñada</Text>
+              </View>
+            )}
+
+            {animales.length <= 1 && animales[0]?.fallecido && (
+              <View style={styles.sanidadItem}>
+                <Text style={styles.sanidadLabel}>Estado vital</Text>
+                <Text style={[styles.sanidadValor, { color: colors.urgenteText }]}>
+                  Fallecido{animales[0].motivoFallecimiento ? ` (${animales[0].motivoFallecimiento})` : ''}
+                </Text>
+              </View>
+            )}
           </View>
+
+          {animales.length > 1 && (
+            <View style={{ marginTop: 12, gap: 8 }}>
+              <Text style={styles.notasTitulo}>Detalle por animal ({animales.length}):</Text>
+              {animales.map((a) => {
+                const testsResumen =
+                  caso.especie === 'Gato'
+                    ? ETIQUETA_VIRALES[a.virales]
+                    : testsPorEspecie(caso.especie)
+                        .map((t) => {
+                          const r = caso.testsAnimal?.find((x) => x.animalId === a.id && x.testId === t.id)?.resultado ?? 'PENDIENTE';
+                          return `${t.nombre.split(' ')[0]}: ${ETIQUETA_RESULTADO_TEST[r]}`;
+                        })
+                        .join(' · ');
+                const extras = [
+                  a.pesoGramos != null ? `${a.pesoGramos} g` : null,
+                  a.embarazada ? 'Embarazada' : null,
+                  a.fallecido ? 'Fallecido' : null,
+                ].filter(Boolean);
+                return (
+                  <View key={a.id} style={styles.notas}>
+                    <Text style={styles.notasTitulo}>
+                      {a.nombre} · Castración: {ETIQUETA_CASTRACION[a.castrado]}
+                    </Text>
+                    <Text style={styles.notasText}>
+                      {testsResumen}
+                      {extras.length ? ` · ${extras.join(' · ')}` : ''}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
           )}
 
           {caso.estadoVisible ? (
@@ -424,6 +487,57 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               <Text style={styles.notasText}>{caso.estadoVisible}</Text>
             </View>
           ) : null}
+        </View>
+
+        {/* Parentesco y Camada (vínculos entre animales individuales) */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitulo}>
+              <MaterialIcons name="family-restroom" size={22} color={colors.primary} />
+              <Text style={styles.seccionTitulo}>Parentesco y Camada</Text>
+            </View>
+            <Pressable
+              style={styles.btnEditarSanidad}
+              onPress={() => navigation?.navigate?.('EditarCaso', { casoId: caso.id })}
+              accessibilityLabel="Vincular familiares"
+            >
+              <MaterialIcons name="add-link" size={16} color={colors.primary} />
+              <Text style={styles.btnEditarText}>Vincular</Text>
+            </Pressable>
+          </View>
+
+          {caso.relaciones && caso.relaciones.length > 0 ? (
+            <View style={styles.chips}>
+              {caso.relaciones.map((rel) => {
+                const nombresPorId = new Map(todosCasos.map((c) => [c.id, c.nombreProvisorio]));
+                const info = etiquetaRelacionParaCaso(rel, caso.id, nombresPorId);
+                return (
+                  <Pressable
+                    key={info.relacionId}
+                    style={[styles.chip, !!info.targetCasoId && { backgroundColor: colors.primarySoft }]}
+                    disabled={!info.targetCasoId}
+                    onPress={() => {
+                      if (!info.targetCasoId) return;
+                      if (navigation?.push) navigation.push('DetalleCaso', { casoId: info.targetCasoId });
+                      else navigation?.navigate?.('DetalleCaso', { casoId: info.targetCasoId });
+                    }}
+                  >
+                    <MaterialIcons name="pets" size={14} color={colors.primary} />
+                    <Text style={[styles.chipText, { color: info.targetCasoId ? colors.primary : colors.text }]}>
+                      {info.texto}
+                    </Text>
+                    {!!info.targetCasoId && (
+                      <MaterialIcons name="chevron-right" size={16} color={colors.primary} />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={styles.notasText}>
+              Sin vínculos familiares registrados. Tocá "Vincular" para asociar padres, hijos o hermanos de camada.
+            </Text>
+          )}
         </View>
 
         {/* Hogar de Tránsito */}

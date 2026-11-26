@@ -1,7 +1,20 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { ResumenAlmacenamiento } from '../../domain/models/Ajustes';
-import { Caso, EstadoCaso, EventoHistorial } from '../../domain/models/Caso';
+import {
+  COORDINADORES_FIJOS,
+  Caso,
+  Coordinador,
+  Especie,
+  EstadoCaso,
+  EstadoVirales,
+  EventoHistorial,
+  RegistroTestAnimal,
+  RelacionAnimal,
+  ResultadoTestViral,
+  TESTS_VIRALES_FIJOS,
+  TestViralFijo,
+  testsPorEspecie,
+} from '../../domain/models/Caso';
 import {
   CasoRepository,
   OpcionesActualizacionEstado,
@@ -12,6 +25,7 @@ import { conSanidadDelGrupo, crearAnimalesDelCaso, resumenSanidad, sanidadCambio
 import { calcularPrioridadCasoUseCase } from '../../domain/usecases/CalcularPrioridadCasoUseCase';
 import { AjustesRepositoryImpl } from '../local/AjustesRepositoryImpl';
 import { getDatabase } from '../local/Database';
+import { esModoDemo, purgarDatosDemoDeDb } from '../local/ModoDemo';
 import { generarUUID } from '../local/uuid';
 import {
   AnimalRow,
@@ -19,81 +33,143 @@ import {
   animalToParams,
   casoFromRow,
   casoToParams,
+  coordinadorFromRow,
+  CoordinadorRow,
   eventoFromRow,
   eventoToParams,
+  relacionFromRow,
+  RelacionAnimalRow,
+  relacionToParams,
+  resultadoTestFromRow,
+  ResultadoTestAnimalRow,
+  resultadoTestToParams,
+  testViralFromRow,
+  TestViralRow,
   CasoRow,
   EventoHistorialRow,
   SQL_CASO_CON_REVISION,
 } from '../mappers/CasoMapper';
-import { casosMock, IDS_CASOS_MOCK_ANTERIORES } from '../mock/casosMock';
+import { casosMock, IDS_CASOS_MOCK_ANTERIORES, RELACIONES_DEMO } from '../mock/casosMock';
+import { clinicasMock } from '../mock/turnosMock';
 import { sincronizarConSupabase } from '../remote/sincronizacion/SincronizadorSupabase';
 
+function resultadoInicialTestGato(testId: string, virales: EstadoVirales): ResultadoTestViral {
+  if (virales === 'NEGATIVO') return 'NEGATIVO';
+  if (virales === 'AMBOS_POSITIVOS') return 'POSITIVO';
+  if (testId === 'vif') return virales === 'VIF_POSITIVO' ? 'POSITIVO' : virales === 'VILEF_POSITIVO' ? 'NEGATIVO' : 'PENDIENTE';
+  if (testId === 'vilef') return virales === 'VILEF_POSITIVO' ? 'POSITIVO' : virales === 'VIF_POSITIVO' ? 'NEGATIVO' : 'PENDIENTE';
+  return 'PENDIENTE';
+}
+
 export class CasoRepositoryImpl implements CasoRepository {
-  private seeded = false;
+  private seededDemo = false;
+  private purgadoModoReal = false;
   private siembra: Promise<void> | null = null;
 
-  // Varias pantallas la llaman a la vez: compartimos una sola siembra para no insertar dos veces.
-  private asegurarSemilla(): Promise<void> {
-    if (this.seeded) return Promise.resolve();
-    this.siembra ??= this.sembrar().catch((e) => {
-      this.siembra = null; // permitir reintentar si falló
+  private async asegurarCatalogosBase(): Promise<void> {
+    const db = await getDatabase();
+    const coordCount = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM coordinadores;');
+    if (!coordCount || coordCount.count === 0) {
+      for (const c of COORDINADORES_FIJOS) {
+        await db.runAsync(
+          'INSERT OR IGNORE INTO coordinadores (id, nombre, perfil_id, activo) VALUES (?, ?, ?, ?);',
+          [c.id, c.nombre, c.perfilId ?? null, c.activo ? 1 : 0]
+        );
+      }
+    }
+    const testsCount = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM tests_virales;');
+    if (!testsCount || testsCount.count === 0) {
+      for (const t of TESTS_VIRALES_FIJOS) {
+        await db.runAsync(
+          'INSERT OR IGNORE INTO tests_virales (id, nombre, especie, orden, activo) VALUES (?, ?, ?, ?, ?);',
+          [t.id, t.nombre, t.especie, t.orden, t.activo ? 1 : 0]
+        );
+      }
+    }
+  }
+
+  // En arranque real la app inicia vacía (solo catálogos fijos); en Modo Demo se siembran casosMock.
+  private async asegurarSemilla(): Promise<void> {
+    await this.asegurarCatalogosBase();
+    const demo = await esModoDemo();
+    if (!demo) {
+      if (this.seededDemo || !this.purgadoModoReal) {
+        const db = await getDatabase();
+        await purgarDatosDemoDeDb(
+          db as any,
+          [...casosMock.map((c) => c.id), ...IDS_CASOS_MOCK_ANTERIORES],
+          clinicasMock.map((c) => c.id)
+        );
+        this.seededDemo = false;
+        this.purgadoModoReal = true;
+        this.siembra = null;
+      }
+      return;
+    }
+
+    if (this.seededDemo) return;
+    this.siembra ??= this.sembrarDemo().catch((e) => {
+      this.siembra = null;
       throw e;
     });
     return this.siembra;
   }
 
-  private async sembrar(): Promise<void> {
+  private async sembrarDemo(): Promise<void> {
     const db = await getDatabase();
-    const CLAVE_SEMILLA = '@perf_seed_casos_version';
-    const VERSION_SEMILLA = 'v2_20_casos_animales';
-    const versionActual = await AsyncStorage.getItem(CLAVE_SEMILLA).catch(() => null);
+    this.purgadoModoReal = false;
+
     const countResult = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM casos;'
     );
-
-    if (versionActual !== VERSION_SEMILLA || !countResult || countResult.count === 0) {
-      // Eliminar únicamente los casos hardcodeados anteriores (conservar casos creados por voluntarios)
+    if (!countResult || countResult.count === 0) {
       for (const oldId of IDS_CASOS_MOCK_ANTERIORES) {
+        await db.runAsync('DELETE FROM resultados_tests_animal WHERE caso_id = ?;', [oldId]);
         await db.runAsync('DELETE FROM animales WHERE caso_id = ?;', [oldId]);
         await db.runAsync('DELETE FROM turnos WHERE caso_id = ?;', [oldId]);
         await db.runAsync('DELETE FROM eventos_historial WHERE caso_id = ?;', [oldId]);
         await db.runAsync('DELETE FROM casos WHERE id = ?;', [oldId]);
       }
 
-      // Poblar con los 20 casos iniciales completos de PERF y sus animales individuales
       for (const caso of casosMock) {
         const existe = await db.getFirstAsync<{ id: string }>(
           'SELECT id FROM casos WHERE id = ?;',
           [caso.id]
         );
         if (!existe) {
-          const params = casoToParams(caso);
+          const coordFijo = COORDINADORES_FIJOS.find(
+            (k) => k.nombre.toLowerCase() === (caso.quienSigueCaso || '').trim().toLowerCase()
+          );
+          const conCoord: Caso = {
+            ...caso,
+            coordinadorId: caso.coordinadorId ?? coordFijo?.id ?? null,
+          };
+          const params = casoToParams(conCoord);
           await db.runAsync(
             `INSERT INTO casos (
-              id, nombre_provisorio, cantidad_animales, especie, edad_estimada,
+              id, nombre_provisorio, cantidad_animales, especie, especie_detalle, edad_estimada,
               historia_origen, personalidad, estado_visible, barrio, latitud,
               longitud, foto_uri, foto_local_uri, foto_remote_path, foto_sync_status,
-              fecha_rescate, quien_sigue_caso, transito_nombre,
+              fecha_rescate, quien_sigue_caso, coordinador_id, transito_nombre,
               transito_telefono, transito_correo, castrado, virales_vif_vilef,
               fecha_primera_desparasitacion, fecha_segunda_desparasitacion,
               estado_caso, gravedad_clinica, vulnerabilidad, nivel_prioridad,
-              motivo_urgencia, puntaje_prioridad, creado_por_user_id, modificado_por_user_id,
+              motivo_urgencia, puntaje_prioridad, creado_por_user_id, creado_por_nombre, modificado_por_user_id,
               es_urgente, sync_status, updated_at
             ) VALUES (
-              $id, $nombre_provisorio, $cantidad_animales, $especie, $edad_estimada,
+              $id, $nombre_provisorio, $cantidad_animales, $especie, $especie_detalle, $edad_estimada,
               $historia_origen, $personalidad, $estado_visible, $barrio, $latitud,
               $longitud, $foto_uri, $foto_local_uri, $foto_remote_path, $foto_sync_status,
-              $fecha_rescate, $quien_sigue_caso, $transito_nombre,
+              $fecha_rescate, $quien_sigue_caso, $coordinador_id, $transito_nombre,
               $transito_telefono, $transito_correo, $castrado, $virales_vif_vilef,
               $fecha_primera_desparasitacion, $fecha_segunda_desparasitacion,
               $estado_caso, $gravedad_clinica, $vulnerabilidad, $nivel_prioridad,
-              $motivo_urgencia, $puntaje_prioridad, $creado_por_user_id, $modificado_por_user_id,
+              $motivo_urgencia, $puntaje_prioridad, $creado_por_user_id, $creado_por_nombre, $modificado_por_user_id,
               $es_urgente, $sync_status, $updated_at
             );`,
             params
           );
 
-          // Evento de llegada inicial
           const eventoLlegada: EventoHistorial = {
             id: generarUUID(),
             casoId: caso.id,
@@ -107,6 +183,32 @@ export class CasoRepositoryImpl implements CasoRepository {
              VALUES ($id, $caso_id, $tipo, $fecha, $descripcion, $sync_status);`,
             eventoToParams(eventoLlegada)
           );
+
+          for (const t of testsPorEspecie(caso.especie)) {
+            const resTest: ResultadoTestViral =
+              caso.especie === 'Gato'
+                ? resultadoInicialTestGato(t.id, caso.sanidad.virales)
+                : caso.gravedadClinica === 'SANA'
+                  ? 'NEGATIVO'
+                  : 'PENDIENTE';
+            const registro: RegistroTestAnimal = {
+              id: generarUUID(),
+              casoId: caso.id,
+              animalId: null,
+              testId: t.id,
+              resultado: resTest,
+              fechaTest: resTest === 'PENDIENTE' ? null : caso.fechaRescate,
+              updatedAt: caso.updatedAt,
+            };
+            await db.runAsync(
+              `INSERT INTO resultados_tests_animal (
+                 id, caso_id, animal_id, test_id, resultado, fecha_test, observaciones, registrado_por, sync_status, updated_at
+               ) VALUES (
+                 $id, $caso_id, $animal_id, $test_id, $resultado, $fecha_test, $observaciones, $registrado_por, $sync_status, $updated_at
+               );`,
+              resultadoTestToParams(registro, 'SYNCED')
+            );
+          }
         }
 
         const animalesCount = await db.getFirstAsync<{ count: number }>(
@@ -131,9 +233,66 @@ export class CasoRepositoryImpl implements CasoRepository {
         }
       }
 
-      await AsyncStorage.setItem(CLAVE_SEMILLA, VERSION_SEMILLA).catch(() => {});
+      for (const rel of RELACIONES_DEMO) {
+        await db.runAsync(
+          `INSERT OR IGNORE INTO relaciones_animales (
+             id, caso_origen_id, tipo_relacion, caso_destino_id, nombre_destino, sync_status, updated_at
+           ) VALUES (
+             $id, $caso_origen_id, $tipo_relacion, $caso_destino_id, $nombre_destino, $sync_status, $updated_at
+           );`,
+          relacionToParams(rel, 'SYNCED')
+        );
+      }
     }
-    this.seeded = true;
+    this.seededDemo = true;
+  }
+
+  private async hidratarCasos(rows: CasoRow[]): Promise<Caso[]> {
+    if (rows.length === 0) return [];
+    const db = await getDatabase();
+    const [testRows, coordRows, relRows] = await Promise.all([
+      db.getAllAsync<ResultadoTestAnimalRow>('SELECT * FROM resultados_tests_animal;'),
+      db.getAllAsync<CoordinadorRow>('SELECT * FROM coordinadores;'),
+      db.getAllAsync<RelacionAnimalRow>('SELECT * FROM relaciones_animales;'),
+    ]);
+
+    const testsPorCaso = new Map<string, RegistroTestAnimal[]>();
+    for (const tr of testRows) {
+      const lista = testsPorCaso.get(tr.caso_id) ?? [];
+      lista.push(resultadoTestFromRow(tr));
+      testsPorCaso.set(tr.caso_id, lista);
+    }
+
+    const relsPorCaso = new Map<string, RelacionAnimal[]>();
+    for (const rr of relRows) {
+      const rel = relacionFromRow(rr);
+      const l1 = relsPorCaso.get(rel.casoOrigenId) ?? [];
+      l1.push(rel);
+      relsPorCaso.set(rel.casoOrigenId, l1);
+      if (rel.casoDestinoId && rel.casoDestinoId !== rel.casoOrigenId) {
+        const l2 = relsPorCaso.get(rel.casoDestinoId) ?? [];
+        l2.push(rel);
+        relsPorCaso.set(rel.casoDestinoId, l2);
+      }
+    }
+
+    const coordPorId = new Map<string, CoordinadorRow>();
+    const coordPorNombre = new Map<string, CoordinadorRow>();
+    for (const c of coordRows) {
+      coordPorId.set(c.id, c);
+      coordPorNombre.set(c.nombre.trim().toLowerCase(), c);
+    }
+
+    return rows.map((r) => {
+      const coord =
+        (r.coordinador_id ? coordPorId.get(r.coordinador_id) : undefined) ??
+        (r.quien_sigue_caso ? coordPorNombre.get(r.quien_sigue_caso.trim().toLowerCase()) : undefined);
+      return casoFromRow(r, {
+        testsAnimal: testsPorCaso.get(r.id),
+        coordinadorPerfilId: coord?.perfil_id ?? null,
+        relaciones: relsPorCaso.get(r.id) ?? [],
+      });
+    });
   }
 
   async obtenerActivos(): Promise<Caso[]> {
@@ -142,7 +301,10 @@ export class CasoRepositoryImpl implements CasoRepository {
     const rows = await db.getAllAsync<CasoRow>(
       `${SQL_CASO_CON_REVISION} WHERE c.estado_caso NOT IN ('ADOPTADO', 'FALLECIDO') ORDER BY c.puntaje_prioridad DESC, c.fecha_rescate DESC;`
     );
-    return rows.map(casoFromRow);
+    const hidratados = await this.hidratarCasos(rows);
+    return hidratados.sort(
+      (a, b) => b.puntajePrioridad - a.puntajePrioridad || b.fechaRescate - a.fechaRescate
+    );
   }
 
   async obtenerArchivados(): Promise<Caso[]> {
@@ -151,7 +313,7 @@ export class CasoRepositoryImpl implements CasoRepository {
     const rows = await db.getAllAsync<CasoRow>(
       `${SQL_CASO_CON_REVISION} WHERE c.estado_caso IN ('ADOPTADO', 'FALLECIDO') ORDER BY c.updated_at DESC;`
     );
-    return rows.map(casoFromRow);
+    return this.hidratarCasos(rows);
   }
 
   async obtenerTodos(): Promise<Caso[]> {
@@ -160,7 +322,7 @@ export class CasoRepositoryImpl implements CasoRepository {
     const rows = await db.getAllAsync<CasoRow>(
       `${SQL_CASO_CON_REVISION} ORDER BY c.fecha_rescate DESC;`
     );
-    return rows.map(casoFromRow);
+    return this.hidratarCasos(rows);
   }
 
   async obtenerPorId(id: string): Promise<Caso | undefined> {
@@ -170,33 +332,36 @@ export class CasoRepositoryImpl implements CasoRepository {
       `${SQL_CASO_CON_REVISION} WHERE c.id = ?;`,
       [id]
     );
-    return row ? casoFromRow(row) : undefined;
+    if (!row) return undefined;
+    const [caso] = await this.hidratarCasos([row]);
+    return caso;
   }
 
   async agregar(caso: Caso): Promise<Caso> {
+    await this.asegurarCatalogosBase();
     const db = await getDatabase();
     const params = casoToParams(caso);
 
     await db.runAsync(
       `INSERT INTO casos (
-        id, nombre_provisorio, cantidad_animales, especie, edad_estimada,
+        id, nombre_provisorio, cantidad_animales, especie, especie_detalle, edad_estimada,
         historia_origen, personalidad, estado_visible, barrio, latitud,
         longitud, foto_uri, foto_local_uri, foto_remote_path, foto_sync_status,
-        fecha_rescate, quien_sigue_caso, transito_nombre,
+        fecha_rescate, quien_sigue_caso, coordinador_id, transito_nombre,
         transito_telefono, transito_correo, castrado, virales_vif_vilef,
         fecha_primera_desparasitacion, fecha_segunda_desparasitacion,
         estado_caso, gravedad_clinica, vulnerabilidad, nivel_prioridad,
-        motivo_urgencia, puntaje_prioridad, creado_por_user_id, modificado_por_user_id,
+        motivo_urgencia, puntaje_prioridad, creado_por_user_id, creado_por_nombre, modificado_por_user_id,
         es_urgente, sync_status, updated_at
       ) VALUES (
-        $id, $nombre_provisorio, $cantidad_animales, $especie, $edad_estimada,
+        $id, $nombre_provisorio, $cantidad_animales, $especie, $especie_detalle, $edad_estimada,
         $historia_origen, $personalidad, $estado_visible, $barrio, $latitud,
         $longitud, $foto_uri, $foto_local_uri, $foto_remote_path, $foto_sync_status,
-        $fecha_rescate, $quien_sigue_caso, $transito_nombre,
+        $fecha_rescate, $quien_sigue_caso, $coordinador_id, $transito_nombre,
         $transito_telefono, $transito_correo, $castrado, $virales_vif_vilef,
         $fecha_primera_desparasitacion, $fecha_segunda_desparasitacion,
         $estado_caso, $gravedad_clinica, $vulnerabilidad, $nivel_prioridad,
-        $motivo_urgencia, $puntaje_prioridad, $creado_por_user_id, $modificado_por_user_id,
+        $motivo_urgencia, $puntaje_prioridad, $creado_por_user_id, $creado_por_nombre, $modificado_por_user_id,
         $es_urgente, $sync_status, $updated_at
       );`,
       params
@@ -264,14 +429,17 @@ export class CasoRepositoryImpl implements CasoRepository {
     const db = await getDatabase();
     const ahora = Date.now();
     const umbralDias = await this.obtenerUmbralActual();
+    const testsAnimal = caso.testsAnimal ?? (await this.obtenerResultadosTests(caso.id));
     const prioridad = calcularPrioridadCasoUseCase.ejecutar(
       {
+        especie: caso.especie,
         estadoCaso: caso.estadoCaso,
         gravedadClinica: caso.gravedadClinica,
         vulnerabilidad: caso.vulnerabilidad,
         fechaRescate: caso.fechaRescate,
         fechaUltimaRevision: caso.fechaUltimaRevision,
         sanidad: caso.sanidad,
+        testsAnimal,
       },
       umbralDias,
       ahora
@@ -279,6 +447,7 @@ export class CasoRepositoryImpl implements CasoRepository {
 
     const casoActualizado: Caso = {
       ...caso,
+      testsAnimal,
       nivelPrioridad: prioridad.nivelPrioridad,
       motivoUrgencia: prioridad.motivoUrgencia,
       puntajePrioridad: prioridad.puntajePrioridad,
@@ -294,6 +463,7 @@ export class CasoRepositoryImpl implements CasoRepository {
         nombre_provisorio = $nombre_provisorio,
         cantidad_animales = $cantidad_animales,
         especie = $especie,
+        especie_detalle = $especie_detalle,
         edad_estimada = $edad_estimada,
         historia_origen = $historia_origen,
         personalidad = $personalidad,
@@ -306,6 +476,7 @@ export class CasoRepositoryImpl implements CasoRepository {
         foto_remote_path = $foto_remote_path,
         foto_sync_status = $foto_sync_status,
         quien_sigue_caso = $quien_sigue_caso,
+        coordinador_id = $coordinador_id,
         transito_nombre = $transito_nombre,
         transito_telefono = $transito_telefono,
         transito_correo = $transito_correo,
@@ -320,6 +491,7 @@ export class CasoRepositoryImpl implements CasoRepository {
         motivo_urgencia = $motivo_urgencia,
         puntaje_prioridad = $puntaje_prioridad,
         creado_por_user_id = $creado_por_user_id,
+        creado_por_nombre = $creado_por_nombre,
         modificado_por_user_id = $modificado_por_user_id,
         es_urgente = $es_urgente,
         sync_status = $sync_status,
@@ -380,12 +552,14 @@ export class CasoRepositoryImpl implements CasoRepository {
       const umbralDias = await this.obtenerUmbralActual();
       const prio = calcularPrioridadCasoUseCase.ejecutar(
         {
+          especie: caso.especie,
           estadoCaso: caso.estadoCaso,
           gravedadClinica: caso.gravedadClinica,
           vulnerabilidad: caso.vulnerabilidad,
           fechaRescate: caso.fechaRescate,
           fechaUltimaRevision: caso.fechaUltimaRevision,
           sanidad: resumen,
+          testsAnimal: caso.testsAnimal,
         },
         umbralDias,
         ahora
@@ -487,12 +661,14 @@ export class CasoRepositoryImpl implements CasoRepository {
 
     const prioridad = calcularPrioridadCasoUseCase.ejecutar(
       {
+        especie: anterior.especie,
         estadoCaso: nuevoEstado,
         gravedadClinica,
         vulnerabilidad,
         fechaRescate: anterior.fechaRescate,
         fechaUltimaRevision: anterior.fechaUltimaRevision,
         sanidad: anterior.sanidad,
+        testsAnimal: anterior.testsAnimal,
       },
       umbralDias,
       ahora
@@ -673,5 +849,193 @@ export class CasoRepositoryImpl implements CasoRepository {
 
   async leerCola(): Promise<OperacionPendiente[]> {
     return this.obtenerOperacionesPendientes();
+  }
+
+  async obtenerCoordinadores(): Promise<Coordinador[]> {
+    await this.asegurarCatalogosBase();
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<CoordinadorRow>(
+      'SELECT * FROM coordinadores WHERE activo = 1 ORDER BY nombre ASC;'
+    );
+    return rows.length > 0 ? rows.map(coordinadorFromRow) : COORDINADORES_FIJOS;
+  }
+
+  async obtenerCatalogoTests(especie?: Especie): Promise<TestViralFijo[]> {
+    await this.asegurarCatalogosBase();
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<TestViralRow>(
+      'SELECT * FROM tests_virales WHERE activo = 1 ORDER BY orden ASC;'
+    );
+    const lista = rows.length > 0 ? rows.map(testViralFromRow) : TESTS_VIRALES_FIJOS;
+    return especie ? lista.filter((t) => t.especie === especie) : lista;
+  }
+
+  async obtenerResultadosTests(casoId: string): Promise<RegistroTestAnimal[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<ResultadoTestAnimalRow>(
+      'SELECT * FROM resultados_tests_animal WHERE caso_id = ?;',
+      [casoId]
+    );
+    return rows.map(resultadoTestFromRow);
+  }
+
+  async guardarResultadoTest(registro: RegistroTestAnimal): Promise<RegistroTestAnimal> {
+    await this.asegurarCatalogosBase();
+    const db = await getDatabase();
+    const ahora = Date.now();
+
+    // Reutilizar ID existente para (caso_id, animal_id, test_id) sin duplicar filas en SQLite/WebDB
+    const existentes = await this.obtenerResultadosTests(registro.casoId);
+    const previo = existentes.find((t) =>
+      registro.animalId
+        ? t.animalId === registro.animalId && t.testId === registro.testId
+        : !t.animalId && t.testId === registro.testId
+    );
+
+    const guardado: RegistroTestAnimal = {
+      ...registro,
+      id: previo?.id || registro.id || generarUUID(),
+      updatedAt: ahora,
+    };
+
+    await db.runAsync(
+      `INSERT INTO resultados_tests_animal (
+         id, caso_id, animal_id, test_id, resultado, fecha_test, observaciones, registrado_por, sync_status, updated_at
+       ) VALUES (
+         $id, $caso_id, $animal_id, $test_id, $resultado, $fecha_test, $observaciones, $registrado_por, $sync_status, $updated_at
+       )
+       ON CONFLICT(id) DO UPDATE SET
+         resultado = excluded.resultado,
+         fecha_test = excluded.fecha_test,
+         observaciones = excluded.observaciones,
+         registrado_por = excluded.registrado_por,
+         sync_status = 'PENDING',
+         updated_at = excluded.updated_at;`,
+      resultadoTestToParams(guardado, 'PENDING')
+    );
+
+    await db.runAsync(
+      `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+       VALUES (?, ?, ?, ?, 0, ?);`,
+      [generarUUID(), 'TEST_ANIMAL', 'UPDATE', JSON.stringify(guardado), ahora]
+    );
+
+    // Recalcular resumen viral (en gatos) y prioridad del caso asociado
+    const caso = await this.obtenerPorId(guardado.casoId);
+    if (caso) {
+      const todosTests = await this.obtenerResultadosTests(caso.id);
+      let viralesCaso = caso.sanidad.virales;
+      if (caso.especie === 'Gato') {
+        const vif = todosTests.find((t) => t.testId === 'vif')?.resultado;
+        const vilef = todosTests.find((t) => t.testId === 'vilef')?.resultado;
+        if (vif === 'POSITIVO' && vilef === 'POSITIVO') viralesCaso = 'AMBOS_POSITIVOS';
+        else if (vilef === 'POSITIVO') viralesCaso = 'VILEF_POSITIVO';
+        else if (vif === 'POSITIVO') viralesCaso = 'VIF_POSITIVO';
+        else if (vif && vilef && vif !== 'PENDIENTE' && vilef !== 'PENDIENTE') viralesCaso = 'NEGATIVO';
+        else if (vif === 'PENDIENTE' || vilef === 'PENDIENTE') viralesCaso = 'PENDIENTE';
+      }
+
+      const umbralDias = await this.obtenerUmbralActual();
+      const prio = calcularPrioridadCasoUseCase.ejecutar(
+        {
+          especie: caso.especie,
+          estadoCaso: caso.estadoCaso,
+          gravedadClinica: caso.gravedadClinica,
+          vulnerabilidad: caso.vulnerabilidad,
+          fechaRescate: caso.fechaRescate,
+          fechaUltimaRevision: caso.fechaUltimaRevision,
+          sanidad: { ...caso.sanidad, virales: viralesCaso },
+          testsAnimal: todosTests,
+        },
+        umbralDias,
+        ahora
+      );
+
+      await db.runAsync(
+        `UPDATE casos SET virales_vif_vilef = $virales, nivel_prioridad = $nivel, motivo_urgencia = $motivo,
+            puntaje_prioridad = $puntaje, es_urgente = $urgente, sync_status = 'PENDING', updated_at = $ahora
+         WHERE id = $id;`,
+        {
+          $id: caso.id,
+          $virales: viralesCaso,
+          $nivel: prio.nivelPrioridad,
+          $motivo: prio.motivoUrgencia,
+          $puntaje: prio.puntajePrioridad,
+          $urgente: prio.esUrgente ? 1 : 0,
+          $ahora: ahora,
+        }
+      );
+
+      const actualizado: Caso = {
+        ...caso,
+        sanidad: { ...caso.sanidad, virales: viralesCaso },
+        testsAnimal: todosTests,
+        nivelPrioridad: prio.nivelPrioridad,
+        motivoUrgencia: prio.motivoUrgencia,
+        puntajePrioridad: prio.puntajePrioridad,
+        esUrgente: prio.esUrgente,
+        updatedAt: ahora,
+      };
+      await db.runAsync(
+        `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+         VALUES (?, ?, ?, ?, 0, ?);`,
+        [generarUUID(), 'CASO', 'UPDATE', JSON.stringify(actualizado), ahora]
+      );
+    }
+
+    return guardado;
+  }
+
+  async obtenerRelaciones(casoId: string): Promise<RelacionAnimal[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<RelacionAnimalRow>(
+      'SELECT * FROM relaciones_animales WHERE caso_origen_id = ? OR caso_destino_id = ?;',
+      [casoId, casoId]
+    );
+    return rows.map(relacionFromRow);
+  }
+
+  async guardarRelacion(relacion: RelacionAnimal): Promise<RelacionAnimal> {
+    const db = await getDatabase();
+    const ahora = Date.now();
+    const guardado: RelacionAnimal = {
+      ...relacion,
+      id: relacion.id || generarUUID(),
+      updatedAt: ahora,
+    };
+
+    await db.runAsync(
+      `INSERT INTO relaciones_animales (
+         id, caso_origen_id, tipo_relacion, caso_destino_id, nombre_destino, sync_status, updated_at
+       ) VALUES (
+         $id, $caso_origen_id, $tipo_relacion, $caso_destino_id, $nombre_destino, $sync_status, $updated_at
+       )
+       ON CONFLICT(id) DO UPDATE SET
+         tipo_relacion = excluded.tipo_relacion,
+         caso_destino_id = excluded.caso_destino_id,
+         nombre_destino = excluded.nombre_destino,
+         sync_status = 'PENDING',
+         updated_at = excluded.updated_at;`,
+      relacionToParams(guardado, 'PENDING')
+    );
+
+    await db.runAsync(
+      `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+       VALUES (?, ?, ?, ?, 0, ?);`,
+      [generarUUID(), 'RELACION', 'CREATE', JSON.stringify(guardado), ahora]
+    );
+
+    return guardado;
+  }
+
+  async eliminarRelacion(relacionId: string): Promise<void> {
+    const db = await getDatabase();
+    const ahora = Date.now();
+    await db.runAsync('DELETE FROM relaciones_animales WHERE id = ?;', [relacionId]);
+    await db.runAsync(
+      `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+       VALUES (?, ?, ?, ?, 0, ?);`,
+      [generarUUID(), 'RELACION', 'DELETE', JSON.stringify({ id: relacionId }), ahora]
+    );
   }
 }

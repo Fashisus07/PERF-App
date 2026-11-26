@@ -1,8 +1,8 @@
-import { casosMock, IDS_CASOS_MOCK_ANTERIORES } from '../casosMock';
+import { casosMock, IDS_CASOS_MOCK_ANTERIORES, RELACIONES_DEMO } from '../casosMock';
 import { turnosIniciales } from '../turnosMock';
 
 describe('Conjunto inicial de 20 casos completos y turnos asociados', () => {
-  test('Contiene exactamente 20 casos nuevos con todos los campos completos y UUID válido', () => {
+  test('Contiene exactamente 20 casos individuales con todos los campos completos y UUID válido', () => {
     expect(casosMock).toHaveLength(20);
 
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -13,6 +13,8 @@ describe('Conjunto inicial de 20 casos completos y turnos asociados', () => {
       expect(uuidRegex.test(c.id)).toBe(true);
       expect(ids.has(c.id)).toBe(false);
       ids.add(c.id);
+
+      expect(c.cantidadAnimales).toBe(1);
 
       expect(c.nombreProvisorio.trim().length).toBeGreaterThan(0);
       expect(c.edadEstimada.trim().length).toBeGreaterThan(0);
@@ -39,6 +41,15 @@ describe('Conjunto inicial de 20 casos completos y turnos asociados', () => {
     for (const t of turnos) {
       expect(idsCasos.has(t.casoId)).toBe(true);
       expect(t.motivo.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  test('Las relaciones de parentesco demo referencian casos individuales existentes', () => {
+    const idsCasos = new Set(casosMock.map((c) => c.id));
+    expect(RELACIONES_DEMO.length).toBeGreaterThanOrEqual(2);
+    for (const rel of RELACIONES_DEMO) {
+      expect(idsCasos.has(rel.casoOrigenId)).toBe(true);
+      if (rel.casoDestinoId) expect(idsCasos.has(rel.casoDestinoId)).toBe(true);
     }
   });
 });

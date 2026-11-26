@@ -6,7 +6,17 @@ import { supabase } from './supabaseClient';
 
 /** Una veterinaria nueva, lista para completar y guardar. */
 export function centroNuevo(): CentroVeterinario {
-  return { id: generarUUID(), nombre: '', barrio: '', direccion: '', telefono: '', abierto: true, tipo: 'consultorio', horarios: [] };
+  return {
+    id: generarUUID(),
+    nombre: '',
+    barrio: '',
+    direccion: '',
+    telefono: '',
+    abierto: true,
+    tipo: 'consultorio',
+    horarios: [],
+    diasAtencion: [],
+  };
 }
 
 /**
@@ -24,7 +34,11 @@ export async function guardarCentro(centro: CentroVeterinario): Promise<CentroVe
     }
     throw new Error(error.message);
   }
-  const guardado: CentroVeterinario = { ...centro, horarios: fila.horarios };
+  const guardado: CentroVeterinario = {
+    ...centro,
+    horarios: fila.horarios,
+    diasAtencion: Array.isArray(fila.dias_atencion) ? fila.dias_atencion : [],
+  };
   await guardarCentroLocal(guardado);
   return guardado;
 }

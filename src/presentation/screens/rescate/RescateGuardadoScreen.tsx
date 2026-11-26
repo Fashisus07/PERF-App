@@ -1,6 +1,8 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { especieLegible } from '../../../domain/models/Caso';
+import { borradorVacio } from '../../../domain/models/Rescate';
 import { StackHeader } from '../../components/StackHeader';
 import { fotoCasoSource } from '../../components/fotoCaso';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
@@ -61,7 +63,7 @@ export function RescateGuardadoScreen({ route, navigation }: { route?: { params?
                 <UrgenciaBadge urgencia={caso.esUrgente ? 'urgente' : 'aldia'} />
               </View>
               <Text style={styles.descripcion} numberOfLines={1}>
-                {caso.especie} · {caso.edadEstimada}
+                {especieLegible(caso)} · {caso.edadEstimada}
               </Text>
             </View>
           </View>
@@ -110,9 +112,42 @@ export function RescateGuardadoScreen({ route, navigation }: { route?: { params?
             <MaterialIcons name="assignment" size={20} color="#fff" />
             <Text style={styles.primarioText}>Ir a la lista de casos</Text>
           </Pressable>
+          <Pressable
+            style={styles.secundarioRel}
+            onPress={() =>
+              navigation?.replace?.('NuevoRescate', {
+                paso: 1,
+                borrador: {
+                  ...borradorVacio(),
+                  especie: caso.especie,
+                  especieDetalle: caso.especieDetalle ?? '',
+                  barrio: caso.barrio,
+                  coordenadas: caso.coordenadas ?? null,
+                  quienSigueCaso: caso.quienSigueCaso,
+                  coordinadorId: caso.coordinadorId ?? null,
+                  transitoNombre: caso.transito.nombre,
+                  transitoTelefono: caso.transito.telefono,
+                  transitoCorreo: caso.transito.correo ?? '',
+                  historiaOrigen: caso.historiaOrigen,
+                  relacionesIniciales: [
+                    {
+                      tipoRelacion: 'HIJO_DE',
+                      casoDestinoId: caso.id,
+                      nombreDestino: caso.nombreProvisorio,
+                    },
+                  ],
+                },
+              })
+            }
+          >
+            <MaterialIcons name="family-restroom" size={18} color={colors.primary} />
+            <Text style={styles.secundarioRelText}>
+              Registrar familiar / camada de {caso.nombreProvisorio}
+            </Text>
+          </Pressable>
           <Pressable style={styles.terciario} onPress={() => navigation?.replace?.('NuevoRescate')}>
             <MaterialIcons name="add-circle-outline" size={18} color={colors.textMuted} />
-            <Text style={styles.terciarioText}>Registrar otro rescate</Text>
+            <Text style={styles.terciarioText}>Registrar otro rescate independiente</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -148,9 +183,10 @@ const styles = StyleSheet.create({
   idRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   idText: { fontFamily: fonts.bold, fontSize: 14, color: colors.text },
   esperaText: { fontFamily: fonts.bold, fontSize: 14, color: colors.primary },
-
   primario: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 9999, backgroundColor: colors.brand },
   primarioText: { fontFamily: fonts.semibold, fontSize: 16, color: '#fff' },
+  secundarioRel: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 48, paddingHorizontal: 14, borderRadius: 9999, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary },
+  secundarioRelText: { fontFamily: fonts.bold, fontSize: 14, color: colors.primary, flexShrink: 1, textAlign: 'center' },
   terciario: { height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   terciarioText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
 });

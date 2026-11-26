@@ -5,18 +5,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Urgencia } from '../../../domain/models/Caso';
 import { formatoFecha } from '../../../domain/models/Rescate';
 import {
+  atiendeEnFecha,
   Clinica,
   conHora,
+  diaLargo,
+  diaSemanaDeFecha,
+  ETIQUETA_DIA_SEMANA,
   ETIQUETA_MOTIVO,
+  etiquetaDia,
+  formatearDiasAtencion,
   horariosDeClinica,
+  mismoDia,
   MotivoConsulta,
   OPCIONES_RECORDATORIO,
   RECORDATORIO_POR_DEFECTO_MIN,
-  mismoDia,
-  sumarDias,
-  etiquetaDia,
-  diaLargo,
   SolicitudTurno,
+  sumarDias,
 } from '../../../domain/models/Turno';
 import { CupoNoDisponible } from '../../../domain/usecases/AgendarTurno';
 import { StackHeader } from '../../components/StackHeader';
@@ -52,7 +56,12 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 
   useEffect(() => {
-    obtenerClinicas().then(setClinicas);
+    obtenerClinicas().then((lista) => {
+      setClinicas(lista);
+      if (lista.length > 0) {
+        setClinicaId((actual) => (lista.some((c) => c.id === actual) ? actual : lista[0].id));
+      }
+    });
     // La anticipación que viene marcada es la elegida en Ajustes; acá se puede cambiar para este turno.
     obtenerAjustes().then((a) => setRecordatorioMin(a.recordatorioMinutos));
   }, []);
@@ -63,15 +72,20 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
   const caso = casos.find((c) => c.id === casoId);
   const clinica = clinicas.find((c) => c.id === clinicaId);
   const horariosDelCentro = horariosDeClinica(clinica);
+  const diaHabilitado = !clinica || atiendeEnFecha(clinica, fechaDia);
 
   // Hoy no se pueden elegir horarios que ya pasaron.
   const horaPasada = (h: string) => mismoDia(fechaDia, ahora) && conHora(fechaDia, h).getTime() <= ahora.getTime();
   const cambiarDia = (n: number) => {
     setDia(n);
+    if (clinica && !atiendeEnFecha(clinica, dias[n])) {
+      setHora(null);
+      return;
+    }
     if (hora && mismoDia(dias[n], ahora) && conHora(dias[n], hora).getTime() <= ahora.getTime()) setHora(null);
   };
 
-  const completo = !!caso && !!hora && !!clinica;
+  const completo = !!caso && !!hora && !!clinica && diaHabilitado;
   // Chips: "Hoy", "Mañana" y el día de la semana siguiente con su número (ej: "Miércoles 21").
   const etiquetasDia = dias.map((d, i) => (i < 2 ? etiquetaDia(d, ahora) : `${diaLargo(d).split(' de ')[0]}`));
   const etiquetaFecha = (() => {
@@ -173,12 +187,29 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
             </Text>
           </View>
           <View style={styles.chips}>
-            {etiquetasDia.map((e, i) => (
-              <Pressable key={e} style={[styles.chip, dia === i && styles.chipActivo]} onPress={() => cambiarDia(i)}>
-                <Text style={[styles.chipText, dia === i && { color: '#fff' }]}>{e}</Text>
-              </Pressable>
-            ))}
+            {etiquetasDia.map((e, i) => {
+              const habilitado = !clinica || atiendeEnFecha(clinica, dias[i]);
+              return (
+                <Pressable
+                  key={e}
+                  style={[styles.chip, dia === i && styles.chipActivo, !habilitado && { opacity: 0.45 }]}
+                  onPress={() => cambiarDia(i)}
+                >
+                  <Text style={[styles.chipText, dia === i && { color: '#fff' }]}>
+                    {habilitado ? e : `${e} (Cerrado)`}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
+          {clinica && !diaHabilitado && (
+            <View style={styles.info}>
+              <MaterialIcons name="event-busy" size={18} color={colors.urgente} />
+              <Text style={styles.infoText}>
+                {clinica.nombre} no atiende los {ETIQUETA_DIA_SEMANA[diaSemanaDeFecha(fechaDia)]}. Días de atención: {formatearDiasAtencion(clinica.diasAtencion)}.
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.bloque}>
@@ -189,7 +220,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
           <View style={styles.horas}>
             {horariosDelCentro.map((h) => {
               const activa = hora === h;
-              const pasada = horaPasada(h);
+              const pasada = horaPasada(h) || !diaHabilitado;
               return (
                 <Pressable
                   key={h}
@@ -210,11 +241,22 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
           <View style={styles.seccionRow}>
             <MaterialIcons name="local-hospital" size={16} color={colors.primary} />
             <Text style={[styles.seccion, { flex: 1 }]}>Centro veterinario</Text>
-            <Pressable onPress={() => setEligiendoClinica((v) => !v)} hitSlop={8}>
-              <Text style={styles.link}>{eligiendoClinica ? 'Listo' : 'Cambiar veterinaria'}</Text>
-            </Pressable>
+            {clinicas.length > 1 && (
+              <Pressable onPress={() => setEligiendoClinica((v) => !v)} hitSlop={8}>
+                <Text style={styles.link}>{eligiendoClinica ? 'Listo' : 'Cambiar veterinaria'}</Text>
+              </Pressable>
+            )}
           </View>
-          {clinica && <TarjetaClinica clinica={clinica} />}
+          {clinica ? (
+            <TarjetaClinica clinica={clinica} />
+          ) : (
+            <View style={styles.info}>
+              <MaterialIcons name="info-outline" size={18} color={colors.textMuted} />
+              <Text style={styles.infoText}>
+                Todavía no hay veterinarias cargadas. Podés sumar una desde Ajustes → Directorio de veterinarias.
+              </Text>
+            </View>
+          )}
           {eligiendoClinica &&
             clinicas
               .filter((c) => c.id !== clinicaId)
@@ -295,7 +337,9 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
       <View style={[styles.pie, { paddingBottom: 14 + bottom }]}>
         <Pressable style={[styles.cta, !completo && styles.ctaGris]} disabled={!completo || guardando} onPress={confirmar}>
           {guardando ? <ActivityIndicator color="#fff" /> : <MaterialIcons name="event-available" size={20} color="#fff" />}
-          <Text style={styles.ctaText}>{!caso ? 'Elegí un caso' : !hora ? 'Elegí un horario' : 'Confirmar turno'}</Text>
+          <Text style={styles.ctaText}>
+            {!caso ? 'Elegí un caso' : !clinica ? 'Falta cargar veterinaria' : !diaHabilitado ? 'Ese día no atiende' : !hora ? 'Elegí un horario' : 'Confirmar turno'}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -321,6 +365,10 @@ export function TarjetaClinica({ clinica: c }: { clinica: Clinica }) {
       <View style={styles.clinicaLugar}>
         <MaterialIcons name="location-on" size={16} color={colors.atencion} />
         <Text style={styles.clinicaLugarText}>{c.barrio}, {c.direccion}</Text>
+      </View>
+      <View style={styles.clinicaLugar}>
+        <MaterialIcons name="event-available" size={16} color={colors.primary} />
+        <Text style={styles.clinicaLugarText}>{formatearDiasAtencion(c.diasAtencion)}</Text>
       </View>
     </View>
   );

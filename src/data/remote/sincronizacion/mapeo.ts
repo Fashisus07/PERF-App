@@ -1,17 +1,22 @@
 import type {
   Caso,
+  Coordinador,
   EventoHistorial,
   Especie,
   EstadoCaso,
   EstadoCastracion,
   EstadoVirales,
   GravedadClinica,
+  RegistroTestAnimal,
+  RelacionAnimal,
+  ResultadoTestViral,
+  TestViralFijo,
+  TipoRelacionAnimal,
   Vulnerabilidad,
-  NivelPrioridad,
   TipoEvento,
 } from '../../../domain/models/Caso';
 import type { AnimalCaso } from '../../../domain/models/Animal';
-import { CentroVeterinario, normalizarHorarios } from '../../../domain/models/Turno';
+import { CentroVeterinario, normalizarDiasAtencion, normalizarHorarios } from '../../../domain/models/Turno';
 import type { Turno } from '../../../domain/models/Turno';
 import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
 
@@ -30,6 +35,7 @@ export function camposComparables(c: Caso): Comparable {
     nombre_provisorio: c.nombreProvisorio,
     cantidad_animales: c.cantidadAnimales,
     especie: c.especie,
+    especie_detalle: c.especie === 'Otro' ? (c.especieDetalle?.trim() || null) : null,
     edad_estimada: c.edadEstimada || null,
     historia_origen: c.historiaOrigen || null,
     personalidad: c.personalidad || null,
@@ -38,6 +44,7 @@ export function camposComparables(c: Caso): Comparable {
     latitud: c.coordenadas?.latitud ?? null,
     longitud: c.coordenadas?.longitud ?? null,
     quien_sigue_caso: c.quienSigueCaso || null,
+    coordinador_id: c.coordinadorId || null,
     transito_nombre: c.transito.nombre || null,
     transito_telefono: c.transito.telefono || null,
     transito_correo: c.transito.correo || null,
@@ -52,6 +59,7 @@ export function camposComparables(c: Caso): Comparable {
     motivo_urgencia: c.motivoUrgencia || null,
     puntaje_prioridad: c.puntajePrioridad,
     creado_por_user_id: c.creadoPorUserId || null,
+    creado_por_nombre: c.creadoPorNombre || null,
     modificado_por_user_id: c.modificadoPorUserId || null,
     foto_remote_path: c.fotoRemotePath || null,
   };
@@ -82,6 +90,7 @@ const COLUMNAS_SERVIDOR = new Set([
   'nombre_provisorio',
   'cantidad_animales',
   'especie',
+  'especie_detalle',
   'edad_estimada',
   'historia_origen',
   'personalidad',
@@ -90,6 +99,7 @@ const COLUMNAS_SERVIDOR = new Set([
   'latitud',
   'longitud',
   'quien_sigue_caso',
+  'coordinador_id',
   'transito_nombre',
   'transito_telefono',
   'transito_correo',
@@ -104,6 +114,7 @@ const COLUMNAS_SERVIDOR = new Set([
   'motivo_urgencia',
   'puntaje_prioridad',
   'creado_por_user_id',
+  'creado_por_nombre',
   'modificado_por_user_id',
   'foto_remote_path',
 ]);
@@ -178,6 +189,7 @@ export function casoDesdeServidor(f: FilaServidor): Caso {
   };
 
   const calculo = calcularPrioridadCasoUseCase.ejecutar({
+    especie: f.especie as Especie,
     estadoCaso: f.estado_caso,
     gravedadClinica: gravedad,
     vulnerabilidad,
@@ -190,6 +202,7 @@ export function casoDesdeServidor(f: FilaServidor): Caso {
     nombreProvisorio: f.nombre_provisorio,
     cantidadAnimales: f.cantidad_animales,
     especie: f.especie as Especie,
+    especieDetalle: f.especie_detalle ?? null,
     edadEstimada: f.edad_estimada ?? '',
     historiaOrigen: f.historia_origen ?? '',
     personalidad: f.personalidad ?? '',
@@ -202,6 +215,7 @@ export function casoDesdeServidor(f: FilaServidor): Caso {
     fotoSyncStatus: f.foto_remote_path ? 'SYNCED' : 'PENDING',
     fechaRescate,
     quienSigueCaso: f.quien_sigue_caso ?? '',
+    coordinadorId: f.coordinador_id ?? null,
     transito: {
       nombre: f.transito_nombre ?? '',
       telefono: f.transito_telefono ?? '',
@@ -215,6 +229,7 @@ export function casoDesdeServidor(f: FilaServidor): Caso {
     motivoUrgencia: calculo.motivoUrgencia,
     puntajePrioridad: calculo.puntajePrioridad,
     creadoPorUserId: f.creado_por ?? f.creado_por_user_id ?? undefined,
+    creadoPorNombre: f.creado_por_nombre ?? null,
     modificadoPorUserId: f.modificado_por_user_id ?? undefined,
     esUrgente: calculo.esUrgente,
     syncStatus: 'SYNCED',
@@ -320,10 +335,15 @@ export function filaCentroParaServidor(c: CentroVeterinario): FilaServidor {
     abierto: c.abierto,
     tipo: c.tipo,
     horarios: normalizarHorarios(c.horarios),
+    dias_atencion: (() => {
+      const dias = normalizarDiasAtencion(c.diasAtencion);
+      return dias.length ? dias : null;
+    })(),
   };
 }
 
 export function centroDesdeServidor(f: FilaServidor): CentroVeterinario {
+  const dias = normalizarDiasAtencion(f.dias_atencion);
   return {
     id: f.id,
     nombre: f.nombre,
@@ -336,5 +356,75 @@ export function centroDesdeServidor(f: FilaServidor): CentroVeterinario {
     abierto: f.abierto !== false,
     tipo: f.tipo,
     horarios: normalizarHorarios(f.horarios),
+    diasAtencion: dias.length ? dias : undefined,
+  };
+}
+
+export function coordinadorDesdeServidor(f: FilaServidor): Coordinador {
+  return {
+    id: f.id,
+    nombre: f.nombre,
+    perfilId: f.perfil_id ?? null,
+    activo: f.activo !== false,
+  };
+}
+
+export function testViralDesdeServidor(f: FilaServidor): TestViralFijo {
+  return {
+    id: f.id,
+    nombre: f.nombre,
+    especie: f.especie as Especie,
+    orden: Number(f.orden ?? 0),
+    activo: f.activo !== false,
+  };
+}
+
+export function filaResultadoTestParaServidor(r: RegistroTestAnimal): FilaServidor {
+  return {
+    id: r.id,
+    caso_id: r.casoId,
+    animal_id: r.animalId ?? null,
+    test_id: r.testId,
+    resultado: r.resultado,
+    fecha_test: iso(r.fechaTest),
+    observaciones: r.observaciones ?? null,
+    registrado_por: r.registradoPor ?? null,
+    updated_at: new Date(r.updatedAt).toISOString(),
+  };
+}
+
+export function resultadoTestDesdeServidor(f: FilaServidor): RegistroTestAnimal {
+  return {
+    id: f.id,
+    casoId: f.caso_id,
+    animalId: f.animal_id ?? null,
+    testId: f.test_id,
+    resultado: f.resultado as ResultadoTestViral,
+    fechaTest: aMs(f.fecha_test),
+    observaciones: f.observaciones ?? null,
+    registradoPor: f.registrado_por ?? null,
+    updatedAt: Date.parse(f.updated_at),
+  };
+}
+
+export function filaRelacionParaServidor(r: RelacionAnimal): FilaServidor {
+  return {
+    id: r.id,
+    caso_origen_id: r.casoOrigenId,
+    tipo_relacion: r.tipoRelacion,
+    caso_destino_id: r.casoDestinoId ?? null,
+    nombre_destino: r.nombreDestino,
+    updated_at: new Date(r.updatedAt).toISOString(),
+  };
+}
+
+export function relacionDesdeServidor(f: FilaServidor): RelacionAnimal {
+  return {
+    id: f.id,
+    casoOrigenId: f.caso_origen_id,
+    tipoRelacion: f.tipo_relacion as TipoRelacionAnimal,
+    casoDestinoId: f.caso_destino_id ?? null,
+    nombreDestino: f.nombre_destino,
+    updatedAt: Date.parse(f.updated_at),
   };
 }

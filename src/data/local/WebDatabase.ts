@@ -258,16 +258,59 @@ export class WebDatabase {
       return !ids.includes(String(row.id));
     }
 
+    // 5b. id LIKE ?
+    if (/^id\s+like\s+\?/i.test(clause)) {
+      const patron = String(Array.isArray(params) ? params[0] ?? '' : '').toLowerCase();
+      const val = String(row.id ?? '').toLowerCase();
+      if (patron.endsWith('%')) return val.startsWith(patron.slice(0, -1));
+      return val === patron;
+    }
+
     // 6. c.id = ? / id = ? / id = $id
     if (/^(?:c\.)?id\s*=\s*(\?|\$id)/i.test(clause)) {
       const targetId = Array.isArray(params) ? params[0] : (params as any)?.$id ?? (params as any)?.id;
       return String(row.id) === String(targetId);
     }
 
-    // 7. caso_id = ?
+    // 7. caso_id = ? AND test_id = ?
+    if (/^caso_id\s*=\s*\?\s+and\s+test_id\s*=\s*\?/i.test(clause)) {
+      const p = Array.isArray(params) ? params : [];
+      return String(row.caso_id) === String(p[0]) && String(row.test_id) === String(p[1]);
+    }
+
+    // 8. caso_id = ?
     if (/^caso_id\s*=\s*\?/i.test(clause)) {
       const targetId = Array.isArray(params) ? params[0] : (params as any)?.caso_id;
       return String(row.caso_id) === String(targetId);
+    }
+
+    // 8b. caso_origen_id = ? OR caso_destino_id = ?
+    if (/^caso_origen_id\s*=\s*\?\s+or\s+caso_destino_id\s*=\s*\?/i.test(clause)) {
+      const p = Array.isArray(params) ? params : [];
+      return String(row.caso_origen_id) === String(p[0]) || String(row.caso_destino_id) === String(p[1]);
+    }
+
+    // 8c. caso_origen_id = ?
+    if (/^caso_origen_id\s*=\s*\?/i.test(clause)) {
+      const targetId = Array.isArray(params) ? params[0] : (params as any)?.caso_origen_id;
+      return String(row.caso_origen_id) === String(targetId);
+    }
+
+    // 8d. caso_destino_id = ?
+    if (/^caso_destino_id\s*=\s*\?/i.test(clause)) {
+      const targetId = Array.isArray(params) ? params[0] : (params as any)?.caso_destino_id;
+      return String(row.caso_destino_id) === String(targetId);
+    }
+
+    // 9. entidad = ?
+    if (/^entidad\s*=\s*'([^']*)'/i.test(clause)) {
+      const m = clause.match(/^entidad\s*=\s*'([^']*)'/i);
+      return m ? String(row.entidad) === m[1] : true;
+    }
+
+    // 10. activo = 1
+    if (/^activo\s*=\s*1/i.test(clause)) {
+      return Number(row.activo) === 1;
     }
 
     return true;

@@ -64,7 +64,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
     setIniciando(true);
     try {
       const vol = await authRepository.iniciarSesion(usuario, clave);
-      notificarCambioVoluntario(vol.nombre);
+      notificarCambioVoluntario(vol.nombre, vol.fotoUri ?? null);
       // "Recordar usuario" solo guarda el correo para precompletarlo; la sesión la mantiene Supabase.
       if (recordar) await AsyncStorage.setItem('perf.recordar_usuario', usuario.trim().toLowerCase());
       else await AsyncStorage.removeItem('perf.recordar_usuario');
@@ -104,7 +104,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
             <Image source={require('../../../../assets/images/logo.png')} style={styles.brandLogo} />
             <View>
               <Text style={styles.brandTitle}>PERF MÓVIL</Text>
-              <Text style={styles.text}>Red de Rescate Felino · Buenos Aires</Text>
+              <Text style={styles.text}>Red de Rescate Animal · Buenos Aires</Text>
             </View>
           </View>
           <View style={styles.welcomeRow}>
@@ -216,7 +216,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
                 try {
                   if (authRepository.iniciarSesionComoDemo) {
                     const demo = await authRepository.iniciarSesionComoDemo();
-                    notificarCambioVoluntario(demo.nombre);
+                    notificarCambioVoluntario(demo.nombre, demo.fotoUri ?? null);
                   }
                   onLogin();
                 } catch (e: any) {

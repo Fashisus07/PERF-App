@@ -1,5 +1,19 @@
 import { Caso } from '../../models/Caso';
-import { Clinica, conHora, esHorarioValido, horariosDeClinica, HORARIOS_CLINICA, normalizarHorarios, SolicitudTurno, sumarDias, Turno } from '../../models/Turno';
+import {
+  atiendeEnFecha,
+  Clinica,
+  conHora,
+  DIAS_SEMANA,
+  esHorarioValido,
+  formatearDiasAtencion,
+  horariosDeClinica,
+  HORARIOS_CLINICA,
+  normalizarDiasAtencion,
+  normalizarHorarios,
+  SolicitudTurno,
+  sumarDias,
+  Turno,
+} from '../../models/Turno';
 import { TurnoRepository } from '../../repositories/TurnoRepository';
 import { AgendarTurno, CupoNoDisponible, proximosLibres } from '../AgendarTurno';
 
@@ -84,5 +98,37 @@ describe('Horarios de cada veterinario', () => {
     const libres = proximosLibres(ahora, [], 3, ['08:30', '09:30']);
     expect(libres).toHaveLength(3);
     expect(libres.every((o) => [8, 9].includes(o.fecha.getHours()))).toBe(true);
+  });
+
+  test('normalizarDiasAtencion y formatearDiasAtencion respetan orden semanal', () => {
+    expect(normalizarDiasAtencion(['vie', 'lun', 'DOM', 'x', 'lun'])).toEqual(['lun', 'vie', 'dom']);
+    expect(formatearDiasAtencion([])).toBe('Todos los días');
+    expect(formatearDiasAtencion(['lun', 'mar', 'mie', 'jue', 'vie'])).toBe('Lun a Vie');
+    expect(DIAS_SEMANA).toHaveLength(7);
+  });
+
+  test('atiendeEnFecha y AgendarTurno validan los días de atención de la veterinaria', async () => {
+    // 2026-11-26 es jueves ('jue'). Si la clínica solo atiende lunes y viernes, debe rechazar.
+    const vetLunVie: Clinica = { ...clinica(['09:00', '15:00']), diasAtencion: ['lun', 'vie'] };
+    const jueves = sumarDias(ahora, 1);
+    const viernes = sumarDias(ahora, 2);
+    expect(atiendeEnFecha(vetLunVie, jueves)).toBe(false);
+    expect(atiendeEnFecha(vetLunVie, viernes)).toBe(true);
+
+    const repo = repoCon([vetLunVie]);
+    await expect(
+      new AgendarTurno(repo, recordatorios).ejecutar(solicitud('15:00'), caso, ahora),
+    ).rejects.toThrow(/no atiende los Jue.*Lun · Vie/);
+
+    const solViernes: SolicitudTurno = {
+      ...solicitud('15:00'),
+      fechaHora: conHora(viernes, '15:00').getTime(),
+    };
+    const r = await new AgendarTurno(repo, recordatorios).ejecutar(solViernes, caso, ahora);
+    expect(r.turno.id).toBe('t1');
+
+    const libres = proximosLibres(jueves, [], 2, ['09:00'], ['lun', 'vie']);
+    expect(libres).toHaveLength(2);
+    expect(libres.every((o) => [1, 5].includes(o.fecha.getDay()))).toBe(true);
   });
 });
