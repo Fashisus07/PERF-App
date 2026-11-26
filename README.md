@@ -239,7 +239,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 | 3 | Tests virales como registro fijo | ❌ Falta |
 | 7 | Registro de veterinarios | ❌ Falta |
 | 8 | Horarios según el veterinario | ❌ Falta |
-| 9 | Recordatorio de 24 hs configurable | ❌ Falta (hoy hay un interruptor de sí/no en Ajustes) |
+| 9 | Recordatorio configurable | ✅ Se elige la anticipación (30 min, 1 h, 2 h, 1 día o 2 días) al agendar y el valor por defecto en Ajustes |
 | 12 | Que el cambio requiera tocar **Guardar** | ❌ Falta (hay que definir en qué pantallas) |
 | 14/15 | Sacar al veterinario al guardar un rescate | ✅ Se quitó el botón de `RescateGuardadoScreen` |
 
@@ -265,7 +265,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 🔴 **Pedidos abiertos**
 
 - [x] **Sacar al veterinario del guardado de rescate** (14/15): se quitó el botón "Agendar primer turno veterinario" de `RescateGuardadoScreen`; el turno se sigue agendando desde la agenda.
-- [ ] **Recordatorio configurable** (9): poder elegir con cuánta anticipación avisar; hoy solo hay un sí/no para el aviso de 1 día antes.
+- [x] **Recordatorio configurable** (9): se elige con cuánta anticipación avisar (30 min, 1 h, 2 h, 1 día o 2 días) al agendar el turno; en Ajustes se define cuál viene marcado por defecto.
 - [ ] **Botón Guardar** (12): que los cambios no se apliquen solos, sino al tocar Guardar. Definir en qué pantallas.
 - [ ] **Administrador único** (10): aplicar `20261112000000_administrador_unico.sql` en el SQL Editor (hoy hay un solo coordinador, así que no cambia el rol de nadie).
 - [ ] **Registro de veterinarios y horarios por veterinario** (7, 8): hoy los centros son locales y los horarios son una lista fija por centro.
@@ -605,7 +605,7 @@ Para defender ante los profesores el cumplimiento integral de los requerimientos
    - El caso *"Michi Callejero"* aparece instantáneamente en la bandeja con todos sus datos y fotografía visible mediante URL firmada.
 2. Agendar un turno veterinario:
    - Ingresar al detalle de *"Michi Callejero"* > **Agendar Turno**.
-   - Elegir fecha, clínica y activar recordatorio (1 día antes / 2 horas antes).
+   - Elegir fecha, clínica y con cuánta anticipación avisar (30 min, 1 h, 2 h, 1 día o 2 días; las que ya pasaron quedan deshabilitadas).
    - El sistema solicita permisos nativos de notificación, configura el canal Android `turnos-veterinarios` (`AndroidImportance.MAX`, sonido, vibración) y guarda el `notification_id` nativo retornado en la tabla `turnos`.
 
 ### Paso 4: Demostración de Fusión Delta sin Pérdida de Datos

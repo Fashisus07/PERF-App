@@ -1,8 +1,7 @@
 export type Ajustes = {
   umbralUrgenteDias: number; // los casos con más días de espera se marcan como urgentes
   modoOfflineAutomatico: boolean;
-  recordatorioUnDia: boolean; // aviso 1 día antes del turno
-  alertaDosHoras: boolean; // aviso 2 horas antes del turno
+  recordatorioMinutos: number; // con cuánta anticipación avisar de un turno (valor por defecto al agendar)
 };
 
 export const UMBRAL_MIN = 1;
@@ -11,8 +10,7 @@ export const UMBRAL_MAX = 30;
 export const ajustesPorDefecto: Ajustes = {
   umbralUrgenteDias: 15,
   modoOfflineAutomatico: true,
-  recordatorioUnDia: true,
-  alertaDosHoras: true,
+  recordatorioMinutos: 120,
 };
 
 export type ResumenAlmacenamiento = {
