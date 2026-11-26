@@ -1,5 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -67,6 +67,7 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
   const gps = useUbicacion();
   const [intento, setIntento] = useState(false);
   const [fechasDespValidas, setFechasDespValidas] = useState(true);
+  const scrollRef = useRef<ScrollView>(null);
   const faltan = faltantesDelRescate(b);
 
   const usarGps = async () => {
@@ -95,13 +96,15 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
   const continuar = () => {
     if (faltan.length || !fechasDespValidas) {
       setIntento(true);
+      // El aviso de campos obligatorios está al final del formulario: se lleva la vista hasta ahí.
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
       return;
     }
     onContinuar();
   };
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView ref={scrollRef} style={styles.root} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.stepper}>
         <View style={styles.stepperRow}>
           <Pressable style={styles.volver} onPress={onVolverAFoto}>
