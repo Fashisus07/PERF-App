@@ -99,6 +99,8 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
         contentContainerStyle={[styles.content, { paddingTop: top + 16, paddingBottom: bottom + 32 }]}
         keyboardShouldPersistTaps="handled"
       >
+        <Image source={require('../../../../assets/images/casos/tigre.jpg')} style={styles.banner} resizeMode="cover" />
+
         <View style={styles.hero}>
           <View style={styles.brandRow}>
             <Image source={require('../../../../assets/images/logo.png')} style={styles.brandLogo} />
@@ -111,9 +113,6 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
             <View style={styles.welcomeText}>
               <Text style={styles.textDark}>¡Hola de nuevo!</Text>
               <Text style={styles.text}>Entrá para ver tus rescates.</Text>
-            </View>
-            <View style={styles.photoBox}>
-              <Image source={require('../../../../assets/images/login-gato.jpg')} style={styles.photo} />
             </View>
           </View>
         </View>
@@ -260,6 +259,7 @@ const styles = StyleSheet.create({
   textDark: { fontFamily: fonts.regular, fontSize: 16, lineHeight: 24, color: colors.text },
   center: { textAlign: 'center' },
 
+  banner: { width: '100%', height: 210, borderRadius: 16, marginBottom: 12, backgroundColor: colors.surfaceChip },
   hero: { backgroundColor: colors.surfaceCard, borderRadius: 12, padding: 16, gap: 8, marginBottom: 16, ...SHADOW_SM },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandLogo: { width: 40, height: 40 },

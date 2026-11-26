@@ -163,6 +163,8 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
         contentContainerStyle={[styles.content, { paddingTop: top + 16, paddingBottom: bottom + 32 }]}
         keyboardShouldPersistTaps="handled"
       >
+        <Image source={require('../../../../assets/images/casos/luna.jpg')} style={styles.banner} resizeMode="cover" />
+
         <View style={styles.hero}>
           <View style={styles.heroGlow} />
           <Image source={require('../../../../assets/images/logo.png')} style={styles.heroLogo} />
@@ -182,9 +184,6 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
         </View>
 
         <View style={styles.triage}>
-          <View style={styles.triagePhotoBox}>
-            <Image source={require('../../../../assets/images/registro-gato.jpg')} style={styles.triagePhoto} />
-          </View>
           <View style={styles.triageText}>
             <Text style={styles.triageTitle}>Cerca tuyo</Text>
             <Text style={styles.triageDetail}>Te avisamos de los rescates de tu zona.</Text>
@@ -405,6 +404,7 @@ const styles = StyleSheet.create({
   heroTitle: { fontFamily: fonts.semibold, fontSize: 22, lineHeight: 27.5, color: colors.text },
   heroText: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 19.25, letterSpacing: 0.14, color: colors.textMuted },
 
+  banner: { width: '100%', height: 210, borderRadius: 16, marginBottom: 12, backgroundColor: colors.surfaceMuted },
   triage: {
     backgroundColor: colors.surface,
     borderRadius: 16,
