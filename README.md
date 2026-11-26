@@ -2,6 +2,8 @@
 
 > **Aplicación móvil para la gestión de rescates de animales, seguimiento de casos clínicos y turnos veterinarios con soporte Offline First.**
 
+> **Si entrás a revisar el PR #1 o a unir ramas:** el estado de cada pendiente está en el [**Checklist del proyecto**](#checklist-del-proyecto) de este archivo, lo que se hizo en la última etapa (seguridad sin `service_role`, animales por caso, prioridad con última revisión, veterinarias con horarios) está en [`Cambios.md`](Cambios.md) (Fase 8) y la **guía para unir con la rama de Facu** (`feature/triaje-dinamico-zonas-20casos`, 15 archivos en conflicto) está en `Cambios.md`, sección 11.7. Criterio acordado: donde hicimos lo mismo, **manda lo de Facu** y lo nuestro se monta encima.
+
 Desarrollada para los voluntarios de refugios y redes de rescate animal en la vía pública (foco en felinos). Permite registrar rescates en el momento, gestionar el historial sanitario, coordinar hogares de tránsito o atención veterinaria, y mantener la continuidad operativa **incluso en zonas sin cobertura de red**.
 
 ---
