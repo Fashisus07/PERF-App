@@ -103,14 +103,14 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
           <View style={styles.brandRow}>
             <Image source={require('../../../../assets/images/logo.png')} style={styles.brandLogo} />
             <View>
-              <Text style={styles.brandTitle}>PERF MÓVIL</Text>
-              <Text style={styles.text}>Red de Rescate Felino · Buenos Aires</Text>
+              <Text style={styles.brandTitle}>PERF</Text>
+              <Text style={styles.text}>Rescate felino</Text>
             </View>
           </View>
           <View style={styles.welcomeRow}>
             <View style={styles.welcomeText}>
               <Text style={styles.textDark}>¡Hola de nuevo!</Text>
-              <Text style={styles.text}>Accedé para sincronizar tus rescates.</Text>
+              <Text style={styles.text}>Entrá para ver tus rescates.</Text>
             </View>
             <View style={styles.photoBox}>
               <Image source={require('../../../../assets/images/login-gato.jpg')} style={styles.photo} />
@@ -128,8 +128,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
         <View style={styles.form}>
           <View style={styles.field}>
             <View style={styles.labelRow}>
-              <Text style={styles.textDark}>Correo electrónico</Text>
-              <Text style={styles.text}>Tu cuenta de voluntario</Text>
+              <Text style={styles.textDark}>Correo</Text>
             </View>
             <View>
               <TextInput
@@ -139,7 +138,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
                   setUsuario(t);
                   if (errorMsg) setErrorMsg(null);
                 }}
-                placeholder="ej: voluntario@perfelino.org"
+                placeholder="tu@correo.com"
                 placeholderTextColor={colors.placeholderField}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -164,7 +163,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
                   setClave(t);
                   if (errorMsg) setErrorMsg(null);
                 }}
-                placeholder="Tu contraseña"
+                placeholder="Tu clave"
                 placeholderTextColor={colors.placeholderField}
                 secureTextEntry={!verClave}
                 autoCapitalize="none"
@@ -190,7 +189,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
               <View style={[styles.checkbox, !recordar && styles.checkboxOff]}>
                 {recordar && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
               </View>
-              <Text style={styles.textDark}>Recordar usuario</Text>
+              <Text style={styles.textDark}>Recordarme</Text>
             </Pressable>
           </View>
 
@@ -201,13 +200,13 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
               ) : (
                 <>
                   <MaterialIcons name="login" size={18} color={colors.onPrimary} />
-                  <Text style={[styles.textDark, { color: colors.onPrimary }]}>Iniciar sesión</Text>
+                  <Text style={[styles.textDark, { color: colors.onPrimary }]}>Entrar</Text>
                 </>
               )}
             </Pressable>
             <Pressable style={[styles.btn, styles.btnSecondary]} onPress={handleBiometria} disabled={iniciando}>
               <MaterialIcons name="fingerprint" size={22} color={colors.brand} />
-              <Text style={styles.textDark}>Ingresar con huella digital</Text>
+              <Text style={styles.textDark}>Entrar con huella</Text>
             </Pressable>
             <Pressable
               style={[styles.btn, styles.btnDemo]}
@@ -229,7 +228,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
             >
               <MaterialIcons name="offline-pin" size={20} color={colors.primary} />
               <Text style={[styles.textDark, { color: colors.primary, fontFamily: fonts.bold }]}>
-                Ingresar como Voluntario Demo (Modo Offline)
+                Probar sin cuenta
               </Text>
             </Pressable>
           </View>
@@ -238,14 +237,14 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
         {!online && (
           <View style={styles.offlineChip}>
             <MaterialIcons name="cloud-off" size={14} color={colors.atencion} />
-            <Text style={styles.chipText}>Modo offline · Guardando en el teléfono</Text>
+            <Text style={styles.chipText}>Sin conexión</Text>
           </View>
         )}
 
         <View style={styles.registroCard}>
-          <Text style={[styles.text, styles.center]}>{'¿Todavía no sos parte del equipo de\nrescate?'}</Text>
+          <Text style={[styles.text, styles.center]}>¿Sos nuevo?</Text>
           <Pressable style={styles.registroBtn} onPress={onRegistro}>
-            <Text style={styles.link}>Registrate como voluntario</Text>
+            <Text style={styles.link}>Sumate como voluntario</Text>
             <MaterialIcons name="arrow-forward" size={14} color={colors.primary} />
           </Pressable>
         </View>
