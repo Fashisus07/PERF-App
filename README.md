@@ -290,7 +290,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 
 - [ ] Algunos rescates guardan el barrio como coordenadas (por ejemplo `-34.60940, -58.41060`): revisar la geocodificación inversa y su valor de respaldo.
 - [ ] Foto de perfil propia: hoy es una imagen fija y las iniciales.
-- [ ] Pruebas de lo nuevo: `sigueElCaso` y zonas.
+- [x] Pruebas de lo nuevo: `sigueElCaso`, zonas y roles (`ZonasYMisCasos.test.ts`, 16 tests). Además hay tests de animales, prioridad, recordatorios, horarios de veterinarias y del esquema de Supabase: 78 en total (`npx jest`). Quedan sin prueba automática las pantallas (se probaron a mano en el emulador).
 - [x] Una sola fuente de verdad del esquema: las migraciones. `supabase/schema.sql` se genera con `node supabase/generar-schema.js` y un test (`SchemaSupabase.test.ts`) falla si se desalinean. Se comprobó que las 8 migraciones y el `schema.sql` completo corren en orden sobre una base vacía (PGlite). **Ojo:** la versión anterior de `schema.sql` (la del esquema integral de la Etapa 2) queda en el historial de git.
 - [ ] Eliminar `data/mock/` y el `MockRemoteApiClient`, y **probar el circuito completo (registro, consulta y actualización) en dos celulares físicos**, la recuperación de datos tras reinstalar y los recordatorios en dispositivos reales (lo pidió el profesor).
 - [ ] Nombre de paquete de la app (`com.anonymous.PERFtmp`, hoy un valor de prueba; la app se llama "PERF-tmp"). **El APK de entrega ya se genera** (ver "Cómo generar el APK"): falta decidir el nombre definitivo y, si se cambia el paquete, regenerar la carpeta `android`.
