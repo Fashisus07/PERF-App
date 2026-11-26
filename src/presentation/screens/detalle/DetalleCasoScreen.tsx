@@ -28,6 +28,7 @@ import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { obtenerAjustes } from '../../hooks/useAjustes';
 import { useAnimales } from '../../hooks/useAnimales';
 import { abrirWhatsApp } from '../../contacto';
+import { formatoFechaCorta, formatoFechaHoraCorta } from '../../../domain/models/Rescate';
 import { useCaso } from '../../hooks/useCaso';
 import { useCasoStore } from '../../stores/useCasoStore';
 import { colors, fonts } from '../../theme';
@@ -36,7 +37,7 @@ import { ESTADOS_CASO, infoEstado } from '../estado/estadosCaso';
 /** "Hoy", "Ayer" o "Hace 5 días (13/11/2026)". */
 function textoUltimaRevision(ms: number): string {
   const dias = Math.max(0, Math.floor((Date.now() - ms) / (24 * 60 * 60 * 1000)));
-  const fecha = new Date(ms).toLocaleDateString('es-AR');
+  const fecha = formatoFechaCorta(ms);
   if (dias === 0) return `Hoy (${fecha})`;
   if (dias === 1) return `Ayer (${fecha})`;
   return `Hace ${dias} días (${fecha})`;
@@ -132,11 +133,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
   const estadoActual = caso.estadoCaso ?? 'EN_TRANSITO';
   const esArchivado = estadoActual === 'ADOPTADO' || estadoActual === 'FALLECIDO';
   const fotoSource = fotoCasoSource(caso);
-  const fechaRescateTexto = new Date(caso.fechaRescate).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  const fechaRescateTexto = formatoFechaCorta(caso.fechaRescate);
 
   const abrirMapa = () => {
     if (caso.coordenadas) {
@@ -381,8 +378,8 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
                     {ETIQUETA_CASTRACION[a.castrado]} · Virales: {ETIQUETA_VIRALES[a.virales]}
                   </Text>
                   <Text style={styles.animalDato}>
-                    1° desp.: {a.fechaPrimeraDesparasitacion ? new Date(a.fechaPrimeraDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'} · 2° desp.:{' '}
-                    {a.fechaSegundaDesparasitacion ? new Date(a.fechaSegundaDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'}
+                    1° desp.: {a.fechaPrimeraDesparasitacion ? formatoFechaCorta(a.fechaPrimeraDesparasitacion) : 'Pendiente'} · 2° desp.:{' '}
+                    {a.fechaSegundaDesparasitacion ? formatoFechaCorta(a.fechaSegundaDesparasitacion) : 'Pendiente'}
                   </Text>
                 </View>
               ))}
@@ -403,7 +400,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               <Text style={styles.sanidadLabel}>1° Desparasitación</Text>
               <Text style={styles.sanidadValor}>
                 {caso.sanidad.fechaPrimeraDesparasitacion
-                  ? new Date(caso.sanidad.fechaPrimeraDesparasitacion).toLocaleDateString('es-AR')
+                  ? formatoFechaCorta(caso.sanidad.fechaPrimeraDesparasitacion)
                   : 'Pendiente'}
               </Text>
             </View>
@@ -412,7 +409,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               <Text style={styles.sanidadLabel}>2° Desparasitación</Text>
               <Text style={styles.sanidadValor}>
                 {caso.sanidad.fechaSegundaDesparasitacion
-                  ? new Date(caso.sanidad.fechaSegundaDesparasitacion).toLocaleDateString('es-AR')
+                  ? formatoFechaCorta(caso.sanidad.fechaSegundaDesparasitacion)
                   : 'Pendiente'}
               </Text>
             </View>
@@ -611,12 +608,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
 }
 
 function ItemHistorial({ evento, color, ultimo }: { evento: EventoHistorial; color: string; ultimo: boolean }) {
-  const fechaTexto = new Date(evento.fecha).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const fechaTexto = formatoFechaHoraCorta(evento.fecha);
 
   return (
     <View style={styles.itemRow}>
