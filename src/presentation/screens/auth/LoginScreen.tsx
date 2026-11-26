@@ -109,14 +109,14 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: top + 8, paddingBottom: bottom + 12 }]}
+        contentContainerStyle={[styles.content, { paddingTop: top + 16, paddingBottom: bottom + 12 }]}
         keyboardShouldPersistTaps="handled"
         scrollEnabled={tecladoVisible}
         bounces={false}
         overScrollMode="never"
         showsVerticalScrollIndicator={false}
       >
-        <Image source={require('../../../../assets/images/casos/tigre.jpg')} style={[styles.banner, { height: Math.round(Math.min(210, Math.max(110, alto * 0.18))) }]} resizeMode="cover" />
+        <Image source={require('../../../../assets/images/casos/tigre.jpg')} style={[styles.banner, { height: Math.round(Math.min(240, Math.max(110, alto * 0.24))) }]} resizeMode="cover" />
 
         <View style={styles.hero}>
           <View style={styles.brandRow}>
