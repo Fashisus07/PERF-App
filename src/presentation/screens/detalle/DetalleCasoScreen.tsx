@@ -1,4 +1,4 @@
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -455,7 +455,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
                   onPress={() => abrirWhatsApp(caso.transito.telefono, `Hola ${caso.transito.nombre || ''}, te escribo de PERF por ${caso.nombreProvisorio}.`)}
                   accessibilityLabel="Escribir por WhatsApp al tránsito"
                 >
-                  <MaterialIcons name="chat" size={20} color="#fff" />
+                  <MaterialCommunityIcons name="whatsapp" size={24} color="#fff" />
                 </Pressable>
                 <Pressable
                   style={styles.llamarBtn}

@@ -1,5 +1,5 @@
 import { abrirWhatsApp } from '../../contacto';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -276,7 +276,7 @@ export function DirectorioClinicasScreen({ navigation }: Props) {
                       onPress={() => abrirWhatsApp(c.telefono, `Hola, escribo de PERF (rescate animal) por una consulta.`)}
                       accessibilityLabel={`Escribir por WhatsApp a ${c.nombre}`}
                     >
-                      <MaterialIcons name="chat" size={20} color="#fff" />
+                      <MaterialCommunityIcons name="whatsapp" size={24} color="#fff" />
                     </Pressable>
 
                     <Pressable
