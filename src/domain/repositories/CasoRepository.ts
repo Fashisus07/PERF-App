@@ -1,5 +1,12 @@
-import { Caso, EventoHistorial, EstadoCaso } from '../models/Caso';
+import { Caso, EventoHistorial, EstadoCaso, GravedadClinica, Vulnerabilidad } from '../models/Caso';
 import { ResumenAlmacenamiento } from '../models/Ajustes';
+
+export interface OpcionesActualizacionEstado {
+  destino?: string;
+  gravedadClinica?: GravedadClinica;
+  vulnerabilidad?: Vulnerabilidad;
+  umbralDias?: number;
+}
 
 export interface OperacionPendiente {
   id: number;
@@ -17,7 +24,12 @@ export interface CasoRepository {
   obtenerPorId(id: string): Promise<Caso | undefined>;
   agregar(caso: Caso): Promise<Caso>;
   actualizar(caso: Caso): Promise<Caso>;
-  actualizarEstado(id: string, nuevoEstado: EstadoCaso, motivo?: string): Promise<Caso>;
+  actualizarEstado(
+    id: string,
+    nuevoEstado: EstadoCaso,
+    motivo?: string,
+    opciones?: OpcionesActualizacionEstado
+  ): Promise<Caso>;
   resumenAlmacenamiento(): Promise<ResumenAlmacenamiento>;
   sincronizar(): Promise<number>;
   obtenerOperacionesPendientes(): Promise<OperacionPendiente[]>;

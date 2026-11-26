@@ -9,6 +9,8 @@ import {
 } from '../../di/container';
 import { Ajustes, ajustesPorDefecto, ResumenAlmacenamiento } from '../../domain/models/Ajustes';
 
+import { useCasoStore } from '../stores/useCasoStore';
+
 export const sincronizarAhora = sincronizarAhoraUseCase;
 
 // Para los demás hooks (lista de casos, detalle, formulario de turnos): leen los ajustes guardados.
@@ -39,6 +41,7 @@ export function useAjustes() {
     const limpios = await guardarAjustesUseCase.ejecutar(borrador);
     setGuardados(limpios);
     setBorrador(limpios);
+    await useCasoStore.getState().cargarCasos(limpios.umbralUrgenteDias, true);
   };
 
   const actualizarResumen = () => casoRepository.resumenAlmacenamiento().then(setResumen);

@@ -1,15 +1,28 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { EstadoCaso, ETIQUETA_ESTADO } from '../../../domain/models/Caso';
+import {
+  EstadoCaso,
+  ETIQUETA_ESTADO,
+  ETIQUETA_GRAVEDAD,
+  ETIQUETA_VULNERABILIDAD,
+  GravedadClinica,
+  Vulnerabilidad,
+} from '../../../domain/models/Caso';
+import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
 import { estadoRequiereDestino } from '../../../domain/usecases/CambiarEstadoCaso';
 import { StackHeader } from '../../components/StackHeader';
+import { fotoCasoSource } from '../../components/fotoCaso';
+import { obtenerAjustes } from '../../hooks/useAjustes';
 import { useCambiarEstado } from '../../hooks/useCambiarEstado';
 import { useCaso } from '../../hooks/useCaso';
 import { useOnline } from '../../hooks/useOnline';
 import { colors, fonts } from '../../theme';
 import { ESTADOS_CASO, infoEstado } from './estadosCaso';
+
+const GRAVEDADES_OPTS: GravedadClinica[] = ['CRITICA', 'MODERADA', 'LEVE', 'SANA'];
+const VULN_OPTS: Vulnerabilidad[] = ['LACTANTE_SIN_MADRE', 'SIN_TRANSITO', 'EN_TRATAMIENTO', 'ESTABLE'];
 
 const PLACEHOLDER_DESTINO: Partial<Record<EstadoCaso, string>> = {
   EN_TRANSITO: 'Ej: Casa de Lucía (Caballito)',
@@ -19,8 +32,6 @@ const PLACEHOLDER_DESTINO: Partial<Record<EstadoCaso, string>> = {
   ADOPTADO: 'Ej: Domicilio del adoptante (opcional)',
   FALLECIDO: 'Ej: Clínica que constató (opcional)',
 };
-
-const FOTO_DEFAULT = require('../../../../assets/images/casos/misho.jpg');
 
 type Props = {
   route?: { params?: { casoId: string } };
@@ -38,6 +49,15 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
   const [notificar, setNotificar] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+  const [umbralDias, setUmbralDias] = useState(15);
+  const [gravedadElegida, setGravedadElegida] = useState<GravedadClinica | null>(null);
+  const [vulnerabilidadElegida, setVulnerabilidadElegida] = useState<Vulnerabilidad | null>(null);
+
+  useEffect(() => {
+    obtenerAjustes()
+      .then((a) => setUmbralDias(a.umbralUrgenteDias))
+      .catch(() => {});
+  }, []);
 
   if (!caso) {
     return (
@@ -48,6 +68,53 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
   }
 
   const actual = caso.estadoCaso ?? 'EN_TRANSITO';
+  const esCierre = elegido === 'ADOPTADO' || elegido === 'FALLECIDO';
+  const gravedadActiva = gravedadElegida ?? caso.gravedadClinica;
+  const vulnActiva = vulnerabilidadElegida ?? caso.vulnerabilidad;
+
+  const seleccionarEstado = (nuevoEstado: EstadoCaso) => {
+    setElegido(nuevoEstado);
+    if (nuevoEstado === 'EN_CLINICA') {
+      setVulnerabilidadElegida('EN_TRATAMIENTO');
+      if (caso.gravedadClinica === 'SANA') setGravedadElegida('MODERADA');
+      else setGravedadElegida(caso.gravedadClinica);
+    } else if (nuevoEstado === 'EN_ADOPCION' || nuevoEstado === 'PRE_ADOPTADO') {
+      if (caso.vulnerabilidad === 'SIN_TRANSITO' || caso.vulnerabilidad === 'EN_TRATAMIENTO') {
+        setVulnerabilidadElegida('ESTABLE');
+      } else {
+        setVulnerabilidadElegida(caso.vulnerabilidad);
+      }
+      if (nuevoEstado === 'EN_ADOPCION' && caso.gravedadClinica === 'CRITICA') {
+        setGravedadElegida('LEVE');
+      } else {
+        setGravedadElegida(caso.gravedadClinica);
+      }
+    } else if (nuevoEstado === 'EN_TRANSITO') {
+      if (caso.vulnerabilidad === 'SIN_TRANSITO') {
+        setVulnerabilidadElegida('ESTABLE');
+      } else {
+        setVulnerabilidadElegida(caso.vulnerabilidad);
+      }
+      setGravedadElegida(caso.gravedadClinica);
+    } else {
+      setGravedadElegida(caso.gravedadClinica);
+      setVulnerabilidadElegida(caso.vulnerabilidad);
+    }
+  };
+
+  const prioridadResultante = elegido
+    ? calcularPrioridadCasoUseCase.ejecutar(
+        {
+          estadoCaso: elegido,
+          gravedadClinica: gravedadActiva,
+          vulnerabilidad: vulnActiva,
+          fechaRescate: caso.fechaRescate,
+          sanidad: caso.sanidad,
+        },
+        umbralDias
+      )
+    : null;
+
   const requiereDestino = !!elegido && estadoRequiereDestino(elegido);
   const completo = !!elegido && !!motivo.trim() && (!requiereDestino || !!destino.trim());
 
@@ -61,6 +128,8 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
         estado: elegido,
         motivo: motivo.trim(),
         destino: destino.trim() || undefined,
+        gravedadClinica: !esCierre ? gravedadActiva : undefined,
+        vulnerabilidad: !esCierre ? vulnActiva : undefined,
         sinConexion: !online,
       });
       navigation?.navigate?.('ConfirmacionCambio', {
@@ -77,7 +146,7 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
     }
   };
 
-  const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;
+  const fotoSource = fotoCasoSource(caso);
   const ubicacionActual = caso.transito.nombre ? `Tránsito: ${caso.transito.nombre}` : `Barrio: ${caso.barrio}`;
 
   return (
@@ -144,7 +213,7 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
               <Pressable
                 key={e.key}
                 disabled={esActual}
-                onPress={() => setElegido(e.key)}
+                onPress={() => seleccionarEstado(e.key)}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: activo, disabled: esActual }}
                 style={[styles.opcion, esActual && styles.opcionActual, activo && styles.opcionActiva]}
@@ -181,6 +250,79 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
             );
           })}
         </View>
+
+        {elegido && (
+          <View style={styles.triajeCard}>
+            <View style={styles.triajeTop}>
+              <MaterialIcons name="health-and-safety" size={20} color={colors.primary} />
+              <Text style={styles.triajeCardTitle}>Impacto en Triaje Multicriterio</Text>
+            </View>
+
+            {prioridadResultante && (
+              <View
+                style={[
+                  styles.previewBox,
+                  prioridadResultante.nivelPrioridad === 'URGENTE'
+                    ? styles.previewUrgente
+                    : prioridadResultante.nivelPrioridad === 'ATENCION'
+                    ? styles.previewAtencion
+                    : styles.previewAldia,
+                ]}
+              >
+                <Text style={styles.previewMotivo}>{prioridadResultante.motivoUrgencia}</Text>
+                <Text style={styles.previewPts}>{prioridadResultante.puntajePrioridad} pts</Text>
+              </View>
+            )}
+
+            {!esCierre ? (
+              <>
+                <View style={{ gap: 6 }}>
+                  <Text style={styles.label}>Gravedad clínica resultante</Text>
+                  <View style={styles.miniChips}>
+                    {GRAVEDADES_OPTS.map((g) => {
+                      const sel = gravedadActiva === g;
+                      return (
+                        <Pressable
+                          key={g}
+                          style={[styles.miniChip, sel && styles.miniChipActivo]}
+                          onPress={() => setGravedadElegida(g)}
+                        >
+                          <Text style={[styles.miniChipText, sel && styles.miniChipTextActivo]}>
+                            {ETIQUETA_GRAVEDAD[g]}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={{ gap: 6 }}>
+                  <Text style={styles.label}>Vulnerabilidad resultante</Text>
+                  <View style={styles.miniChips}>
+                    {VULN_OPTS.map((v) => {
+                      const sel = vulnActiva === v;
+                      return (
+                        <Pressable
+                          key={v}
+                          style={[styles.miniChip, sel && styles.miniChipActivo]}
+                          onPress={() => setVulnerabilidadElegida(v)}
+                        >
+                          <Text style={[styles.miniChipText, sel && styles.miniChipTextActivo]}>
+                            {ETIQUETA_VULNERABILIDAD[v]}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </>
+            ) : (
+              <Text style={styles.cierreNota}>
+                Al cerrar el caso como {ETIQUETA_ESTADO[elegido]}, saldrá de la lista activa y su prioridad pasará a 0 pts.
+              </Text>
+            )}
+          </View>
+        )}
 
         <View style={styles.form}>
           <View style={{ gap: 8 }}>
@@ -347,4 +489,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.urgente,
   },
+  triajeCard: {
+    gap: 12,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    ...sombra,
+  },
+  triajeTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  triajeCardTitle: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
+  previewBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  previewUrgente: { backgroundColor: colors.urgenteBg, borderColor: colors.urgente },
+  previewAtencion: { backgroundColor: colors.atencionBg, borderColor: colors.atencion },
+  previewAldia: { backgroundColor: colors.aldiaBg, borderColor: colors.aldia },
+  previewMotivo: { fontFamily: fonts.bold, fontSize: 13, color: colors.text, flex: 1 },
+  previewPts: { fontFamily: fonts.bold, fontSize: 13, color: colors.primary },
+  miniChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  miniChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 38,
+    justifyContent: 'center',
+  },
+  miniChipActivo: { backgroundColor: colors.primary, borderColor: colors.primary },
+  miniChipText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.textMuted },
+  miniChipTextActivo: { color: colors.onPrimary },
+  cierreNota: { fontFamily: fonts.regular, fontSize: 13, color: colors.textMuted, lineHeight: 18 },
 });

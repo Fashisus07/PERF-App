@@ -227,7 +227,7 @@ export class SupabaseAuthRepository implements AuthRepository {
             email: u.email ?? '',
             telefono: m.telefono ?? '',
             zona: m.zona ?? '',
-            recursos: [],
+            recursos: Array.isArray(m.recursos) ? m.recursos : [],
           };
         }
       }

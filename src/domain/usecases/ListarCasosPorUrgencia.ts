@@ -7,11 +7,20 @@ export class ListarCasosPorUrgencia {
 
   async ejecutar(umbralUrgenteDias: number = 15): Promise<Caso[]> {
     const casos = await this.repo.obtenerActivos();
-    return casos.slice().sort((a, b) => {
-      const prioA = calcularPrioridadCasoUseCase.ejecutar(a, umbralUrgenteDias);
-      const prioB = calcularPrioridadCasoUseCase.ejecutar(b, umbralUrgenteDias);
-      if (prioB.puntajePrioridad !== prioA.puntajePrioridad) {
-        return prioB.puntajePrioridad - prioA.puntajePrioridad;
+    const conPrioridadActualizada = casos.map((c) => {
+      const prio = calcularPrioridadCasoUseCase.ejecutar(c, umbralUrgenteDias);
+      return {
+        ...c,
+        nivelPrioridad: prio.nivelPrioridad,
+        motivoUrgencia: prio.motivoUrgencia,
+        puntajePrioridad: prio.puntajePrioridad,
+        esUrgente: prio.esUrgente,
+      };
+    });
+
+    return conPrioridadActualizada.sort((a, b) => {
+      if (b.puntajePrioridad !== a.puntajePrioridad) {
+        return b.puntajePrioridad - a.puntajePrioridad;
       }
       return b.fechaRescate - a.fechaRescate;
     });

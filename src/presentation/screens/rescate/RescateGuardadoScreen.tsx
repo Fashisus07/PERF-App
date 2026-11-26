@@ -2,6 +2,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StackHeader } from '../../components/StackHeader';
+import { fotoCasoSource } from '../../components/fotoCaso';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { useCaso } from '../../hooks/useCaso';
 import { colors, fonts } from '../../theme';
@@ -51,7 +52,7 @@ export function RescateGuardadoScreen({ route, navigation }: { route?: { params?
         <View style={styles.card}>
           <View style={styles.casoRow}>
             <Image
-              source={caso.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg')}
+              source={fotoCasoSource(caso)}
               style={styles.foto}
             />
             <View style={{ flex: 1, gap: 2 }}>

@@ -1,10 +1,16 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Clinica, SolicitudTurno, Turno } from '../../domain/models/Turno';
 import { TurnoRepository } from '../../domain/repositories/TurnoRepository';
 import { getDatabase } from '../local/Database';
 import { generarUUID } from '../local/uuid';
 import { turnoFromRow, turnoToParams, TurnoRow } from '../mappers/CasoMapper';
-import { clinicasMock, reservasDeOtrasGuardias, turnosIniciales } from '../mock/turnosMock';
+import {
+  clinicasMock,
+  IDS_TURNOS_MOCK_ANTERIORES,
+  reservasDeOtrasGuardias,
+  turnosIniciales,
+} from '../mock/turnosMock';
 
 export class TurnoRepositoryImpl implements TurnoRepository {
   private seeded = false;
@@ -50,12 +56,23 @@ export class TurnoRepositoryImpl implements TurnoRepository {
       }
     }
 
+    const CLAVE_SEMILLA = '@perf_seed_turnos_version';
+    const VERSION_SEMILLA = 'v2_20_casos';
+    const versionActual = await AsyncStorage.getItem(CLAVE_SEMILLA).catch(() => null);
     const countResult = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM turnos;'
     );
-    if (!countResult || countResult.count === 0) {
+    if (versionActual !== VERSION_SEMILLA || !countResult || countResult.count === 0) {
+      for (const oldTurnoId of IDS_TURNOS_MOCK_ANTERIORES) {
+        await db.runAsync('DELETE FROM turnos WHERE id = ?;', [oldTurnoId]);
+      }
       const iniciales = turnosIniciales();
       for (const t of iniciales) {
+        const existe = await db.getFirstAsync<{ id: string }>(
+          'SELECT id FROM turnos WHERE id = ?;',
+          [t.id]
+        );
+        if (existe) continue;
         await db.runAsync(
           `INSERT INTO turnos (
             id, caso_id, centro_veterinario_id, fecha_hora, motivo,
@@ -64,6 +81,7 @@ export class TurnoRepositoryImpl implements TurnoRepository {
           turnoToParams(t)
         );
       }
+      await AsyncStorage.setItem(CLAVE_SEMILLA, VERSION_SEMILLA).catch(() => {});
     }
     this.seeded = true;
   }

@@ -20,6 +20,7 @@ import { PantallaCandado } from '../screens/auth/PantallaCandado';
 import { RecuperarClaveScreen } from '../screens/auth/RecuperarClaveScreen';
 import { RegistroScreen } from '../screens/auth/RegistroScreen';
 import { DetalleCasoScreen } from '../screens/detalle/DetalleCasoScreen';
+import { EditarCasoScreen } from '../screens/detalle/EditarCasoScreen';
 import { EditarSanidadScreen } from '../screens/detalle/EditarSanidadScreen';
 import { NuevaNotaHistorialScreen } from '../screens/detalle/NuevaNotaHistorialScreen';
 import { CambioEstadoScreen } from '../screens/estado/CambioEstadoScreen';
@@ -167,6 +168,7 @@ export function AppNavigator() {
         <Stack.Screen name="PerfilVoluntario" component={PerfilVoluntarioScreen} />
         <Stack.Screen name="ColaSincronizacion" component={ColaSincronizacionScreen} />
         <Stack.Screen name="DetalleCaso" component={DetalleCasoScreen} />
+        <Stack.Screen name="EditarCaso" component={EditarCasoScreen} />
         <Stack.Screen name="EditarSanidad" component={EditarSanidadScreen} />
         <Stack.Screen name="NuevaNotaHistorial" component={NuevaNotaHistorialScreen} />
         <Stack.Screen name="NuevoRescate" component={NuevoRescateScreen} />

@@ -5,6 +5,7 @@ import { turnoRepository } from '../../../di/container';
 import { Caso } from '../../../domain/models/Caso';
 import { Clinica, horaDe, mismoDia, nombreDia, Turno } from '../../../domain/models/Turno';
 import { AppHeader } from '../../components/AppHeader';
+import { fotoCasoSource } from '../../components/fotoCaso';
 import { cancelarTurno, useTurnos } from '../../hooks/useTurnos';
 import { useOnline } from '../../hooks/useOnline';
 import { colors, fonts } from '../../theme';
@@ -194,7 +195,7 @@ function TarjetaTurno({ turno: t, caso, clinica, hoy, navigation, onMenu }: Tarj
   if (!caso) return null;
   const lugar = [clinica.barrio, clinica.direccion].filter(Boolean).join(' · ');
   const fecha = new Date(t.fechaHora);
-  const fotoCaso = caso.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg');
+  const fotoCaso = fotoCasoSource(caso);
 
   return (
     <View style={styles.card}>

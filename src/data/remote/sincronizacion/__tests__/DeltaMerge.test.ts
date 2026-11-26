@@ -4,7 +4,7 @@ import { Caso } from '../../../../domain/models/Caso';
 describe('Delta Merge / Fusión Campo a Campo sin Pérdida de Datos', () => {
   const casoBase: Caso = {
     id: 'caso-uuid-1',
-    nombreProvisorio: 'Misho',
+    nombreProvisorio: 'Nube',
     cantidadAnimales: 1,
     especie: 'Gato',
     edadEstimada: '1 año',
@@ -82,7 +82,7 @@ describe('Delta Merge / Fusión Campo a Campo sin Pérdida de Datos', () => {
     expect(estadoFusionado.transito_telefono).toBe('99887766');
     expect(estadoFusionado.gravedad_clinica).toBe('CRITICA');
     expect(estadoFusionado.nivel_prioridad).toBe('URGENTE');
-    expect(estadoFusionado.nombre_provisorio).toBe('Misho'); // Campo no tocado se mantiene intacto
+    expect(estadoFusionado.nombre_provisorio).toBe('Nube'); // Campo no tocado se mantiene intacto
   });
 
   test('Si no hay cambios respecto a la base, diferenciasCaso devuelve objeto vacío', () => {
@@ -90,5 +90,35 @@ describe('Delta Merge / Fusión Campo a Campo sin Pérdida de Datos', () => {
     const dif = diferenciasCaso(casoBase, baseComparable, Date.now());
 
     expect(Object.keys(dif.cambios)).toHaveLength(0);
+  });
+
+  test('diferenciasCaso convierte payload parcial con sanidad y estadoVisible a columnas del servidor', () => {
+    const baseComparable = camposComparables(casoBase);
+    const ahora = 1700003000000;
+
+    const dif = diferenciasCaso(
+      {
+        id: casoBase.id,
+        estadoVisible: 'Recuperado sin lesiones',
+        sanidad: {
+          castrado: 'SI',
+          virales: 'NEGATIVO',
+          fechaPrimeraDesparasitacion: null,
+          fechaSegundaDesparasitacion: null,
+        },
+        nivelPrioridad: 'AL_DIA',
+        puntajePrioridad: 95,
+      },
+      baseComparable,
+      ahora
+    );
+
+    expect(dif.cambios.estado_visible).toBe('Recuperado sin lesiones');
+    expect(dif.cambios.castrado).toBe('SI');
+    expect(dif.cambios.virales_vif_vilef).toBe('NEGATIVO');
+    expect(dif.cambios.nivel_prioridad).toBe('AL_DIA');
+    expect(dif.cambios.puntaje_prioridad).toBe(95);
+    expect((dif.cambios as any).sanidad).toBeUndefined();
+    expect((dif.cambios as any).estadoVisible).toBeUndefined();
   });
 });

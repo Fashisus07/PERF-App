@@ -14,7 +14,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authRepository } from '../../../di/container';
 import { Voluntario } from '../../../domain/models/Ajustes';
+import {
+  guardarZonasCustomUsuario,
+  parsearZonas,
+  SelectorZonas,
+  serializarZonas,
+} from '../../components/SelectorZonas';
 import { StackHeader } from '../../components/StackHeader';
+import { notificarCambioVoluntario, obtenerIniciales } from '../rescate/BarraRescate';
 import { colors, fonts } from '../../theme';
 
 type Props = {
@@ -39,7 +46,8 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
   // Form states
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
-  const [zona, setZona] = useState('');
+  const [zonas, setZonas] = useState<string[]>([]);
+  const [zonaInicial, setZonaInicial] = useState('');
   const [brigada, setBrigada] = useState('');
   const [recursos, setRecursos] = useState<string[]>([]);
 
@@ -51,7 +59,8 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
           setVoluntario(v);
           setNombre(v.nombre);
           setTelefono(v.telefono ?? '');
-          setZona(v.zona ?? '');
+          setZonaInicial(v.zona ?? '');
+          setZonas(parsearZonas(v.zona));
           setBrigada(v.brigada);
           setRecursos(v.recursos ?? []);
         }
@@ -59,6 +68,16 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
       })
       .catch(() => setCargando(false));
   }, []);
+
+  const onCambioZonas = (nuevasZonas: string[]) => {
+    const anteriorSerializada = serializarZonas(zonas);
+    const nuevaSerializada = serializarZonas(nuevasZonas);
+    setZonas(nuevasZonas);
+    if (errorMsg) setErrorMsg(null);
+    if (!brigada.trim() || brigada.trim() === `Brigada ${zonaInicial}` || brigada.trim() === `Brigada ${anteriorSerializada}`) {
+      setBrigada(nuevaSerializada ? `Brigada ${nuevaSerializada}` : '');
+    }
+  };
 
   const toggleRecurso = (key: string) => {
     setRecursos((prev) =>
@@ -71,36 +90,42 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
       setErrorMsg('El nombre del voluntario no puede estar vacío');
       return;
     }
+    if (zonas.length === 0) {
+      setErrorMsg('Seleccioná al menos una zona habitual de rescate');
+      return;
+    }
     setGuardando(true);
     setErrorMsg(null);
     try {
+      const zonaTexto = serializarZonas(zonas);
+      const storageId = voluntario?.email || voluntario?.id;
+      await guardarZonasCustomUsuario(storageId, zonas);
+
       const actualizado: Voluntario = {
         ...voluntario,
         id: voluntario?.id || 'voluntario-1',
         nombre: nombre.trim(),
         telefono: telefono.trim(),
-        zona: zona.trim(),
-        brigada: brigada.trim() || `Brigada ${zona.trim() || 'Central'}`,
+        zona: zonaTexto,
+        brigada: brigada.trim() || `Brigada ${zonaTexto || 'Central'}`,
         recursos,
         email: voluntario?.email,
       };
 
       await authRepository.actualizarVoluntario(actualizado);
-      navigation?.navigate?.('Ajustes');
+      notificarCambioVoluntario(actualizado.nombre);
+      if (navigation?.canGoBack?.()) {
+        navigation.goBack();
+      } else {
+        navigation?.navigate?.('Ajustes');
+      }
     } catch (e: any) {
       setErrorMsg(e?.message || 'Error al guardar los datos del voluntario.');
       setGuardando(false);
     }
   };
 
-  const iniciales = nombre
-    ? nombre
-        .split(' ')
-        .map((p) => p[0])
-        .slice(0, 2)
-        .join('')
-        .toUpperCase()
-    : 'VO';
+  const iniciales = obtenerIniciales(nombre);
 
   if (cargando) {
     return (
@@ -179,16 +204,13 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
             />
           </View>
 
-          <View style={styles.field}>
-            <Text style={styles.label}>Zona habitual de rescate</Text>
-            <TextInput
-              style={styles.input}
-              value={zona}
-              onChangeText={setZona}
-              placeholder="ej: Caballito, Almagro, Flores..."
-              placeholderTextColor={colors.placeholderField}
-            />
-          </View>
+          <SelectorZonas
+            zonasSeleccionadas={zonas}
+            onChange={onCambioZonas}
+            titulo="Zonas habituales de rescate"
+            subtitulo="Podés elegir más de una"
+            storageKey={voluntario?.email || voluntario?.id}
+          />
 
           <View style={styles.field}>
             <Text style={styles.label}>Brigada de pertenencia</Text>

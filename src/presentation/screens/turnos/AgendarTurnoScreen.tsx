@@ -20,6 +20,7 @@ import {
 } from '../../../domain/models/Turno';
 import { CupoNoDisponible } from '../../../domain/usecases/AgendarTurno';
 import { StackHeader } from '../../components/StackHeader';
+import { fotoCasoSource } from '../../components/fotoCaso';
 import { useCasos } from '../../hooks/useCasos';
 import { obtenerAjustes } from '../../hooks/useAjustes';
 import { agendarTurno, obtenerClinicas } from '../../hooks/useTurnos';
@@ -110,7 +111,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
     }
   };
 
-  const fotoCaso = caso?.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg');
+  const fotoCaso = fotoCasoSource(caso);
 
   return (
     <View style={styles.screen}>
@@ -151,7 +152,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
               {casos.map((c) => (
                 <Pressable key={c.id} style={styles.casoOpcion} onPress={() => setCasoId(c.id)} accessibilityRole="button">
                   <Image
-                    source={c.fotoUri ? { uri: c.fotoUri } : require('../../../../assets/images/casos/misho.jpg')}
+                    source={fotoCasoSource(c)}
                     style={styles.casoOpcionFoto}
                   />
                   <Text style={styles.casoOpcionNombre}>{c.nombreProvisorio}</Text>

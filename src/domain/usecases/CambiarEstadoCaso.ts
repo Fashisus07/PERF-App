@@ -1,10 +1,13 @@
-import { Caso, EstadoCaso } from '../models/Caso';
+import { Caso, EstadoCaso, GravedadClinica, Vulnerabilidad } from '../models/Caso';
 import { CasoRepository } from '../repositories/CasoRepository';
 
 export interface SolicitudCambioEstado {
   estado: EstadoCaso;
   motivo: string;
   destino?: string;
+  gravedadClinica?: GravedadClinica;
+  vulnerabilidad?: Vulnerabilidad;
+  umbralDias?: number;
   sinConexion?: boolean;
 }
 
@@ -23,6 +26,11 @@ export class CambiarEstadoCaso {
       ? `${cambio.motivo.trim()} (Destino: ${cambio.destino.trim()})`
       : cambio.motivo.trim();
 
-    return this.repo.actualizarEstado(id, cambio.estado, detalle);
+    return this.repo.actualizarEstado(id, cambio.estado, detalle, {
+      destino: cambio.destino?.trim() || undefined,
+      gravedadClinica: cambio.gravedadClinica,
+      vulnerabilidad: cambio.vulnerabilidad,
+      umbralDias: cambio.umbralDias,
+    });
   }
 }

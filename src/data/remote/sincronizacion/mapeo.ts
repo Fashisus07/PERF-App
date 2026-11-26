@@ -76,6 +76,36 @@ export interface Diferencias {
   nuevosValores: Comparable;
 }
 
+const COLUMNAS_SERVIDOR = new Set([
+  'nombre_provisorio',
+  'cantidad_animales',
+  'especie',
+  'edad_estimada',
+  'historia_origen',
+  'personalidad',
+  'estado_visible',
+  'barrio',
+  'latitud',
+  'longitud',
+  'quien_sigue_caso',
+  'transito_nombre',
+  'transito_telefono',
+  'transito_correo',
+  'castrado',
+  'virales_vif_vilef',
+  'fecha_primera_desparasitacion',
+  'fecha_segunda_desparasitacion',
+  'estado_caso',
+  'gravedad_clinica',
+  'vulnerabilidad',
+  'nivel_prioridad',
+  'motivo_urgencia',
+  'puntaje_prioridad',
+  'creado_por_user_id',
+  'modificado_por_user_id',
+  'foto_remote_path',
+]);
+
 /**
  * Qué campos cambió esta operación respecto de la última versión conocida del servidor.
  * Mandar solo estos evita pisar lo que otro voluntario modificó en campos que no tocamos.
@@ -88,13 +118,28 @@ export function diferenciasCaso(payload: any, base: Comparable, creadoEn: number
   } else {
     actual = {};
     if (payload?.estadoCaso) actual.estado_caso = payload.estadoCaso;
-    if (payload?.transitoNombre) actual.transito_nombre = payload.transitoNombre;
+    if (payload?.estadoVisible !== undefined) actual.estado_visible = payload.estadoVisible || null;
+    if (payload?.transitoNombre !== undefined) actual.transito_nombre = payload.transitoNombre || null;
     if (payload?.gravedadClinica) actual.gravedad_clinica = payload.gravedadClinica;
     if (payload?.vulnerabilidad) actual.vulnerabilidad = payload.vulnerabilidad;
-    // Campos planos recibidos en delta
+    if (payload?.nivelPrioridad) actual.nivel_prioridad = payload.nivelPrioridad;
+    if (payload?.motivoUrgencia !== undefined) actual.motivo_urgencia = payload.motivoUrgencia || null;
+    if (payload?.puntajePrioridad !== undefined) actual.puntaje_prioridad = payload.puntajePrioridad;
+    if (payload?.sanidad) {
+      actual.castrado = payload.sanidad.castrado;
+      actual.virales_vif_vilef = payload.sanidad.virales;
+      actual.fecha_primera_desparasitacion = payload.sanidad.fechaPrimeraDesparasitacion ?? null;
+      actual.fecha_segunda_desparasitacion = payload.sanidad.fechaSegundaDesparasitacion ?? null;
+    }
+    if (payload?.transito) {
+      actual.transito_nombre = payload.transito.nombre || null;
+      actual.transito_telefono = payload.transito.telefono || null;
+      actual.transito_correo = payload.transito.correo || null;
+    }
+    // Campos planos en formato servidor recibidos en delta
     for (const [k, v] of Object.entries(payload || {})) {
-      if (k !== 'id' && k !== 'updatedAt' && k !== 'updated_at') {
-        actual[k] = v as any;
+      if (COLUMNAS_SERVIDOR.has(k)) {
+        actual[k] = v as ValorCampo;
       }
     }
   }
@@ -123,11 +168,19 @@ export function casoDesdeServidor(f: FilaServidor): Caso {
     ? (vulnRaw as Vulnerabilidad)
     : 'ESTABLE';
 
+  const sanidad = {
+    castrado: f.castrado as EstadoCastracion,
+    virales: f.virales_vif_vilef as EstadoVirales,
+    fechaPrimeraDesparasitacion: aMs(f.fecha_primera_desparasitacion),
+    fechaSegundaDesparasitacion: aMs(f.fecha_segunda_desparasitacion),
+  };
+
   const calculo = calcularPrioridadCasoUseCase.ejecutar({
     estadoCaso: f.estado_caso,
     gravedadClinica: gravedad,
     vulnerabilidad,
     fechaRescate,
+    sanidad,
   });
 
   return {
@@ -152,18 +205,13 @@ export function casoDesdeServidor(f: FilaServidor): Caso {
       telefono: f.transito_telefono ?? '',
       correo: f.transito_correo ?? undefined,
     },
-    sanidad: {
-      castrado: f.castrado as EstadoCastracion,
-      virales: f.virales_vif_vilef as EstadoVirales,
-      fechaPrimeraDesparasitacion: aMs(f.fecha_primera_desparasitacion),
-      fechaSegundaDesparasitacion: aMs(f.fecha_segunda_desparasitacion),
-    },
+    sanidad,
     estadoCaso: f.estado_caso as EstadoCaso,
     gravedadClinica: gravedad,
     vulnerabilidad,
-    nivelPrioridad: (f.nivel_prioridad as NivelPrioridad) || calculo.nivelPrioridad,
-    motivoUrgencia: f.motivo_urgencia || calculo.motivoUrgencia,
-    puntajePrioridad: f.puntaje_prioridad ?? calculo.puntajePrioridad,
+    nivelPrioridad: calculo.nivelPrioridad,
+    motivoUrgencia: calculo.motivoUrgencia,
+    puntajePrioridad: calculo.puntajePrioridad,
     creadoPorUserId: f.creado_por ?? f.creado_por_user_id ?? undefined,
     modificadoPorUserId: f.modificado_por_user_id ?? undefined,
     esUrgente: calculo.esUrgente,

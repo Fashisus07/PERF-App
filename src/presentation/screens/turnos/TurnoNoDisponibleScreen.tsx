@@ -15,6 +15,7 @@ import {
 } from '../../../domain/models/Turno';
 import { CupoNoDisponible } from '../../../domain/usecases/AgendarTurno';
 import { StackHeader } from '../../components/StackHeader';
+import { fotoCasoSource } from '../../components/fotoCaso';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { useCaso } from '../../hooks/useCaso';
 import { agendarTurno, obtenerClinicas } from '../../hooks/useTurnos';
@@ -68,7 +69,7 @@ export function TurnoNoDisponibleScreen({ route, navigation }: { route?: { param
     }
   };
 
-  const fotoCaso = caso.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg');
+  const fotoCaso = fotoCasoSource(caso);
 
   return (
     <View style={styles.screen}>

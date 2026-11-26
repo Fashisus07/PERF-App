@@ -14,6 +14,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authRepository } from '../../../di/container';
+import {
+  guardarZonasCustomUsuario,
+  SelectorZonas,
+  serializarZonas,
+} from '../../components/SelectorZonas';
 import { colors, fonts } from '../../theme';
 
 type Props = {
@@ -22,15 +27,6 @@ type Props = {
 };
 
 type Icono = keyof typeof MaterialIcons.glyphMap;
-
-const ZONAS: { nombre: string; icono: Icono }[] = [
-  { nombre: 'Balvanera', icono: 'location-on' },
-  { nombre: 'Caballito', icono: 'location-on' },
-  { nombre: 'Almagro', icono: 'location-on' },
-  { nombre: 'Palermo', icono: 'location-on' },
-  { nombre: 'San Telmo', icono: 'location-on' },
-  { nombre: 'Otra zona', icono: 'near-me' },
-];
 
 const RECURSOS: { id: string; icono: Icono; titulo: string; detalle: string }[] = [
   { id: 'canil', icono: 'home', titulo: 'Tengo canil propio', detalle: 'Rígido o jaula trampa reglamentaria' },
@@ -109,7 +105,7 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
   const { top, bottom } = useSafeAreaInsets();
   const [nombre, setNombre] = useState('');
   const [whatsapp, setWhatsapp] = useState(''); // solo dígitos
-  const [zona, setZona] = useState('Balvanera');
+  const [zonas, setZonas] = useState<string[]>(['Balvanera']);
   const [recursos, setRecursos] = useState<string[]>([]);
   const [email, setEmail] = useState('');
   const [clave, setClave] = useState('');
@@ -124,8 +120,9 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
   const telefonoIncompleto = whatsapp.length > 0 && !telefonoValido;
   const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const nombreValido = nombre.trim().length > 0;
+  const zonasValidas = zonas.length > 0;
   const claveValida = clave.length >= 6;
-  const completo = nombreValido && telefonoValido && emailValido && claveValida && acepta;
+  const completo = nombreValido && telefonoValido && zonasValidas && emailValido && claveValida && acepta;
 
   const intentarRegistrar = async () => {
     setErrorGeneral(null);
@@ -135,11 +132,13 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
     }
     setGuardando(true);
     try {
+      const zonaTexto = serializarZonas(zonas);
+      await guardarZonasCustomUsuario(email.trim().toLowerCase(), zonas);
       const resultado = await authRepository.registrar({
         nombre: nombre.trim(),
         email: email.trim(),
         telefono: whatsapp.trim(),
-        zona,
+        zona: zonaTexto,
         clave,
         recursos,
       });
@@ -224,27 +223,13 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
                 <Text style={styles.ayuda}>Te contactaremos sólo ante urgencias y derivaciones activas.</Text>
               )}
             </View>
-            <View style={styles.field}>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>Zona habitual de acción</Text>
-                <Text style={styles.nota}>Seleccioná una</Text>
-              </View>
-              <View style={styles.chips}>
-                {ZONAS.map((z) => {
-                  const activa = zona === z.nombre;
-                  return (
-                    <Pressable
-                      key={z.nombre}
-                      style={[styles.chip, activa && styles.chipActive]}
-                      onPress={() => setZona(z.nombre)}
-                    >
-                      <MaterialIcons name={z.icono} size={14} color={activa ? colors.onPrimary : colors.textMuted} />
-                      <Text style={[styles.chipText, activa && { color: colors.onPrimary }]}>{z.nombre}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
+            <SelectorZonas
+              zonasSeleccionadas={zonas}
+              onChange={setZonas}
+              titulo="Zonas habituales de acción"
+              subtitulo="Podés elegir más de una"
+              error={intento && !zonasValidas ? 'Seleccioná al menos una zona de acción.' : undefined}
+            />
           </Seccion>
 
           <Seccion icono="inventory-2" titulo="Recursos y disponibilidad rápida">
@@ -330,11 +315,12 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
               onPress={async () => {
                 setGuardando(true);
                 try {
+                  await guardarZonasCustomUsuario(email.trim().toLowerCase(), zonas);
                   await authRepository.registrarOffline!({
                     nombre: nombre.trim(),
                     email: email.trim(),
                     telefono: whatsapp.trim(),
-                    zona,
+                    zona: serializarZonas(zonas),
                     clave,
                     recursos,
                   });

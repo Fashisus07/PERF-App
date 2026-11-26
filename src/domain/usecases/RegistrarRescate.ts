@@ -14,12 +14,19 @@ export class RegistrarRescate {
     }
 
     const ahora = Date.now();
+    const sanidad = {
+      castrado: b.castrado || 'PENDIENTE',
+      virales: b.virales || 'PENDIENTE',
+      fechaPrimeraDesparasitacion: b.fechaPrimeraDesparasitacion ?? null,
+      fechaSegundaDesparasitacion: b.fechaSegundaDesparasitacion ?? null,
+    };
     const prioridad = calcularPrioridadCasoUseCase.ejecutar(
       {
         estadoCaso: 'EN_TRANSITO',
         gravedadClinica: b.gravedadClinica,
         vulnerabilidad: b.vulnerabilidad,
         fechaRescate: ahora,
+        sanidad,
       },
       15,
       ahora
@@ -47,12 +54,7 @@ export class RegistrarRescate {
         telefono: b.transitoTelefono.trim(),
         correo: b.transitoCorreo?.trim() || undefined,
       },
-      sanidad: {
-        castrado: b.castrado || 'PENDIENTE',
-        virales: b.virales || 'PENDIENTE',
-        fechaPrimeraDesparasitacion: b.fechaPrimeraDesparasitacion ?? null,
-        fechaSegundaDesparasitacion: b.fechaSegundaDesparasitacion ?? null,
-      },
+      sanidad,
       estadoCaso: 'EN_TRANSITO',
       gravedadClinica: b.gravedadClinica,
       vulnerabilidad: b.vulnerabilidad,

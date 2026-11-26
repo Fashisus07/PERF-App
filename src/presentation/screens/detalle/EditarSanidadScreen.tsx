@@ -1,5 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,17 +14,23 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   EstadoCastracion,
-  ETIQUETA_CASTRACION,
-  ETIQUETA_VIRALES,
   EstadoVirales,
+  ETIQUETA_CASTRACION,
+  ETIQUETA_GRAVEDAD,
+  ETIQUETA_VIRALES,
+  ETIQUETA_VULNERABILIDAD,
+  GravedadClinica,
+  Vulnerabilidad,
 } from '../../../domain/models/Caso';
+import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
 import { StackHeader } from '../../components/StackHeader';
+import { obtenerAjustes } from '../../hooks/useAjustes';
 import { useCaso } from '../../hooks/useCaso';
 import { useCasoStore } from '../../stores/useCasoStore';
 import { colors, fonts } from '../../theme';
 
 type Props = {
-  route?: { params?: { casoId: string } };
+  route?: { params?: { casoId: string; foco?: 'triaje' | 'sanidad' } };
   navigation?: any;
 };
 
@@ -37,12 +43,40 @@ const OPCIONES_VIRALES: EstadoVirales[] = [
   'AMBOS_POSITIVOS',
 ];
 
+const OPCIONES_GRAVEDAD: {
+  key: GravedadClinica;
+  label: string;
+  desc: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+}[] = [
+  { key: 'CRITICA', label: 'Crítica', desc: 'Atropellado, herido grave o viral agudo', icon: 'emergency' },
+  { key: 'MODERADA', label: 'Moderada', desc: 'Sintomático o con lesión en observación', icon: 'healing' },
+  { key: 'LEVE', label: 'Leve', desc: 'Cuadro menor en seguimiento', icon: 'visibility' },
+  { key: 'SANA', label: 'Sana', desc: 'Sin signos clínicos aparentes', icon: 'verified' },
+];
+
+const OPCIONES_VULNERABILIDAD: {
+  key: Vulnerabilidad;
+  label: string;
+  desc: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+}[] = [
+  { key: 'LACTANTE_SIN_MADRE', label: 'Lactante sin madre', desc: 'Requiere nodriza o mamadera', icon: 'child-care' },
+  { key: 'SIN_TRANSITO', label: 'Sin tránsito', desc: 'Sin hogar de tránsito asignado', icon: 'home-work' },
+  { key: 'EN_TRATAMIENTO', label: 'En tratamiento', desc: 'Medicación o curaciones activas', icon: 'medication' },
+  { key: 'ESTABLE', label: 'Estable', desc: 'Hogar asignado y seguro', icon: 'shield' },
+];
+
 export function EditarSanidadScreen({ route, navigation }: Props) {
   const { bottom } = useSafeAreaInsets();
   const casoId = route?.params?.casoId ?? '';
   const { caso, cargando } = useCaso(casoId);
   const actualizarCaso = useCasoStore((s) => s.actualizarCaso);
+  const agregarEventoHistorial = useCasoStore((s) => s.agregarEventoHistorial);
 
+  const [umbralDias, setUmbralDias] = useState(15);
+  const [gravedad, setGravedad] = useState<GravedadClinica | null>(null);
+  const [vulnerabilidad, setVulnerabilidad] = useState<Vulnerabilidad | null>(null);
   const [castrado, setCastrado] = useState<EstadoCastracion | null>(null);
   const [virales, setVirales] = useState<EstadoVirales | null>(null);
   const [desp1, setDesp1] = useState<boolean | null>(null);
@@ -51,12 +85,46 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   const [guardando, setGuardando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    obtenerAjustes()
+      .then((a) => setUmbralDias(a.umbralUrgenteDias))
+      .catch(() => {});
+  }, []);
+
   // Valores inicializados con los del caso si no fueron tocados
+  const valorGravedad = gravedad ?? caso?.gravedadClinica ?? 'MODERADA';
+  const valorVulnerabilidad = vulnerabilidad ?? caso?.vulnerabilidad ?? 'ESTABLE';
   const valorCastrado = castrado ?? caso?.sanidad?.castrado ?? 'PENDIENTE';
   const valorVirales = virales ?? caso?.sanidad?.virales ?? 'PENDIENTE';
   const tieneDesp1 = desp1 !== null ? desp1 : Boolean(caso?.sanidad?.fechaPrimeraDesparasitacion);
   const tieneDesp2 = desp2 !== null ? desp2 : Boolean(caso?.sanidad?.fechaSegundaDesparasitacion);
   const textoVisible = estadoVisible !== null ? estadoVisible : caso?.estadoVisible ?? '';
+
+  const ahoraPreview = Date.now();
+  const sanidadPreview = {
+    castrado: valorCastrado,
+    virales: valorVirales,
+    fechaPrimeraDesparasitacion: tieneDesp1
+      ? caso?.sanidad?.fechaPrimeraDesparasitacion || ahoraPreview
+      : null,
+    fechaSegundaDesparasitacion: tieneDesp2
+      ? caso?.sanidad?.fechaSegundaDesparasitacion || ahoraPreview
+      : null,
+  };
+
+  const prioridadVista = caso
+    ? calcularPrioridadCasoUseCase.ejecutar(
+        {
+          estadoCaso: caso.estadoCaso,
+          gravedadClinica: valorGravedad,
+          vulnerabilidad: valorVulnerabilidad,
+          fechaRescate: caso.fechaRescate,
+          sanidad: sanidadPreview,
+        },
+        umbralDias,
+        ahoraPreview
+      )
+    : null;
 
   const handleGuardar = async () => {
     if (!caso) return;
@@ -64,23 +132,56 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
     setErrorMsg(null);
     try {
       const ahora = Date.now();
+      const nuevaSanidad = {
+        ...caso.sanidad,
+        castrado: valorCastrado,
+        virales: valorVirales,
+        fechaPrimeraDesparasitacion: tieneDesp1
+          ? caso.sanidad.fechaPrimeraDesparasitacion || ahora
+          : null,
+        fechaSegundaDesparasitacion: tieneDesp2
+          ? caso.sanidad.fechaSegundaDesparasitacion || ahora
+          : null,
+      };
+
+      const prioridad = calcularPrioridadCasoUseCase.ejecutar(
+        {
+          estadoCaso: caso.estadoCaso,
+          gravedadClinica: valorGravedad,
+          vulnerabilidad: valorVulnerabilidad,
+          fechaRescate: caso.fechaRescate,
+          sanidad: nuevaSanidad,
+        },
+        umbralDias,
+        ahora
+      );
+
       const casoActualizado = {
         ...caso,
+        gravedadClinica: valorGravedad,
+        vulnerabilidad: valorVulnerabilidad,
         estadoVisible: textoVisible.trim(),
-        sanidad: {
-          ...caso.sanidad,
-          castrado: valorCastrado,
-          virales: valorVirales,
-          fechaPrimeraDesparasitacion: tieneDesp1
-            ? caso.sanidad.fechaPrimeraDesparasitacion || ahora
-            : undefined,
-          fechaSegundaDesparasitacion: tieneDesp2
-            ? caso.sanidad.fechaSegundaDesparasitacion || ahora
-            : undefined,
-        },
+        sanidad: nuevaSanidad,
+        nivelPrioridad: prioridad.nivelPrioridad,
+        motivoUrgencia: prioridad.motivoUrgencia,
+        puntajePrioridad: prioridad.puntajePrioridad,
+        esUrgente: prioridad.esUrgente,
       };
 
       await actualizarCaso(casoActualizado);
+
+      const resumenCambios = [
+        `Gravedad: ${ETIQUETA_GRAVEDAD[valorGravedad]}`,
+        `Vulnerabilidad: ${ETIQUETA_VULNERABILIDAD[valorVulnerabilidad]}`,
+        `Castración: ${ETIQUETA_CASTRACION[valorCastrado]}`,
+        `Virales: ${ETIQUETA_VIRALES[valorVirales]}`,
+        `Prioridad: ${prioridad.motivoUrgencia} (${prioridad.puntajePrioridad} pts)`,
+      ].join(' · ');
+
+      await agregarEventoHistorial(caso.id, 'TRATAMIENTO', `Actualización médico-sanitaria: ${resumenCambios}`).catch(
+        () => {}
+      );
+
       navigation?.navigate?.('DetalleCaso', { casoId: caso.id, estadoActualizado: true });
     } catch (e: any) {
       setErrorMsg(e?.message || 'Error al guardar la ficha sanitaria');
@@ -91,7 +192,7 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   if (cargando || !caso) {
     return (
       <View style={styles.screen}>
-        <StackHeader titulo="Editar Ficha Sanitaria" onBack={() => navigation?.goBack?.()} />
+        <StackHeader titulo="Ficha Clínica y Sanidad" onBack={() => navigation?.goBack?.()} />
         <View style={styles.centro}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
@@ -104,13 +205,13 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <StackHeader titulo="Ficha Sanitaria" onBack={() => navigation?.goBack?.()} />
+      <StackHeader titulo="Ficha Clínica y Sanidad" onBack={() => navigation?.goBack?.()} />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: bottom + 40 }]}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Banner de Identificación del Paciente (MD3 Surface Container) */}
+        {/* Banner de Identificación del Paciente */}
         <View style={styles.pacienteCard}>
           <View style={styles.pacienteIcono}>
             <MaterialIcons name="pets" size={24} color={colors.primary} />
@@ -123,6 +224,59 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
           </View>
         </View>
 
+        {/* Vista en vivo de cómo impactan los cambios en Triaje Multicriterio */}
+        {prioridadVista && (
+          <View
+            style={[
+              styles.bannerPrioridad,
+              prioridadVista.nivelPrioridad === 'URGENTE'
+                ? styles.bannerUrgente
+                : prioridadVista.nivelPrioridad === 'ATENCION'
+                ? styles.bannerAtencion
+                : styles.bannerAldia,
+            ]}
+          >
+            <MaterialIcons
+              name={
+                prioridadVista.nivelPrioridad === 'URGENTE'
+                  ? 'error'
+                  : prioridadVista.nivelPrioridad === 'ATENCION'
+                  ? 'schedule'
+                  : 'check-circle'
+              }
+              size={22}
+              color={
+                prioridadVista.nivelPrioridad === 'URGENTE'
+                  ? colors.urgente
+                  : prioridadVista.nivelPrioridad === 'ATENCION'
+                  ? colors.atencion
+                  : colors.aldia
+              }
+            />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.bannerEyebrow}>Triaje resultante en tiempo real</Text>
+              <Text
+                style={[
+                  styles.bannerTitulo,
+                  {
+                    color:
+                      prioridadVista.nivelPrioridad === 'URGENTE'
+                        ? colors.urgenteText
+                        : prioridadVista.nivelPrioridad === 'ATENCION'
+                        ? colors.atencionText
+                        : colors.aldiaText,
+                  },
+                ]}
+              >
+                {prioridadVista.motivoUrgencia}
+              </Text>
+              <Text style={styles.bannerSub}>
+                Puntaje multicriterio: {prioridadVista.puntajePrioridad} pts
+              </Text>
+            </View>
+          </View>
+        )}
+
         {errorMsg ? (
           <View style={styles.errorBanner}>
             <MaterialIcons name="error-outline" size={20} color={colors.urgente} />
@@ -130,14 +284,94 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
           </View>
         ) : null}
 
-        {/* Sección Castración (MD3 Segmented Options) */}
+        {/* Sección Estado de Salud / Gravedad Clínica */}
+        <View style={styles.seccionCard}>
+          <View style={styles.seccionHeader}>
+            <MaterialIcons name="health-and-safety" size={20} color={colors.primary} />
+            <Text style={styles.seccionTitulo}>Estado de Salud (Gravedad Clínica)</Text>
+          </View>
+          <Text style={styles.seccionDesc}>
+            Refleja la situación clínica actual del animal para recalcular su prioridad en la lista.
+          </Text>
+
+          <View style={styles.triajeList}>
+            {OPCIONES_GRAVEDAD.map((g) => {
+              const seleccionado = valorGravedad === g.key;
+              return (
+                <Pressable
+                  key={g.key}
+                  style={[styles.triajeChip, seleccionado && styles.triajeChipActivo]}
+                  onPress={() => setGravedad(g.key)}
+                  accessibilityRole="button"
+                >
+                  <MaterialIcons
+                    name={g.icon}
+                    size={22}
+                    color={seleccionado ? colors.onPrimary : colors.primary}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.triajeTitulo, seleccionado && styles.triajeTextoActivo]}>
+                      {g.label}
+                    </Text>
+                    <Text style={[styles.triajeSub, seleccionado && styles.triajeSubActivo]}>
+                      {g.desc}
+                    </Text>
+                  </View>
+                  {seleccionado && <MaterialIcons name="check" size={18} color={colors.onPrimary} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Sección Condición de Vulnerabilidad */}
+        <View style={styles.seccionCard}>
+          <View style={styles.seccionHeader}>
+            <MaterialIcons name="shield" size={20} color={colors.primary} />
+            <Text style={styles.seccionTitulo}>Condición de Vulnerabilidad</Text>
+          </View>
+          <Text style={styles.seccionDesc}>
+            Define si requiere hogar urgente, cuidados de lactancia o tratamiento médico activo.
+          </Text>
+
+          <View style={styles.triajeList}>
+            {OPCIONES_VULNERABILIDAD.map((v) => {
+              const seleccionado = valorVulnerabilidad === v.key;
+              return (
+                <Pressable
+                  key={v.key}
+                  style={[styles.triajeChip, seleccionado && styles.triajeChipActivo]}
+                  onPress={() => setVulnerabilidad(v.key)}
+                  accessibilityRole="button"
+                >
+                  <MaterialIcons
+                    name={v.icon}
+                    size={22}
+                    color={seleccionado ? colors.onPrimary : colors.primary}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.triajeTitulo, seleccionado && styles.triajeTextoActivo]}>
+                      {v.label}
+                    </Text>
+                    <Text style={[styles.triajeSub, seleccionado && styles.triajeSubActivo]}>
+                      {v.desc}
+                    </Text>
+                  </View>
+                  {seleccionado && <MaterialIcons name="check" size={18} color={colors.onPrimary} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Sección Castración */}
         <View style={styles.seccionCard}>
           <View style={styles.seccionHeader}>
             <MaterialIcons name="healing" size={20} color={colors.primary} />
             <Text style={styles.seccionTitulo}>Estado de Castración</Text>
           </View>
           <Text style={styles.seccionDesc}>
-            Prioritario para corte de celos, preñeces no deseadas y marcaje.
+            Prioritario para corte de celos, preñeces no deseadas y habilitación para adopción.
           </Text>
 
           <View style={styles.chipsRow}>
@@ -159,14 +393,14 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
           </View>
         </View>
 
-        {/* Sección Virales VIF / ViLeF (MD3 Segmented Options) */}
+        {/* Sección Virales VIF / ViLeF */}
         <View style={styles.seccionCard}>
           <View style={styles.seccionHeader}>
             <MaterialIcons name="biotech" size={20} color={colors.primary} />
             <Text style={styles.seccionTitulo}>Serología Virales (VIF / ViLeF)</Text>
           </View>
           <Text style={styles.seccionDesc}>
-            Test rápido de inmunodeficiencia y leucemia felina.
+            Los casos positivos (en especial ViLeF) elevan automáticamente la prioridad veterinaria y de aislamiento.
           </Text>
 
           <View style={styles.viralesList}>
@@ -201,7 +435,7 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
           </View>
         </View>
 
-        {/* Sección Desparasitaciones (MD3 Toggle Cards) */}
+        {/* Sección Desparasitaciones */}
         <View style={styles.seccionCard}>
           <View style={styles.seccionHeader}>
             <MaterialIcons name="medication" size={20} color={colors.primary} />
@@ -272,7 +506,7 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
           />
         </View>
 
-        {/* Botón de Guardado (MD3 Filled Button) */}
+        {/* Botón de Guardado */}
         <Pressable
           style={[styles.botonGuardar, guardando && styles.botonDeshabilitado]}
           onPress={handleGuardar}
@@ -283,7 +517,7 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
           ) : (
             <>
               <MaterialIcons name="check-circle" size={22} color={colors.onPrimary} />
-              <Text style={styles.botonGuardarTexto}>Guardar Ficha Sanitaria</Text>
+              <Text style={styles.botonGuardarTexto}>Guardar Ficha y Recalcular Triaje</Text>
             </>
           )}
         </Pressable>
@@ -465,5 +699,77 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 16,
     color: colors.onPrimary,
+  },
+  bannerPrioridad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  bannerUrgente: {
+    backgroundColor: colors.urgenteBg,
+    borderColor: colors.urgente,
+  },
+  bannerAtencion: {
+    backgroundColor: colors.atencionBg,
+    borderColor: colors.atencion,
+  },
+  bannerAldia: {
+    backgroundColor: colors.aldiaBg,
+    borderColor: colors.aldia,
+  },
+  bannerEyebrow: {
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  bannerTitulo: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+  },
+  bannerSub: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  triajeList: {
+    gap: 8,
+    marginTop: 4,
+  },
+  triajeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 52,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  triajeChipActivo: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  triajeTitulo: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    color: colors.text,
+  },
+  triajeTextoActivo: {
+    color: colors.onPrimary,
+  },
+  triajeSub: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  triajeSubActivo: {
+    color: 'rgba(255,255,255,0.85)',
   },
 });

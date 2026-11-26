@@ -9,16 +9,16 @@ import {
   nivelAUrgencia,
 } from '../../domain/models/Caso';
 import { colors, fonts } from '../theme';
+import { fotoCasoSource } from './fotoCaso';
 import { UbicacionCaso } from './UbicacionCaso';
 import { UrgenciaBadge } from './UrgenciaBadge';
 
-const FOTO_DEFAULT = require('../../../assets/images/casos/misho.jpg');
 const COLOR_DIAS = { urgente: colors.urgente, atencion: colors.atencion, aldia: colors.aldia };
 
 export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }) {
   const urgencia = caso.nivelPrioridad ? nivelAUrgencia(caso.nivelPrioridad) : calcularUrgencia(caso, 15);
   const dias = diasEnEspera(caso);
-  const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;
+  const fotoSource = fotoCasoSource(caso);
 
   return (
     <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">

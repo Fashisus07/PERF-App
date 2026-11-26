@@ -1,10 +1,9 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { calcularUrgencia, Caso, diasEnEspera } from '../../domain/models/Caso';
+import { calcularUrgencia, Caso, diasEnEspera, nivelAUrgencia } from '../../domain/models/Caso';
 import { colors, fonts } from '../theme';
+import { fotoCasoSource } from './fotoCaso';
 import { UbicacionCaso } from './UbicacionCaso';
-
-const FOTO_DEFAULT = require('../../../assets/images/casos/misho.jpg');
 
 const URGENCIA = {
   urgente: { label: 'Urgente', icono: 'error', bg: colors.urgenteBg, fg: colors.urgenteText, espera: colors.urgente },
@@ -15,10 +14,10 @@ const URGENCIA = {
 type Props = { caso: Caso; onFicha?: () => void; onAccion?: () => void };
 
 export function CasoOfflineCard({ caso, onFicha, onAccion }: Props) {
-  const urgencia = calcularUrgencia(caso, 10);
+  const urgencia = caso.nivelPrioridad ? nivelAUrgencia(caso.nivelPrioridad) : calcularUrgencia(caso, 15);
   const u = URGENCIA[urgencia];
   const dias = diasEnEspera(caso);
-  const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;
+  const fotoSource = fotoCasoSource(caso);
 
   return (
     <View style={styles.card}>
@@ -26,9 +25,11 @@ export function CasoOfflineCard({ caso, onFicha, onAccion }: Props) {
         <Image source={fotoSource} style={styles.foto} />
         <View style={styles.info}>
           <View style={styles.nameRow}>
-            <Text style={styles.nombre}>{caso.nombreProvisorio}</Text>
+            <Text style={styles.nombre} numberOfLines={1}>{caso.nombreProvisorio}</Text>
             <View style={[styles.badge, { backgroundColor: u.bg }]}>
-              <Text style={[styles.badgeText, { color: u.fg }]}>{u.label}</Text>
+              <Text style={[styles.badgeText, { color: u.fg }]} numberOfLines={1}>
+                {caso.motivoUrgencia || u.label}
+              </Text>
               <MaterialIcons name={u.icono} size={14} color={u.fg} />
             </View>
           </View>

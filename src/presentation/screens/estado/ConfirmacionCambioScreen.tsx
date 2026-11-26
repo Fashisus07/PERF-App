@@ -3,7 +3,9 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EstadoCaso, ETIQUETA_ESTADO } from '../../../domain/models/Caso';
 import { StackHeader } from '../../components/StackHeader';
+import { fotoCasoSource } from '../../components/fotoCaso';
 import { useCaso } from '../../hooks/useCaso';
+import { AvatarPerfil } from '../rescate/BarraRescate';
 import { colors, fonts } from '../../theme';
 import { infoEstado } from './estadosCaso';
 
@@ -51,11 +53,7 @@ export function ConfirmacionCambioScreen({ route, navigation }: { route?: { para
         icono="close"
         onBack={verFicha}
         tituloColor={colors.primary}
-        derecha={
-          <View style={styles.perfil}>
-            <MaterialIcons name="person" size={16} color="#fff" />
-          </View>
-        }
+        derecha={<AvatarPerfil size={32} />}
       />
       <ScrollView contentContainerStyle={[styles.main, { paddingBottom: 32 + bottom }]}>
         <View style={styles.hero}>
@@ -75,7 +73,7 @@ export function ConfirmacionCambioScreen({ route, navigation }: { route?: { para
         <View style={styles.card}>
           <View style={styles.casoRow}>
             <Image
-              source={caso.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg')}
+              source={fotoCasoSource(caso)}
               style={styles.foto}
             />
             <View style={{ flex: 1 }}>
@@ -124,6 +122,12 @@ export function ConfirmacionCambioScreen({ route, navigation }: { route?: { para
                 </View>
               </View>
             )}
+            <View style={styles.detalleFila}>
+              <MaterialIcons name="health-and-safety" size={18} color={colors.primary} />
+              <Text style={styles.detalleTexto}>
+                Triaje actualizado: {caso.motivoUrgencia} ({caso.puntajePrioridad} pts)
+              </Text>
+            </View>
             <View style={styles.detalleFila}>
               <MaterialIcons name="schedule" size={18} color={colors.primary} />
               <Text style={styles.detalleTexto}>Modificado hoy a las {p.hora} hs</Text>

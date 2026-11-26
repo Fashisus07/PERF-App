@@ -3,6 +3,7 @@ import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AvisoTurno, ETIQUETA_AVISO, ETIQUETA_MOTIVO, etiquetaDia, diaLargo, horaDe, mismoDia, sumarDias } from '../../../domain/models/Turno';
 import { StackHeader } from '../../components/StackHeader';
+import { fotoCasoSource } from '../../components/fotoCaso';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { useTurnoCompleto } from '../../hooks/useTurnos';
 import { colors, fonts } from '../../theme';
@@ -39,7 +40,7 @@ export function TurnoAgendadoScreen({ route, navigation }: { route?: { params?: 
     );
   };
 
-  const fotoCaso = caso.fotoUri ? { uri: caso.fotoUri } : require('../../../../assets/images/casos/misho.jpg');
+  const fotoCaso = fotoCasoSource(caso);
 
   return (
     <View style={styles.screen}>

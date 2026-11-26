@@ -165,13 +165,38 @@ export function calcularUrgencia(caso: Partial<Caso>, umbralDias: number = 15): 
   }
   const gravedad = caso.gravedadClinica ?? 'MODERADA';
   const vuln = caso.vulnerabilidad ?? 'ESTABLE';
+  const virales = caso.sanidad?.virales;
+  const castrado = caso.sanidad?.castrado;
   const fecha = caso.fechaRescate ?? Date.now();
   const dias = Math.max(0, Math.floor((Date.now() - fecha) / (1000 * 60 * 60 * 24)));
 
-  if (gravedad === 'CRITICA' || vuln === 'LACTANTE_SIN_MADRE' || vuln === 'SIN_TRANSITO' || dias > umbralDias) {
+  if (
+    gravedad === 'CRITICA' ||
+    vuln === 'LACTANTE_SIN_MADRE' ||
+    vuln === 'SIN_TRANSITO' ||
+    virales === 'AMBOS_POSITIVOS' ||
+    virales === 'VILEF_POSITIVO' ||
+    dias > umbralDias
+  ) {
     return 'urgente';
   }
-  if (gravedad === 'MODERADA' || vuln === 'EN_TRATAMIENTO' || dias >= Math.ceil(0.7 * umbralDias)) {
+  const desp1 = caso.sanidad?.fechaPrimeraDesparasitacion;
+  const desp2 = caso.sanidad?.fechaSegundaDesparasitacion;
+  const despPendiente =
+    caso.sanidad &&
+    (!desp1 || (!desp2 && Math.floor(Math.max(0, Date.now() - desp1) / (1000 * 60 * 60 * 24)) >= 14));
+
+  if (
+    caso.estadoCaso === 'EN_CLINICA' ||
+    gravedad === 'MODERADA' ||
+    vuln === 'EN_TRATAMIENTO' ||
+    virales === 'VIF_POSITIVO' ||
+    virales === 'PENDIENTE' ||
+    castrado === 'NO' ||
+    castrado === 'PENDIENTE' ||
+    despPendiente ||
+    dias >= Math.ceil(0.7 * umbralDias)
+  ) {
     return 'atencion';
   }
   return 'aldia';

@@ -220,4 +220,111 @@ describe('CalcularPrioridadCasoUseCase (Modelo Multicriterio PERF)', () => {
     expect(res.nivelPrioridad).toBe('URGENTE');
     expect(res.motivoUrgencia).toBe('URGENTE • +8 días');
   });
+
+  test('Ficha sanitaria: ViLeF positivo o VIF+ViLeF elevan inmediatamente a URGENTE', () => {
+    const vilef = useCase.ejecutar(
+      {
+        estadoCaso: 'EN_TRANSITO',
+        gravedadClinica: 'SANA',
+        vulnerabilidad: 'ESTABLE',
+        fechaRescate: AHORA - 2 * DIA_MS,
+        sanidad: {
+          castrado: 'SI',
+          virales: 'VILEF_POSITIVO',
+          fechaPrimeraDesparasitacion: AHORA - DIA_MS,
+          fechaSegundaDesparasitacion: AHORA,
+        },
+      },
+      15,
+      AHORA
+    );
+
+    const ambos = useCase.ejecutar(
+      {
+        estadoCaso: 'EN_TRANSITO',
+        gravedadClinica: 'LEVE',
+        vulnerabilidad: 'ESTABLE',
+        fechaRescate: AHORA - 2 * DIA_MS,
+        sanidad: {
+          castrado: 'SI',
+          virales: 'AMBOS_POSITIVOS',
+          fechaPrimeraDesparasitacion: AHORA - DIA_MS,
+          fechaSegundaDesparasitacion: AHORA,
+        },
+      },
+      15,
+      AHORA
+    );
+
+    expect(vilef.nivelPrioridad).toBe('URGENTE');
+    expect(vilef.motivoUrgencia).toBe('URGENTE • ViLeF Positivo');
+    expect(ambos.nivelPrioridad).toBe('URGENTE');
+    expect(ambos.motivoUrgencia).toBe('URGENTE • VIF + ViLeF Positivo');
+    expect(ambos.puntajePrioridad).toBeGreaterThan(vilef.puntajePrioridad);
+  });
+
+  test('Ficha sanitaria: castración, test viral o desparasitación pendiente elevan prioridad a ATENCION', () => {
+    const conPendientes = useCase.ejecutar(
+      {
+        estadoCaso: 'EN_TRANSITO',
+        gravedadClinica: 'SANA',
+        vulnerabilidad: 'ESTABLE',
+        fechaRescate: AHORA - 2 * DIA_MS,
+        sanidad: {
+          castrado: 'PENDIENTE',
+          virales: 'NEGATIVO',
+          fechaPrimeraDesparasitacion: AHORA - DIA_MS,
+          fechaSegundaDesparasitacion: AHORA,
+        },
+      },
+      15,
+      AHORA
+    );
+
+    const sanaCompleta = useCase.ejecutar(
+      {
+        estadoCaso: 'EN_ADOPCION',
+        gravedadClinica: 'SANA',
+        vulnerabilidad: 'ESTABLE',
+        fechaRescate: AHORA - 2 * DIA_MS,
+        sanidad: {
+          castrado: 'SI',
+          virales: 'NEGATIVO',
+          fechaPrimeraDesparasitacion: AHORA - DIA_MS,
+          fechaSegundaDesparasitacion: AHORA,
+        },
+      },
+      15,
+      AHORA
+    );
+
+    expect(conPendientes.nivelPrioridad).toBe('ATENCION');
+    expect(conPendientes.motivoUrgencia).toBe('ATENCIÓN • Castración pendiente');
+    expect(sanaCompleta.nivelPrioridad).toBe('AL_DIA');
+    expect(sanaCompleta.motivoUrgencia).toBe('Al día');
+    expect(conPendientes.puntajePrioridad).toBeGreaterThan(sanaCompleta.puntajePrioridad);
+  });
+
+  test('Estado operativo EN_CLINICA eleva prioridad médica automáticamente', () => {
+    const enClinica = useCase.ejecutar(
+      {
+        estadoCaso: 'EN_CLINICA',
+        gravedadClinica: 'SANA',
+        vulnerabilidad: 'ESTABLE',
+        fechaRescate: AHORA - 1 * DIA_MS,
+        sanidad: {
+          castrado: 'SI',
+          virales: 'NEGATIVO',
+          fechaPrimeraDesparasitacion: AHORA - DIA_MS,
+          fechaSegundaDesparasitacion: AHORA,
+        },
+      },
+      15,
+      AHORA
+    );
+
+    expect(enClinica.nivelPrioridad).toBe('ATENCION');
+    expect(enClinica.motivoUrgencia).toBe('ATENCIÓN • En clínica');
+    expect(enClinica.puntajePrioridad).toBeGreaterThan(500);
+  });
 });

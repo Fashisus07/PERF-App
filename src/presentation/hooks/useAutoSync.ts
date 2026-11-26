@@ -18,7 +18,7 @@ export function useAutoSync() {
       sincronizarAhora
         .ejecutar(true)
         .then(async () => {
-          await Promise.all([cargarCasos(10, true), cargarTurnos()]);
+          await Promise.all([cargarCasos(undefined, true), cargarTurnos()]);
         })
         .catch(() => {})
         .finally(() => {

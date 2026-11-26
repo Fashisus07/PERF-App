@@ -14,11 +14,10 @@ import {
 import { Caso, EstadoCaso, ETIQUETA_ESTADO } from '../../../domain/models/Caso';
 import { casoRepository } from '../../../di/container';
 import { AppHeader } from '../../components/AppHeader';
+import { fotoCasoSource } from '../../components/fotoCaso';
 import { colors, fonts } from '../../theme';
 
 type FiltroArchivo = 'todos' | 'ADOPTADO' | 'FALLECIDO';
-
-const FOTO_DEFAULT = require('../../../../assets/images/casos/misho.jpg');
 
 export function ArchivoScreen({ navigation }: { navigation?: any }) {
   const [casosArchivados, setCasosArchivados] = useState<Caso[]>([]);
@@ -192,7 +191,7 @@ export function ArchivoScreen({ navigation }: { navigation?: any }) {
             </View>
           }
           renderItem={({ item }) => {
-            const fotoSource = item.fotoUri ? { uri: item.fotoUri } : FOTO_DEFAULT;
+            const fotoSource = fotoCasoSource(item);
             const esAdoptado = item.estadoCaso === 'ADOPTADO';
             const fechaCierre = new Date(item.updatedAt).toLocaleDateString('es-AR', {
               day: '2-digit',

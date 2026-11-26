@@ -8,7 +8,7 @@ import { authRepository } from '../../../di/container';
 import { useAjustes, sincronizarAhora } from '../../hooks/useAjustes';
 import { useOnline } from '../../hooks/useOnline';
 import { colors, fonts } from '../../theme';
-import { AvatarPerfil } from '../rescate/BarraRescate';
+import { AvatarPerfil, notificarCambioVoluntario } from '../rescate/BarraRescate';
 
 const VERSION: string = require('../../../../app.json').expo.version;
 
@@ -88,6 +88,7 @@ export function AjustesScreen({ navigation }: Props) {
 
   const cerrarSesion = async () => {
     await authRepository.cerrarSesion();
+    notificarCambioVoluntario('');
     navigation?.reset?.({ index: 0, routes: [{ name: 'Login' }] });
   };
   const porcentaje = resumen ? Math.min(100, (resumen.megabytes / resumen.capacidadMegabytes) * 100) : 0;
@@ -101,9 +102,7 @@ export function AjustesScreen({ navigation }: Props) {
             <Text style={styles.volverText}>Volver</Text>
           </Pressable>
           <Text style={styles.titulo}>Ajustes</Text>
-          <Pressable onPress={() => navigation?.navigate?.('PerfilVoluntario')} accessibilityLabel="Ver perfil">
-            <AvatarPerfil />
-          </Pressable>
+          <AvatarPerfil />
         </View>
       </View>
 

@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  calcularUrgencia,
   diasEnEspera,
   ETIQUETA_CASTRACION,
   ETIQUETA_ESTADO,
@@ -23,13 +22,15 @@ import {
   EventoHistorial,
   nivelAUrgencia,
 } from '../../../domain/models/Caso';
+import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
+import { fotoCasoSource } from '../../components/fotoCaso';
 import { StackHeader } from '../../components/StackHeader';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
+import { obtenerAjustes } from '../../hooks/useAjustes';
 import { useCaso } from '../../hooks/useCaso';
 import { colors, fonts } from '../../theme';
 import { ESTADOS_CASO, infoEstado } from '../estado/estadosCaso';
 
-const FOTO_DEFAULT = require('../../../../assets/images/casos/misho.jpg');
 const COLOR_PUNTO = [colors.primary, colors.atencion, '#bdc9c6'];
 
 type Props = {
@@ -43,6 +44,18 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
   const { caso, historial, cargando } = useCaso(casoId);
   const [favorito, setFavorito] = useState(false);
   const [aviso, setAviso] = useState(false);
+  const [umbralDias, setUmbralDias] = useState(15);
+
+  useEffect(() => {
+    const cargarUmbral = () => {
+      obtenerAjustes()
+        .then((a) => setUmbralDias(a.umbralUrgenteDias))
+        .catch(() => {});
+    };
+    cargarUmbral();
+    const unsub = navigation?.addListener?.('focus', cargarUmbral);
+    return unsub;
+  }, [navigation]);
 
   const estadoActualizado = route?.params?.estadoActualizado;
   useEffect(() => {
@@ -52,7 +65,24 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
     return () => clearTimeout(t);
   }, [estadoActualizado]);
 
-  const header = <StackHeader titulo="Ficha Operativa del Caso" onBack={() => navigation?.goBack?.()} />;
+  const header = (
+    <StackHeader
+      titulo="Ficha Operativa del Caso"
+      onBack={() => navigation?.goBack?.()}
+      derecha={
+        caso ? (
+          <Pressable
+            style={styles.btnEditarHeader}
+            onPress={() => navigation?.navigate?.('EditarCaso', { casoId: caso.id })}
+            accessibilityLabel="Editar datos del caso"
+          >
+            <MaterialIcons name="edit" size={16} color={colors.primary} />
+            <Text style={styles.btnEditarText}>Editar</Text>
+          </Pressable>
+        ) : undefined
+      }
+    />
+  );
 
   if (cargando || !caso) {
     return (
@@ -84,11 +114,12 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
     );
   }
 
-  const urgencia = caso.nivelPrioridad ? nivelAUrgencia(caso.nivelPrioridad) : calcularUrgencia(caso, 15);
+  const calculoLive = calcularPrioridadCasoUseCase.ejecutar(caso, umbralDias);
+  const urgencia = nivelAUrgencia(calculoLive.nivelPrioridad);
   const dias = diasEnEspera(caso);
   const estadoActual = caso.estadoCaso ?? 'EN_TRANSITO';
   const esArchivado = estadoActual === 'ADOPTADO' || estadoActual === 'FALLECIDO';
-  const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;
+  const fotoSource = fotoCasoSource(caso);
   const fechaRescateTexto = new Date(caso.fechaRescate).toLocaleDateString('es-AR', {
     day: '2-digit',
     month: 'short',
@@ -116,7 +147,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
         <View style={styles.hero}>
           <Image source={fotoSource} style={styles.heroImg} resizeMode="cover" />
           <View style={styles.badgesRow}>
-            <UrgenciaBadge urgencia={urgencia} motivo={caso.motivoUrgencia} grande />
+            <UrgenciaBadge urgencia={urgencia} motivo={calculoLive.motivoUrgencia} grande />
             <View style={styles.badgeEspera}>
               <Text style={styles.badgeEsperaText}>
                 {dias} {dias === 1 ? 'día' : 'días'} en espera
@@ -224,39 +255,20 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
         {/* Evaluación de Triaje y Prioridad Multicriterio */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <View style={styles.cardTitulo}>
+            <View style={[styles.cardTitulo, { flex: 1 }]}>
               <MaterialIcons name="health-and-safety" size={22} color={colors.primary} />
-              <Text style={styles.seccionTitulo}>Triaje y Priorización Multicriterio</Text>
+              <Text style={styles.seccionTitulo}>Triaje y Priorización</Text>
             </View>
-            <View
-              style={[
-                styles.badgePrioridadMini,
-                {
-                  backgroundColor:
-                    urgencia === 'urgente'
-                      ? colors.urgenteBg
-                      : urgencia === 'atencion'
-                      ? colors.atencionBg
-                      : colors.aldiaBg,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.badgePrioridadMiniTexto,
-                  {
-                    color:
-                      urgencia === 'urgente'
-                        ? colors.urgenteText
-                        : urgencia === 'atencion'
-                        ? colors.atencionText
-                        : colors.aldiaText,
-                  },
-                ]}
+            {!esArchivado && (
+              <Pressable
+                style={styles.btnEditarSanidad}
+                onPress={() => navigation?.navigate?.('EditarSanidad', { casoId: caso.id, foco: 'triaje' })}
+                accessibilityLabel="Editar triaje y estado de salud"
               >
-                {caso.puntajePrioridad} pts
-              </Text>
-            </View>
+                <MaterialIcons name="edit" size={16} color={colors.primary} />
+                <Text style={styles.btnEditarText}>Editar triaje</Text>
+              </Pressable>
+            )}
           </View>
 
           <View style={styles.sanidadGrid}>
@@ -273,12 +285,58 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               </Text>
             </View>
             <View style={[styles.sanidadItem, { width: '100%' }]}>
-              <Text style={styles.sanidadLabel}>Criterio de Urgencia</Text>
-              <Text style={[styles.sanidadValor, { fontFamily: fonts.bold, color: colors.primary }]}>
-                {caso.motivoUrgencia || 'Al día'}
-              </Text>
+              <View style={styles.criterioRow}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={styles.sanidadLabel}>Criterio de Urgencia</Text>
+                  <Text style={[styles.sanidadValor, { fontFamily: fonts.bold, color: colors.primary }]}>
+                    {calculoLive.motivoUrgencia}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.badgePrioridadMini,
+                    {
+                      backgroundColor:
+                        urgencia === 'urgente'
+                          ? colors.urgenteBg
+                          : urgencia === 'atencion'
+                          ? colors.atencionBg
+                          : colors.aldiaBg,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.badgePrioridadMiniTexto,
+                      {
+                        color:
+                          urgencia === 'urgente'
+                            ? colors.urgenteText
+                            : urgencia === 'atencion'
+                            ? colors.atencionText
+                            : colors.aldiaText,
+                      },
+                    ]}
+                  >
+                    {calculoLive.puntajePrioridad} pts
+                  </Text>
+                </View>
+              </View>
             </View>
           </View>
+
+          {calculoLive.factoresMedicos.length > 0 && (
+            <View style={styles.factoresBox}>
+              <Text style={styles.factoresLabel}>Factores de la ficha médica y operativa:</Text>
+              <View style={styles.factoresChips}>
+                {calculoLive.factoresMedicos.map((factor, idx) => (
+                  <View key={idx} style={styles.factorChip}>
+                    <Text style={styles.factorChipText}>{factor}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Ficha Sanitaria Felina */}
@@ -343,6 +401,14 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               <MaterialIcons name="home" size={22} color={colors.primary} />
               <Text style={styles.seccionTitulo}>Hogar de Tránsito</Text>
             </View>
+            <Pressable
+              style={styles.btnEditarSanidad}
+              onPress={() => navigation?.navigate?.('EditarCaso', { casoId: caso.id })}
+              accessibilityLabel="Editar hogar de tránsito"
+            >
+              <MaterialIcons name="edit" size={16} color={colors.primary} />
+              <Text style={styles.btnEditarText}>Editar</Text>
+            </Pressable>
           </View>
 
           <View style={styles.transitoRow}>
@@ -371,30 +437,42 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
         </View>
 
         {/* Historia y Comportamiento */}
-        {(caso.historiaOrigen || caso.personalidad) && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitulo}>
-                <MaterialIcons name="psychology" size={22} color={colors.primary} />
-                <Text style={styles.seccionTitulo}>Historia y Comportamiento</Text>
-              </View>
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitulo}>
+              <MaterialIcons name="psychology" size={22} color={colors.primary} />
+              <Text style={styles.seccionTitulo}>Historia y Comportamiento</Text>
             </View>
-
-            {caso.historiaOrigen ? (
-              <View style={styles.bloqueTexto}>
-                <Text style={styles.bloqueLabel}>Antecedentes / Origen:</Text>
-                <Text style={styles.bloqueContenido}>{caso.historiaOrigen}</Text>
-              </View>
-            ) : null}
-
-            {caso.personalidad ? (
-              <View style={styles.bloqueTexto}>
-                <Text style={styles.bloqueLabel}>Personalidad:</Text>
-                <Text style={styles.bloqueContenido}>{caso.personalidad}</Text>
-              </View>
-            ) : null}
+            <Pressable
+              style={styles.btnEditarSanidad}
+              onPress={() => navigation?.navigate?.('EditarCaso', { casoId: caso.id })}
+              accessibilityLabel="Editar historia y comportamiento"
+            >
+              <MaterialIcons name="edit" size={16} color={colors.primary} />
+              <Text style={styles.btnEditarText}>Editar</Text>
+            </Pressable>
           </View>
-        )}
+
+          {caso.historiaOrigen ? (
+            <View style={styles.bloqueTexto}>
+              <Text style={styles.bloqueLabel}>Antecedentes / Origen:</Text>
+              <Text style={styles.bloqueContenido}>{caso.historiaOrigen}</Text>
+            </View>
+          ) : null}
+
+          {caso.personalidad ? (
+            <View style={styles.bloqueTexto}>
+              <Text style={styles.bloqueLabel}>Personalidad:</Text>
+              <Text style={styles.bloqueContenido}>{caso.personalidad}</Text>
+            </View>
+          ) : null}
+
+          {!caso.historiaOrigen && !caso.personalidad && (
+            <Text style={styles.historialVacioTexto}>
+              Sin antecedentes ni notas de comportamiento cargadas. Toca Editar para completarlas.
+            </Text>
+          )}
+        </View>
 
         {/* Historial de Eventos (SQLite) */}
         <View style={[styles.card, { gap: 16 }]}>
@@ -483,7 +561,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
       {aviso && (
         <View style={[styles.toast, { bottom: 24 + bottom }]} pointerEvents="none">
           <MaterialIcons name="check-circle" size={20} color={colors.toastIcon} />
-          <Text style={styles.toastText}>Estado actualizado con éxito</Text>
+          <Text style={styles.toastText}>Ficha actualizada con éxito</Text>
         </View>
       )}
     </View>
@@ -801,6 +879,48 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: colors.primarySoft,
+  },
+  btnEditarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: colors.primarySoft,
+  },
+  criterioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  factoresBox: {
+    gap: 6,
+    paddingTop: 2,
+  },
+  factoresLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.textSubtle,
+  },
+  factoresChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  factorChip: {
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  factorChipText: {
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    color: colors.textMuted,
   },
   btnEditarText: {
     fontFamily: fonts.semibold,

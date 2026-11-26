@@ -3,6 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAutoSync } from '../hooks/useAutoSync';
+import { AvatarPerfil } from '../screens/rescate/BarraRescate';
 import { colors, fonts } from '../theme';
 
 export function AppHeader({ subtitle, onSettings }: { subtitle: string; onSettings?: () => void }) {
@@ -47,9 +48,7 @@ export function AppHeader({ subtitle, onSettings }: { subtitle: string; onSettin
           <Pressable style={styles.iconBtn} onPress={abrirAjustes} accessibilityLabel="Ajustes">
             <MaterialIcons name="settings" size={24} color={colors.text} />
           </Pressable>
-          <Pressable onPress={() => navigation.navigate('PerfilVoluntario')} accessibilityLabel="Ver perfil">
-            <Image source={require('../../../assets/images/avatar.jpg')} style={styles.avatar} />
-          </Pressable>
+          <AvatarPerfil size={36} />
         </View>
       </View>
     </View>
@@ -86,6 +85,5 @@ const styles = StyleSheet.create({
   syncPillText: { fontFamily: fonts.bold, fontSize: 10, color: colors.primary },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   iconBtn: { width: 48, height: 48, borderRadius: 9999, alignItems: 'center', justifyContent: 'center' },
-  avatar: { width: 32, height: 32, borderRadius: 9999 },
 });
 

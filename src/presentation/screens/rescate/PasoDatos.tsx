@@ -82,6 +82,12 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
     gravedadClinica: b.gravedadClinica,
     vulnerabilidad: b.vulnerabilidad,
     fechaRescate: Date.now(),
+    sanidad: {
+      castrado: b.castrado,
+      virales: b.virales,
+      fechaPrimeraDesparasitacion: b.fechaPrimeraDesparasitacion,
+      fechaSegundaDesparasitacion: b.fechaSegundaDesparasitacion,
+    },
   });
 
   const continuar = () => {
@@ -120,7 +126,7 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
             <Text style={styles.campoLabel}>Nombre provisorio / Camada *</Text>
             <TextInput
               style={[styles.input, intento && !b.nombreProvisorio.trim() && styles.inputError]}
-              placeholder="Ej: Misho / Mamá con 4 bebés"
+              placeholder="Ej: Nube / Bimba con 3 cachorros"
               placeholderTextColor={colors.placeholder}
               value={b.nombreProvisorio}
               onChangeText={(nombreProvisorio) => onCambio({ nombreProvisorio })}

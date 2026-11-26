@@ -1,7 +1,14 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { ResumenAlmacenamiento } from '../../domain/models/Ajustes';
 import { Caso, EstadoCaso, EventoHistorial } from '../../domain/models/Caso';
-import { CasoRepository, OperacionPendiente } from '../../domain/repositories/CasoRepository';
+import {
+  CasoRepository,
+  OpcionesActualizacionEstado,
+  OperacionPendiente,
+} from '../../domain/repositories/CasoRepository';
+import { calcularPrioridadCasoUseCase } from '../../domain/usecases/CalcularPrioridadCasoUseCase';
+import { AjustesRepositoryImpl } from '../local/AjustesRepositoryImpl';
 import { getDatabase } from '../local/Database';
 import { generarUUID } from '../local/uuid';
 import {
@@ -12,7 +19,8 @@ import {
   CasoRow,
   EventoHistorialRow,
 } from '../mappers/CasoMapper';
-import { casosMock } from '../mock/casosMock';
+import { casosMock, IDS_CASOS_MOCK_ANTERIORES } from '../mock/casosMock';
+import { camposComparables } from '../remote/sincronizacion/mapeo';
 import { sincronizarConSupabase } from '../remote/sincronizacion/SincronizadorSupabase';
 
 export class CasoRepositoryImpl implements CasoRepository {
@@ -31,12 +39,29 @@ export class CasoRepositoryImpl implements CasoRepository {
 
   private async sembrar(): Promise<void> {
     const db = await getDatabase();
+    const CLAVE_SEMILLA = '@perf_seed_casos_version';
+    const VERSION_SEMILLA = 'v2_20_casos';
+    const versionActual = await AsyncStorage.getItem(CLAVE_SEMILLA).catch(() => null);
     const countResult = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM casos;'
     );
-    if (!countResult || countResult.count === 0) {
-      // Poblar con casos iniciales de PERF
+
+    if (versionActual !== VERSION_SEMILLA || !countResult || countResult.count === 0) {
+      // Eliminar únicamente los casos hardcodeados anteriores (conservar casos creados por voluntarios)
+      for (const oldId of IDS_CASOS_MOCK_ANTERIORES) {
+        await db.runAsync('DELETE FROM turnos WHERE caso_id = ?;', [oldId]);
+        await db.runAsync('DELETE FROM eventos_historial WHERE caso_id = ?;', [oldId]);
+        await db.runAsync('DELETE FROM casos WHERE id = ?;', [oldId]);
+      }
+
+      // Poblar con los 20 casos iniciales completos de PERF
       for (const caso of casosMock) {
+        const existe = await db.getFirstAsync<{ id: string }>(
+          'SELECT id FROM casos WHERE id = ?;',
+          [caso.id]
+        );
+        if (existe) continue;
+
         const params = casoToParams(caso);
         await db.runAsync(
           `INSERT INTO casos (
@@ -78,6 +103,8 @@ export class CasoRepositoryImpl implements CasoRepository {
           eventoToParams(eventoLlegada)
         );
       }
+
+      await AsyncStorage.setItem(CLAVE_SEMILLA, VERSION_SEMILLA).catch(() => {});
     }
     this.seeded = true;
   }
@@ -175,6 +202,16 @@ export class CasoRepositoryImpl implements CasoRepository {
     return caso;
   }
 
+  private async obtenerUmbralActual(umbralExplicito?: number): Promise<number> {
+    if (umbralExplicito != null) return umbralExplicito;
+    try {
+      const ajustes = await new AjustesRepositoryImpl().obtener();
+      return ajustes.umbralUrgenteDias;
+    } catch {
+      return 15;
+    }
+  }
+
   async actualizar(caso: Caso): Promise<Caso> {
     const anterior = await this.obtenerPorId(caso.id);
     if (anterior && (anterior.estadoCaso === 'ADOPTADO' || anterior.estadoCaso === 'FALLECIDO') && caso.estadoCaso !== anterior.estadoCaso) {
@@ -182,7 +219,31 @@ export class CasoRepositoryImpl implements CasoRepository {
     }
 
     const db = await getDatabase();
-    const params = casoToParams(caso);
+    const ahora = Date.now();
+    const umbralDias = await this.obtenerUmbralActual();
+    const prioridad = calcularPrioridadCasoUseCase.ejecutar(
+      {
+        estadoCaso: caso.estadoCaso,
+        gravedadClinica: caso.gravedadClinica,
+        vulnerabilidad: caso.vulnerabilidad,
+        fechaRescate: caso.fechaRescate,
+        sanidad: caso.sanidad,
+      },
+      umbralDias,
+      ahora
+    );
+
+    const casoActualizado: Caso = {
+      ...caso,
+      nivelPrioridad: prioridad.nivelPrioridad,
+      motivoUrgencia: prioridad.motivoUrgencia,
+      puntajePrioridad: prioridad.puntajePrioridad,
+      esUrgente: prioridad.esUrgente,
+      syncStatus: 'PENDING',
+      updatedAt: ahora,
+    };
+
+    const params = casoToParams(casoActualizado, umbralDias);
 
     await db.runAsync(
       `UPDATE casos SET
@@ -223,40 +284,95 @@ export class CasoRepositoryImpl implements CasoRepository {
       params
     );
 
-    // Delta: calcular solo campos modificados
-    const changedFields: Record<string, any> = { id: caso.id, updated_at: caso.updatedAt };
+    // Delta: calcular solo campos modificados en nombres de columnas de servidor
+    const changedFields: Record<string, any> = { id: casoActualizado.id, updated_at: ahora };
     if (anterior) {
-      for (const [k, v] of Object.entries(caso)) {
-        if (JSON.stringify(v) !== JSON.stringify((anterior as any)[k])) {
+      const compAnterior = camposComparables(anterior);
+      const compNuevo = camposComparables(casoActualizado);
+      for (const [k, v] of Object.entries(compNuevo)) {
+        if (compAnterior[k] !== v) {
           changedFields[k] = v;
         }
       }
     } else {
-      Object.assign(changedFields, caso);
+      Object.assign(changedFields, casoActualizado);
     }
 
     const idempotencyKey = generarUUID();
     await db.runAsync(
       `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
        VALUES (?, ?, ?, ?, 0, ?);`,
-      [idempotencyKey, 'CASO', 'UPDATE', JSON.stringify(changedFields), Date.now()]
+      [idempotencyKey, 'CASO', 'UPDATE', JSON.stringify(changedFields), ahora]
     );
 
-    return caso;
+    return casoActualizado;
   }
 
-  async actualizarEstado(id: string, nuevoEstado: EstadoCaso, motivo?: string): Promise<Caso> {
+  async actualizarEstado(
+    id: string,
+    nuevoEstado: EstadoCaso,
+    motivo?: string,
+    opciones?: OpcionesActualizacionEstado
+  ): Promise<Caso> {
     const anterior = await this.obtenerPorId(id);
-    if (anterior && (anterior.estadoCaso === 'ADOPTADO' || anterior.estadoCaso === 'FALLECIDO')) {
+    if (!anterior) throw new Error('Caso no encontrado');
+    if (anterior.estadoCaso === 'ADOPTADO' || anterior.estadoCaso === 'FALLECIDO') {
       throw new Error(`El caso ya está cerrado (${anterior.estadoCaso}) y no se puede modificar su estado.`);
     }
 
     const db = await getDatabase();
     const ahora = Date.now();
+    const umbralDias = await this.obtenerUmbralActual(opciones?.umbralDias);
+
+    const gravedadClinica = opciones?.gravedadClinica ?? anterior.gravedadClinica;
+    const vulnerabilidad = opciones?.vulnerabilidad ?? anterior.vulnerabilidad;
+    const destinoLimpio = opciones?.destino?.trim();
+    const actualizaTransito =
+      !!destinoLimpio &&
+      (nuevoEstado === 'EN_TRANSITO' ||
+        nuevoEstado === 'EN_CLINICA' ||
+        nuevoEstado === 'PRE_ADOPTADO' ||
+        nuevoEstado === 'ADOPTADO');
+    const transitoNombre = actualizaTransito ? destinoLimpio : anterior.transito.nombre || null;
+
+    const prioridad = calcularPrioridadCasoUseCase.ejecutar(
+      {
+        estadoCaso: nuevoEstado,
+        gravedadClinica,
+        vulnerabilidad,
+        fechaRescate: anterior.fechaRescate,
+        sanidad: anterior.sanidad,
+      },
+      umbralDias,
+      ahora
+    );
 
     await db.runAsync(
-      `UPDATE casos SET estado_caso = ?, sync_status = 'PENDING', updated_at = ? WHERE id = ?;`,
-      [nuevoEstado, ahora, id]
+      `UPDATE casos SET
+        estado_caso = $estado_caso,
+        gravedad_clinica = $gravedad_clinica,
+        vulnerabilidad = $vulnerabilidad,
+        nivel_prioridad = $nivel_prioridad,
+        motivo_urgencia = $motivo_urgencia,
+        puntaje_prioridad = $puntaje_prioridad,
+        es_urgente = $es_urgente,
+        transito_nombre = $transito_nombre,
+        sync_status = $sync_status,
+        updated_at = $updated_at
+      WHERE id = $id;`,
+      {
+        $id: id,
+        $estado_caso: nuevoEstado,
+        $gravedad_clinica: gravedadClinica,
+        $vulnerabilidad: vulnerabilidad,
+        $nivel_prioridad: prioridad.nivelPrioridad,
+        $motivo_urgencia: prioridad.motivoUrgencia,
+        $puntaje_prioridad: prioridad.puntajePrioridad,
+        $es_urgente: prioridad.esUrgente ? 1 : 0,
+        $transito_nombre: transitoNombre,
+        $sync_status: 'PENDING',
+        $updated_at: ahora,
+      }
     );
 
     const evento: EventoHistorial = {
@@ -274,11 +390,25 @@ export class CasoRepositoryImpl implements CasoRepository {
       eventoToParams(evento)
     );
 
+    const deltaPayload: Record<string, any> = {
+      id,
+      estado_caso: nuevoEstado,
+      gravedad_clinica: gravedadClinica,
+      vulnerabilidad,
+      nivel_prioridad: prioridad.nivelPrioridad,
+      motivo_urgencia: prioridad.motivoUrgencia,
+      puntaje_prioridad: prioridad.puntajePrioridad,
+      updated_at: ahora,
+    };
+    if (actualizaTransito) {
+      deltaPayload.transito_nombre = transitoNombre;
+    }
+
     const idempotencyKey = generarUUID();
     await db.runAsync(
       `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
        VALUES (?, ?, ?, ?, 0, ?);`,
-      [idempotencyKey, 'CASO', 'UPDATE', JSON.stringify({ id, estadoCaso: nuevoEstado, motivo, updated_at: ahora }), ahora]
+      [idempotencyKey, 'CASO', 'UPDATE', JSON.stringify(deltaPayload), ahora]
     );
 
     // Si se cierra el caso por adopción o fallecimiento, cancelar recordatorios de turnos pendientes
@@ -296,9 +426,22 @@ export class CasoRepositoryImpl implements CasoRepository {
       } catch { }
     }
 
-    const actualizado = await this.obtenerPorId(id);
-    if (!actualizado) throw new Error('Caso no encontrado tras actualizar');
-    return actualizado;
+    return {
+      ...anterior,
+      estadoCaso: nuevoEstado,
+      gravedadClinica,
+      vulnerabilidad,
+      nivelPrioridad: prioridad.nivelPrioridad,
+      motivoUrgencia: prioridad.motivoUrgencia,
+      puntajePrioridad: prioridad.puntajePrioridad,
+      esUrgente: prioridad.esUrgente,
+      transito: {
+        ...anterior.transito,
+        nombre: transitoNombre ?? '',
+      },
+      syncStatus: 'PENDING',
+      updatedAt: ahora,
+    };
   }
 
   async resumenAlmacenamiento(): Promise<ResumenAlmacenamiento> {

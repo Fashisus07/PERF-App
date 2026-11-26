@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authRepository } from '../../../di/container';
 import { useOnline } from '../../hooks/useOnline';
+import { notificarCambioVoluntario } from '../rescate/BarraRescate';
 import { colors, fonts } from '../../theme';
 
 type Props = {
@@ -62,7 +63,8 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
 
     setIniciando(true);
     try {
-      await authRepository.iniciarSesion(usuario, clave);
+      const vol = await authRepository.iniciarSesion(usuario, clave);
+      notificarCambioVoluntario(vol.nombre);
       // "Recordar usuario" solo guarda el correo para precompletarlo; la sesión la mantiene Supabase.
       if (recordar) await AsyncStorage.setItem('perf.recordar_usuario', usuario.trim().toLowerCase());
       else await AsyncStorage.removeItem('perf.recordar_usuario');
@@ -190,12 +192,6 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
               </View>
               <Text style={styles.textDark}>Recordar usuario</Text>
             </Pressable>
-
-            {onRecuperarClave && (
-              <Pressable onPress={onRecuperarClave} hitSlop={8}>
-                <Text style={styles.olvidoText}>¿Olvidaste tu clave?</Text>
-              </Pressable>
-            )}
           </View>
 
           <View style={styles.actions}>
@@ -219,7 +215,8 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
                 setIniciando(true);
                 try {
                   if (authRepository.iniciarSesionComoDemo) {
-                    await authRepository.iniciarSesionComoDemo();
+                    const demo = await authRepository.iniciarSesionComoDemo();
+                    notificarCambioVoluntario(demo.nombre);
                   }
                   onLogin();
                 } catch (e: any) {
@@ -316,13 +313,7 @@ const styles = StyleSheet.create({
   recordarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingVertical: 4,
-  },
-  olvidoText: {
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    color: colors.primary,
   },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkbox: {

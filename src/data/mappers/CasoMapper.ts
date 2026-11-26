@@ -96,18 +96,25 @@ export interface OperacionPendienteRow {
 export function casoFromRow(row: CasoRow): Caso {
   const gravedad = (row.gravedad_clinica as GravedadClinica) || (row.es_urgente === 1 ? 'CRITICA' : 'MODERADA');
   const vulnerabilidad = (row.vulnerabilidad as Vulnerabilidad) || 'ESTABLE';
-  
-  // Si no tenía cálculo persistido, lo evaluamos en vuelo
+  const sanidad = {
+    castrado: row.castrado as EstadoCastracion,
+    virales: row.virales_vif_vilef as EstadoVirales,
+    fechaPrimeraDesparasitacion: row.fecha_primera_desparasitacion,
+    fechaSegundaDesparasitacion: row.fecha_segunda_desparasitacion,
+  };
+
+  // Siempre recalcular desde el estado operativo, triaje y ficha sanitaria actuales
   const calculo = calcularPrioridadCasoUseCase.ejecutar({
     estadoCaso: row.estado_caso,
     gravedadClinica: gravedad,
     vulnerabilidad,
     fechaRescate: row.fecha_rescate,
+    sanidad,
   });
 
-  const nivelPrioridad = (row.nivel_prioridad as NivelPrioridad) || calculo.nivelPrioridad;
-  const motivoUrgencia = row.motivo_urgencia || calculo.motivoUrgencia;
-  const puntajePrioridad = row.puntaje_prioridad ?? calculo.puntajePrioridad;
+  const nivelPrioridad = calculo.nivelPrioridad;
+  const motivoUrgencia = calculo.motivoUrgencia;
+  const puntajePrioridad = calculo.puntajePrioridad;
 
   return {
     id: row.id,
@@ -134,12 +141,7 @@ export function casoFromRow(row: CasoRow): Caso {
       telefono: row.transito_telefono ?? '',
       correo: row.transito_correo ?? undefined,
     },
-    sanidad: {
-      castrado: row.castrado as EstadoCastracion,
-      virales: row.virales_vif_vilef as EstadoVirales,
-      fechaPrimeraDesparasitacion: row.fecha_primera_desparasitacion,
-      fechaSegundaDesparasitacion: row.fecha_segunda_desparasitacion,
-    },
+    sanidad,
     estadoCaso: row.estado_caso as EstadoCaso,
     gravedadClinica: gravedad,
     vulnerabilidad,
@@ -148,7 +150,7 @@ export function casoFromRow(row: CasoRow): Caso {
     puntajePrioridad,
     creadoPorUserId: row.creado_por_user_id ?? undefined,
     modificadoPorUserId: row.modificado_por_user_id ?? undefined,
-    esUrgente: nivelPrioridad === 'URGENTE',
+    esUrgente: calculo.esUrgente,
     syncStatus: row.sync_status as SyncStatus,
     updatedAt: row.updated_at,
   };
@@ -197,15 +199,19 @@ export type SQLiteBindParams = Record<string, SQLiteBindValue>;
 
 // ─── Mappers: Domain → Row params (para INSERT/UPDATE) ───
 
-export function casoToParams(caso: Caso): SQLiteBindParams {
+export function casoToParams(caso: Caso, umbralDias: number = 15): SQLiteBindParams {
   const gravedad = caso.gravedadClinica || (caso.esUrgente ? 'CRITICA' : 'MODERADA');
   const vulnerabilidad = caso.vulnerabilidad || 'ESTABLE';
-  const calculo = calcularPrioridadCasoUseCase.ejecutar({
-    estadoCaso: caso.estadoCaso,
-    gravedadClinica: gravedad,
-    vulnerabilidad,
-    fechaRescate: caso.fechaRescate,
-  });
+  const calculo = calcularPrioridadCasoUseCase.ejecutar(
+    {
+      estadoCaso: caso.estadoCaso,
+      gravedadClinica: gravedad,
+      vulnerabilidad,
+      fechaRescate: caso.fechaRescate,
+      sanidad: caso.sanidad,
+    },
+    umbralDias
+  );
 
   return {
     $id: caso.id,
@@ -235,12 +241,12 @@ export function casoToParams(caso: Caso): SQLiteBindParams {
     $estado_caso: caso.estadoCaso,
     $gravedad_clinica: gravedad,
     $vulnerabilidad: vulnerabilidad,
-    $nivel_prioridad: caso.nivelPrioridad || calculo.nivelPrioridad,
-    $motivo_urgencia: caso.motivoUrgencia || calculo.motivoUrgencia,
-    $puntaje_prioridad: caso.puntajePrioridad ?? calculo.puntajePrioridad,
+    $nivel_prioridad: calculo.nivelPrioridad,
+    $motivo_urgencia: calculo.motivoUrgencia,
+    $puntaje_prioridad: calculo.puntajePrioridad,
     $creado_por_user_id: caso.creadoPorUserId ?? null,
     $modificado_por_user_id: caso.modificadoPorUserId ?? null,
-    $es_urgente: (caso.nivelPrioridad === 'URGENTE' || calculo.esUrgente) ? 1 : 0,
+    $es_urgente: calculo.esUrgente ? 1 : 0,
     $sync_status: caso.syncStatus,
     $updated_at: caso.updatedAt,
   };
