@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authRepository } from '../../../di/container';
 import { esAdministrador, ETIQUETA_ROL, esMiCaso, Voluntario, zonasDesdeTexto } from '../../../domain/models/Ajustes';
@@ -9,6 +9,7 @@ import { StackHeader } from '../../components/StackHeader';
 import { useCasoStore } from '../../stores/useCasoStore';
 import { colors, fonts } from '../../theme';
 import { notificarCambioVoluntario } from '../rescate/BarraRescate';
+import { abrirWhatsApp } from '../../contacto';
 
 const VERSION: string = require('../../../../app.json').expo.version;
 
@@ -124,7 +125,7 @@ export function PerfilDetalleScreen({ navigation, route }: Props) {
         <Seccion icono="contact-phone" titulo="Contacto">
           <Dato icono="mail-outline" texto={voluntario.email || 'Sin correo'} />
           {voluntario.telefono ? (
-            <Pressable onPress={() => Linking.openURL(`tel:${voluntario.telefono}`)} accessibilityLabel="Llamar">
+            <Pressable onPress={() => abrirWhatsApp(voluntario.telefono)} accessibilityLabel="Escribir por WhatsApp">
               <Dato icono="smartphone" texto={voluntario.telefono} accion />
             </Pressable>
           ) : (

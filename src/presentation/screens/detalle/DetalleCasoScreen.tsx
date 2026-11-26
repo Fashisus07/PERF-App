@@ -27,6 +27,7 @@ import { StackHeader } from '../../components/StackHeader';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { obtenerAjustes } from '../../hooks/useAjustes';
 import { useAnimales } from '../../hooks/useAnimales';
+import { abrirWhatsApp } from '../../contacto';
 import { useCaso } from '../../hooks/useCaso';
 import { useCasoStore } from '../../stores/useCasoStore';
 import { colors, fonts } from '../../theme';
@@ -457,13 +458,22 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
             </View>
 
             {caso.transito.telefono ? (
-              <Pressable
-                style={styles.llamarBtn}
-                onPress={llamarTransito}
-                accessibilityLabel="Llamar al tránsito"
-              >
-                <MaterialIcons name="call" size={20} color="#fff" />
-              </Pressable>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  style={[styles.llamarBtn, { backgroundColor: '#25D366' }]}
+                  onPress={() => abrirWhatsApp(caso.transito.telefono, `Hola ${caso.transito.nombre || ''}, te escribo de PERF por ${caso.nombreProvisorio}.`)}
+                  accessibilityLabel="Escribir por WhatsApp al tránsito"
+                >
+                  <MaterialIcons name="chat" size={20} color="#fff" />
+                </Pressable>
+                <Pressable
+                  style={styles.llamarBtn}
+                  onPress={llamarTransito}
+                  accessibilityLabel="Llamar al tránsito"
+                >
+                  <MaterialIcons name="call" size={20} color="#fff" />
+                </Pressable>
+              </View>
             ) : null}
           </View>
         </View>
