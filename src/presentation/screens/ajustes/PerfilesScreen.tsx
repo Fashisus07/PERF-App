@@ -39,7 +39,7 @@ export function PerfilesScreen({ navigation }: Props) {
 
   return (
     <View style={styles.screen}>
-      <StackHeader titulo="Perfiles de voluntarios" onBack={() => navigation?.goBack?.()} />
+      <StackHeader titulo="Voluntarios" onBack={() => navigation?.goBack?.()} />
 
       {cargando ? (
         <View style={styles.centro}>

@@ -72,7 +72,7 @@ export function TurnoNoDisponibleScreen({ route, navigation }: { route?: { param
 
   return (
     <View style={styles.screen}>
-      <StackHeader titulo="Ficha Triage Médico" icono="close" onBack={volverALaFicha} derecha={<AvatarPerfil />} />
+      <StackHeader titulo="Triaje médico" icono="close" onBack={volverALaFicha} derecha={<AvatarPerfil />} />
       <ScrollView contentContainerStyle={[styles.main, { paddingBottom: 32 + bottom }]}>
         <View style={styles.hero}>
           <View style={styles.circulo}>

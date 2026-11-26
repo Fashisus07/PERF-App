@@ -130,7 +130,7 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
   if (cargando) {
     return (
       <View style={styles.screen}>
-        <StackHeader titulo="Perfil del Voluntario" onBack={() => navigation?.goBack?.()} />
+        <StackHeader titulo="Mi perfil" onBack={() => navigation?.goBack?.()} />
         <View style={styles.centro}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
@@ -143,7 +143,7 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <StackHeader titulo="Perfil del Voluntario" onBack={() => navigation?.goBack?.()} />
+      <StackHeader titulo="Mi perfil" onBack={() => navigation?.goBack?.()} />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: bottom + 32 }]}

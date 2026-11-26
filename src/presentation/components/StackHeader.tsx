@@ -32,6 +32,6 @@ const styles = StyleSheet.create({
   header: { backgroundColor: colors.surfaceHeader, borderBottomWidth: 1, borderBottomColor: colors.border },
   row: { height: 64, justifyContent: 'center' },
   back: { position: 'absolute', left: 4, width: 48, height: 48, borderRadius: 9999, alignItems: 'center', justifyContent: 'center' },
-  titulo: { fontFamily: fonts.bold, fontSize: 18, textAlign: 'center', marginHorizontal: 64 },
+  titulo: { fontFamily: fonts.bold, fontSize: 18, textAlign: 'center', marginHorizontal: 72 },
   derecha: { position: 'absolute', right: 16 },
 });

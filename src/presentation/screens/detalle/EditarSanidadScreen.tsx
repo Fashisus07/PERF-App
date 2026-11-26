@@ -294,7 +294,7 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   if (cargando || !caso) {
     return (
       <View style={styles.screen}>
-        <StackHeader titulo="Ficha Clínica y Sanidad" onBack={() => navigation?.goBack?.()} />
+        <StackHeader titulo="Ficha sanitaria" onBack={() => navigation?.goBack?.()} />
         <View style={styles.centro}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
@@ -307,7 +307,7 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <StackHeader titulo="Ficha Clínica y Sanidad" onBack={() => navigation?.goBack?.()} />
+      <StackHeader titulo="Ficha sanitaria" onBack={() => navigation?.goBack?.()} />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: bottom + 40 }]}

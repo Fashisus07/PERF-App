@@ -28,6 +28,7 @@ import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { obtenerAjustes } from '../../hooks/useAjustes';
 import { useAnimales } from '../../hooks/useAnimales';
 import { abrirWhatsApp } from '../../contacto';
+import { BotonFavorito } from '../../components/BotonFavorito';
 import { formatoFechaCorta, formatoFechaHoraCorta } from '../../../domain/models/Rescate';
 import { useCaso } from '../../hooks/useCaso';
 import { useCasoStore } from '../../stores/useCasoStore';
@@ -80,7 +81,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
 
   const header = (
     <StackHeader
-      titulo="Ficha Operativa del Caso"
+      titulo="Ficha del caso"
       onBack={() => navigation?.goBack?.()}
       derecha={
         caso ? (
@@ -89,8 +90,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
             onPress={() => navigation?.navigate?.('EditarCaso', { casoId: caso.id })}
             accessibilityLabel="Editar datos del caso"
           >
-            <MaterialIcons name="edit" size={16} color={colors.primary} />
-            <Text style={styles.btnEditarText}>Editar</Text>
+            <MaterialIcons name="edit" size={20} color={colors.primary} />
           </Pressable>
         ) : undefined
       }
@@ -185,13 +185,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
                 {caso.especie} · {caso.edadEstimada || 'Edad a determinar'} · Coordina: {caso.quienSigueCaso || 'PERF'}
               </Text>
             </View>
-            <Pressable
-              style={styles.star}
-              onPress={() => setFavorito((f) => !f)}
-              accessibilityLabel={favorito ? 'Quitar de favoritos' : 'Marcar como favorito'}
-            >
-              <MaterialIcons name={favorito ? 'star' : 'star-border'} size={24} color="#fff" />
-            </Pressable>
+            <BotonFavorito favorito={favorito} onAlternar={() => setFavorito((f) => !f)} />
           </View>
         </View>
 
@@ -917,13 +911,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.primarySoft,
   },
+  // Solo el lápiz: se entiende que es "editar" y no le quita lugar al título.
   btnEditarHeader: {
-    flexDirection: 'row',
+    width: 40,
+    height: 40,
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    justifyContent: 'center',
+    borderRadius: 9999,
     backgroundColor: colors.primarySoft,
   },
   criterioRow: {

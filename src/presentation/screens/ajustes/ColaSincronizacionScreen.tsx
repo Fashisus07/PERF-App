@@ -101,7 +101,7 @@ export function ColaSincronizacionScreen({ navigation }: Props) {
 
   return (
     <View style={styles.screen}>
-      <StackHeader titulo="Cola de Sincronización" onBack={() => navigation?.goBack?.()} />
+      <StackHeader titulo="Sincronización" onBack={() => navigation?.goBack?.()} />
 
       {cargando ? (
         <View style={styles.centro}>
