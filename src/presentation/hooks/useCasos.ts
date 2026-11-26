@@ -92,7 +92,7 @@ export function useCasos() {
     // 'prioridad' respeta el orden que ya trae la lista (urgentes primero, después más días de espera).
     if (orden === 'ultimo_rescate') return filtrados.slice().sort((a, b) => b.fechaRescate - a.fechaRescate);
     if (orden === 'mas_antiguo') return filtrados.slice().sort((a, b) => a.fechaRescate - b.fechaRescate);
-    if (orden === 'ultima_revision') return filtrados.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+    if (orden === 'ultima_revision') return filtrados.slice().sort((a, b) => (b.fechaUltimaRevision ?? b.updatedAt) - (a.fechaUltimaRevision ?? a.updatedAt));
     return filtrados;
   }, [base, busqueda, filtro, orden, umbral]);
 

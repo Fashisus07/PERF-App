@@ -31,6 +31,15 @@ import { colors, fonts } from '../../theme';
 import { ESTADOS_CASO, infoEstado } from '../estado/estadosCaso';
 
 const FOTO_DEFAULT = require('../../../../assets/images/casos/misho.jpg');
+
+/** "Hoy", "Ayer" o "Hace 5 días (13/11/2026)". */
+function textoUltimaRevision(ms: number): string {
+  const dias = Math.max(0, Math.floor((Date.now() - ms) / (24 * 60 * 60 * 1000)));
+  const fecha = new Date(ms).toLocaleDateString('es-AR');
+  if (dias === 0) return `Hoy (${fecha})`;
+  if (dias === 1) return `Ayer (${fecha})`;
+  return `Hace ${dias} días (${fecha})`;
+}
 const COLOR_PUNTO = [colors.primary, colors.atencion, '#bdc9c6'];
 
 type Props = {
@@ -274,6 +283,10 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               <Text style={styles.sanidadValor}>
                 {caso.vulnerabilidad ? ETIQUETA_VULNERABILIDAD[caso.vulnerabilidad] : 'Estable'}
               </Text>
+            </View>
+            <View style={[styles.sanidadItem, { width: '100%' }]}>
+              <Text style={styles.sanidadLabel}>Última revisión</Text>
+              <Text style={styles.sanidadValor}>{textoUltimaRevision(caso.fechaUltimaRevision ?? caso.fechaRescate)}</Text>
             </View>
             <View style={[styles.sanidadItem, { width: '100%' }]}>
               <Text style={styles.sanidadLabel}>Criterio de Urgencia</Text>

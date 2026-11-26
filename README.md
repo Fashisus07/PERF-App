@@ -209,11 +209,12 @@ El sistema reemplazó el conteo de días simple por un modelo de triaje multicri
 
 | Nivel de Prioridad | Criterios Determinísticos de Asignación | Puntaje Base |
 |---|---|---|
-| **URGENTE (Prioridad 1)** | `gravedad_clinica === 'CRITICA'` **O** `vulnerabilidad === 'LACTANTE_SIN_MADRE'` **O** `vulnerabilidad === 'SIN_TRANSITO'` **O** días en espera $\ge$ umbral configurable (15 días). | 700 - 1000 |
-| **ATENCION (Prioridad 2)** | `gravedad_clinica === 'MODERADA'` **O** `vulnerabilidad === 'EN_TRATAMIENTO'` **O** días en espera $\ge 70\%$ del umbral (11 días con umbral 15). | 400 - 600 |
+| **URGENTE (Prioridad 1)** | `gravedad_clinica === 'CRITICA'` **O** `vulnerabilidad === 'LACTANTE_SIN_MADRE'` **O** `vulnerabilidad === 'SIN_TRANSITO'` **O** días **sin revisión** $>$ umbral configurable (15 días). | 700 - 1000 |
+| **ATENCION (Prioridad 2)** | `gravedad_clinica === 'MODERADA'` **O** `vulnerabilidad === 'EN_TRATAMIENTO'` **O** días sin revisión $\ge 70\%$ del umbral (11 días con umbral 15). | 400 - 600 |
 | **AL_DIA (Prioridad 3)** | Casos activos estables que no cumplen condiciones de urgencia ni atención. | 100 - 300 |
 | **Casos Cerrados** | Casos en estado `ADOPTADO` o `FALLECIDO` **nunca** se computan como urgentes. | 0 |
 
+- **Días sin revisión:** se cuentan desde la última revisión del caso (visita veterinaria, nota, tratamiento, desparasitación, vacunación o cirugía) y, si nunca hubo una, desde el rescate. Cambiar el tránsito o adoptar no cuenta como revisar.
 - **Accesibilidad en Interfaz:**
   - El formulario de alta (Paso 2) y el detalle de caso cuentan con chips táctiles accesibles con altura mínima de **48dp** y contraste accesible.
   - Las tarjetas (`CasoCard`) y badges (`UrgenciaBadge`) muestran tanto el código cromático como la etiqueta textual del motivo (ej. *"URGENTE • Crítico"*, *"URGENTE • Lactante sin madre"*, *"URGENTE • +16 días"*).
@@ -230,7 +231,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 | 5 | Cada coordinador ve sus casos | ✅ Selector **Todos / Mis casos** en la bandeja (coincide por nombre, ver "Roles y perfiles") |
 | 6 | Más barrios y zonas en el registro | ✅ 23 zonas, varias a la vez y "otra zona" de texto libre |
 | — | Vistas de perfiles | ✅ Lista de voluntarios con buscador y perfil de cada uno |
-| 11 | Prioridad por nivel de estado | ✅ Triaje multicriterio (gravedad clínica, vulnerabilidad y días de espera), ver "Criterio de Urgencia". "Última revisión" queda pendiente (ver Tareas) |
+| 11 | Prioridad por nivel de estado | ✅ Triaje multicriterio (gravedad clínica, vulnerabilidad y días desde la última revisión), ver "Criterio de Urgencia" |
 | — | Aprobación de voluntarios y cambio de clave | ✅ Correo a coordinadores, Panel de Coordinación y `CambiarClaveScreen` |
 | 13 | Seguridad y acceso desde el backend | 🟡 Hecho: login con JWT, RLS en todas las tablas, fotos privadas. Falta sacar la clave `service_role` de la app (ver "Base de datos compartida") |
 | 10 | Un único administrador | ✅ Migración `20261112000000_administrador_unico.sql` aplicada en Supabase |
@@ -271,7 +272,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - [ ] **Registro de veterinarios y horarios por veterinario** (7, 8): hoy los centros son locales y los horarios son una lista fija por centro.
 - [x] **Animales con seguimiento individual** (1): en la app, el caso guarda y sincroniza sus animales; la ficha sanitaria se edita animal por animal (selector cuando hay varios) y la del caso es el resumen del grupo (lo peor de cada uno). Falta aplicar en Supabase `20261126000000_cargar_animales_de_casos_existentes.sql` para los casos que ya existían (y, si se quiere, editar nombre, peso, embarazo y fallecimiento de cada animal).
 - [ ] **Coordinador responsable y tests virales como registros fijos** (2, 3): con ID propio. Con eso "Mis casos" deja de comparar por nombre.
-- [ ] **Prioridad con "última revisión"** (11): guardar la fecha de la última revisión de cada caso y usarla en el cálculo.
+- [x] **Prioridad con "última revisión"** (11): cada caso tiene la fecha de su última revisión (el evento más reciente del historial que sea visita veterinaria, nota, tratamiento, desparasitación, vacunación o cirugía; **no** cuentan los cambios de tránsito ni las adopciones). Se deriva del historial al leer (`SQL_CASO_CON_REVISION`), así que no hay columna nueva ni migración. Los días del cálculo se cuentan desde esa revisión (sin revisiones, desde el rescate): un caso viejo pero revisado hace poco no sube a urgente solo por los días. El detalle muestra "Última revisión". **Validar con el refugio** si 7/11 días sin revisión (el 70% y el 100% del umbral de Ajustes) es lo que necesitan.
 - [x] **Unificar el cálculo de prioridad**: hay una sola fuente, `CalcularPrioridadCasoUseCase` (se borró `domain/services/PrioridadCaso.ts`, que no usaba nadie). `prioridadDeCaso()` y `calcularUrgencia()` de `Caso.ts` la usan, y las tarjetas, el detalle y los filtros **calculan al mostrar** con el umbral de Ajustes (antes leían el nivel guardado, que quedaba viejo con los días y no respondía al umbral).
 - [ ] **Validar los pesos de la prioridad con el refugio** (el profesor pidió que responda a necesidades reales): hoy son 1000 crítico, 900 lactante sin madre, 800 sin tránsito, 700 por días de espera, 500 moderado, 450 en tratamiento y 400 por espera. Los pendientes por animal (cirugía, estudio, castración) todavía no suman al puntaje.
 - [ ] **Aplicar `20261031000000_animales_pendientes_adopciones.sql`** y `20261124000000_compatibilidad_etapa2.sql` en el Supabase de Tobías (`kdnosvxrgoxsopmzkghh`, es producción: avisar antes). Siempre se usa la base de Tobías, no la de Facu.

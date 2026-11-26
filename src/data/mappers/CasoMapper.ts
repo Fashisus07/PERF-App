@@ -1,6 +1,7 @@
 import type { AnimalCaso } from '../../domain/models/Animal';
 import {
   Caso,
+  EVENTOS_QUE_NO_SON_REVISION,
   EventoHistorial,
   SyncStatus,
   Especie,
@@ -57,6 +58,8 @@ export interface CasoRow {
   modificado_por_user_id?: string | null;
   es_urgente: number;
   sync_status: string;
+  /** Derivado del historial (ver SQL_CASO_CON_REVISION). */
+  ultima_revision?: number | null;
   updated_at: number;
 }
 
@@ -120,6 +123,7 @@ export function casoFromRow(row: CasoRow): Caso {
     gravedadClinica: gravedad,
     vulnerabilidad,
     fechaRescate: row.fecha_rescate,
+    fechaUltimaRevision: row.ultima_revision,
   });
 
   const nivelPrioridad = (row.nivel_prioridad as NivelPrioridad) || calculo.nivelPrioridad;
@@ -145,6 +149,7 @@ export function casoFromRow(row: CasoRow): Caso {
     fotoRemotePath: row.foto_remote_path ?? null,
     fotoSyncStatus: (row.foto_sync_status as any) || (row.foto_uri ? 'PENDING' : 'SYNCED'),
     fechaRescate: row.fecha_rescate,
+    fechaUltimaRevision: row.ultima_revision ?? null,
     quienSigueCaso: row.quien_sigue_caso ?? '',
     transito: {
       nombre: row.transito_nombre ?? '',
@@ -324,3 +329,13 @@ export function eventoToParams(evento: EventoHistorial): SQLiteBindParams {
     $sync_status: evento.syncStatus,
   };
 }
+
+/**
+ * Los casos con la fecha de su última revisión: la del evento más reciente del historial que sea
+ * una visita, nota o tratamiento (no un cambio de tránsito ni una adopción). Se deriva al leer: así
+ * no hay un dato más que sincronizar y todos los celulares ven la misma fecha.
+ */
+export const SQL_CASO_CON_REVISION = `SELECT c.*, (
+    SELECT MAX(e.fecha) FROM eventos_historial e
+    WHERE e.caso_id = c.id AND e.tipo NOT IN (${EVENTOS_QUE_NO_SON_REVISION.map((t) => `'${t}'`).join(', ')})
+  ) AS ultima_revision FROM casos c`;

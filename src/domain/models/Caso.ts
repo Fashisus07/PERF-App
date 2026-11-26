@@ -74,6 +74,8 @@ export interface Caso {
   fotoRemotePath?: string | null;
   fotoSyncStatus?: 'PENDING' | 'SYNCED' | 'FAILED';
   fechaRescate: number; // Timestamp
+  /** Última visita, nota o tratamiento del historial. Se deriva de los eventos: no se guarda aparte. */
+  fechaUltimaRevision?: number | null;
   quienSigueCaso: string;
   transito: HogarTransito;
   sanidad: FichaSanitariaFelina;
@@ -178,6 +180,7 @@ export function prioridadDeCaso(caso: Partial<Caso>, umbralDias: number = UMBRAL
       gravedadClinica: caso.gravedadClinica,
       vulnerabilidad: caso.vulnerabilidad,
       fechaRescate: caso.fechaRescate ?? Date.now(),
+      fechaUltimaRevision: caso.fechaUltimaRevision,
     },
     umbralDias
   );
@@ -211,6 +214,9 @@ export type TipoEvento =
   | 'TRATAMIENTO'
   | 'NOTA_CAMPO'
   | 'VACUNACION';
+
+/** Eventos que NO cuentan como revisar al animal: son movimientos administrativos. */
+export const EVENTOS_QUE_NO_SON_REVISION: TipoEvento[] = ['CAMBIO_TRANSITO', 'ADOPCION'];
 
 export interface EventoHistorial {
   id: string;

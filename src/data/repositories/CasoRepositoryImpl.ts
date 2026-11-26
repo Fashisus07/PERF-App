@@ -16,6 +16,7 @@ import {
   eventoToParams,
   CasoRow,
   EventoHistorialRow,
+  SQL_CASO_CON_REVISION,
 } from '../mappers/CasoMapper';
 import { casosMock } from '../mock/casosMock';
 import { sincronizarConSupabase } from '../remote/sincronizacion/SincronizadorSupabase';
@@ -91,7 +92,7 @@ export class CasoRepositoryImpl implements CasoRepository {
     await this.asegurarSemilla();
     const db = await getDatabase();
     const rows = await db.getAllAsync<CasoRow>(
-      `SELECT * FROM casos WHERE estado_caso NOT IN ('ADOPTADO', 'FALLECIDO') ORDER BY puntaje_prioridad DESC, fecha_rescate DESC;`
+      `${SQL_CASO_CON_REVISION} WHERE c.estado_caso NOT IN ('ADOPTADO', 'FALLECIDO') ORDER BY c.puntaje_prioridad DESC, c.fecha_rescate DESC;`
     );
     return rows.map(casoFromRow);
   }
@@ -100,7 +101,7 @@ export class CasoRepositoryImpl implements CasoRepository {
     await this.asegurarSemilla();
     const db = await getDatabase();
     const rows = await db.getAllAsync<CasoRow>(
-      `SELECT * FROM casos WHERE estado_caso IN ('ADOPTADO', 'FALLECIDO') ORDER BY updated_at DESC;`
+      `${SQL_CASO_CON_REVISION} WHERE c.estado_caso IN ('ADOPTADO', 'FALLECIDO') ORDER BY c.updated_at DESC;`
     );
     return rows.map(casoFromRow);
   }
@@ -109,7 +110,7 @@ export class CasoRepositoryImpl implements CasoRepository {
     await this.asegurarSemilla();
     const db = await getDatabase();
     const rows = await db.getAllAsync<CasoRow>(
-      `SELECT * FROM casos ORDER BY fecha_rescate DESC;`
+      `${SQL_CASO_CON_REVISION} ORDER BY c.fecha_rescate DESC;`
     );
     return rows.map(casoFromRow);
   }
@@ -118,7 +119,7 @@ export class CasoRepositoryImpl implements CasoRepository {
     await this.asegurarSemilla();
     const db = await getDatabase();
     const row = await db.getFirstAsync<CasoRow>(
-      `SELECT * FROM casos WHERE id = ?;`,
+      `${SQL_CASO_CON_REVISION} WHERE c.id = ?;`,
       [id]
     );
     return row ? casoFromRow(row) : undefined;

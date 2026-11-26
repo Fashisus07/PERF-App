@@ -5,6 +5,8 @@ export interface EntradaCalculoPrioridad {
   gravedadClinica?: GravedadClinica;
   vulnerabilidad?: Vulnerabilidad;
   fechaRescate: number;
+  /** Última visita, nota o tratamiento del caso. Sin dato, se cuenta desde el rescate. */
+  fechaUltimaRevision?: number | null;
 }
 
 export interface ResultadoCalculoPrioridad {
@@ -27,7 +29,7 @@ export class CalcularPrioridadCasoUseCase {
     umbralDias: number = 15,
     ahora: number = Date.now()
   ): ResultadoCalculoPrioridad {
-    const { estadoCaso, fechaRescate } = entrada;
+    const { estadoCaso, fechaRescate, fechaUltimaRevision } = entrada;
     const gravedad = entrada.gravedadClinica ?? 'MODERADA';
     const vulnerabilidad = entrada.vulnerabilidad ?? 'ESTABLE';
 
@@ -41,8 +43,13 @@ export class CalcularPrioridadCasoUseCase {
       };
     }
 
-    const msTranscurridos = Math.max(0, ahora - fechaRescate);
+    // Los días se cuentan desde la última revisión: un caso que alguien visitó hace poco no sube de
+    // nivel solo por llevar mucho tiempo en la red. Sin revisiones, desde el rescate.
+    const hayRevision = fechaUltimaRevision != null && fechaUltimaRevision > fechaRescate;
+    const desde = hayRevision ? (fechaUltimaRevision as number) : fechaRescate;
+    const msTranscurridos = Math.max(0, ahora - desde);
     const dias = Math.floor(msTranscurridos / (1000 * 60 * 60 * 24));
+    const sufijo = hayRevision ? ' sin revisión' : '';
 
     // Regla 2: URGENTE (Prioridad 1)
     if (gravedad === 'CRITICA') {
@@ -75,7 +82,7 @@ export class CalcularPrioridadCasoUseCase {
     if (dias > umbralDias) {
       return {
         nivelPrioridad: 'URGENTE',
-        motivoUrgencia: `URGENTE • +${dias} días`,
+        motivoUrgencia: `URGENTE • +${dias} días${sufijo}`,
         puntajePrioridad: 700 + dias,
         esUrgente: true,
       };
@@ -104,7 +111,7 @@ export class CalcularPrioridadCasoUseCase {
     if (dias >= umbralAtencion) {
       return {
         nivelPrioridad: 'ATENCION',
-        motivoUrgencia: `ATENCIÓN • ${dias} días en espera`,
+        motivoUrgencia: hayRevision ? `ATENCIÓN • ${dias} días sin revisión` : `ATENCIÓN • ${dias} días en espera`,
         puntajePrioridad: 400 + dias,
         esUrgente: false,
       };

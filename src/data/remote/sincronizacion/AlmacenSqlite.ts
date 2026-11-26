@@ -6,6 +6,7 @@ import {
   AnimalRow,
   CasoRow,
   EventoHistorialRow,
+  SQL_CASO_CON_REVISION,
   TurnoRow,
   animalFromRow,
   animalToParams,
@@ -40,7 +41,7 @@ export const almacenSqlite: AlmacenLocal = {
 
   async obtenerCaso(id) {
     const db = await getDatabase();
-    const row = await db.getFirstAsync<CasoRow>('SELECT * FROM casos WHERE id = ?;', [id]);
+    const row = await db.getFirstAsync<CasoRow>(`${SQL_CASO_CON_REVISION} WHERE c.id = ?;`, [id]);
     return row ? casoFromRow(row) : undefined;
   },
 
