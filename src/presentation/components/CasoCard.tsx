@@ -28,7 +28,7 @@ export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }
         <View style={styles.info}>
           <View style={styles.nameRow}>
             <View style={styles.titleContainer}>
-              <Text style={styles.nombre} numberOfLines={1}>{caso.nombreProvisorio}</Text>
+              <Text style={styles.nombre} numberOfLines={2}>{caso.nombreProvisorio}</Text>
               {caso.cantidadAnimales > 1 && (
                 <View style={styles.badgeCamada}>
                   <Text style={styles.badgeCamadaText}>x{caso.cantidadAnimales}</Text>
@@ -83,8 +83,9 @@ const styles = StyleSheet.create({
   body: { flex: 1, flexDirection: 'row', gap: 14, padding: 14 },
   foto: { width: 84, height: 84, borderRadius: 12, backgroundColor: colors.surfaceChip },
   info: { flex: 1, gap: 5 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
-  titleContainer: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  // El motivo de urgencia va debajo del nombre: así el nombre no se corta ("S…") cuando el motivo es largo.
+  nameRow: { flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
+  titleContainer: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'stretch' },
   nombre: { fontFamily: fonts.bold, fontSize: 17, color: colors.text, flexShrink: 1 },
   badgeCamada: {
     backgroundColor: colors.primarySoft || '#E8F5E9',
