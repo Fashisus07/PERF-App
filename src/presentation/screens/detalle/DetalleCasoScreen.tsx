@@ -25,6 +25,7 @@ import {
 } from '../../../domain/models/Caso';
 import { StackHeader } from '../../components/StackHeader';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
+import { useAnimales } from '../../hooks/useAnimales';
 import { useCaso } from '../../hooks/useCaso';
 import { colors, fonts } from '../../theme';
 import { ESTADOS_CASO, infoEstado } from '../estado/estadosCaso';
@@ -41,6 +42,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
   const { bottom } = useSafeAreaInsets();
   const casoId = route?.params?.casoId ?? '';
   const { caso, historial, cargando } = useCaso(casoId);
+  const { animales } = useAnimales(casoId);
   const [favorito, setFavorito] = useState(false);
   const [aviso, setAviso] = useState(false);
 
@@ -298,6 +300,22 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
             </Pressable>
           </View>
 
+          {animales.length > 1 ? (
+            <View style={{ gap: 10 }}>
+              {animales.map((a) => (
+                <View key={a.id} style={styles.animalFila}>
+                  <Text style={styles.animalNombre}>{a.nombre}</Text>
+                  <Text style={styles.animalDato}>
+                    {ETIQUETA_CASTRACION[a.castrado]} · Virales: {ETIQUETA_VIRALES[a.virales]}
+                  </Text>
+                  <Text style={styles.animalDato}>
+                    1° desp.: {a.fechaPrimeraDesparasitacion ? new Date(a.fechaPrimeraDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'} · 2° desp.:{' '}
+                    {a.fechaSegundaDesparasitacion ? new Date(a.fechaSegundaDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
           <View style={styles.sanidadGrid}>
             <View style={styles.sanidadItem}>
               <Text style={styles.sanidadLabel}>Castración</Text>
@@ -327,6 +345,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               </Text>
             </View>
           </View>
+          )}
 
           {caso.estadoVisible ? (
             <View style={styles.notas}>
@@ -664,6 +683,9 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardTitulo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cantidad: { fontFamily: fonts.regular, fontSize: 13, color: colors.textSubtle, marginTop: 2 },
+  animalFila: { padding: 12, borderRadius: 12, backgroundColor: colors.surfaceCard, gap: 2 },
+  animalNombre: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
+  animalDato: { fontFamily: fonts.regular, fontSize: 13, color: colors.textMuted },
   sanidadGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -2,7 +2,8 @@ import * as Notifications from 'expo-notifications';
 import { ResumenAlmacenamiento } from '../../domain/models/Ajustes';
 import { Caso, EstadoCaso, EventoHistorial } from '../../domain/models/Caso';
 import { CasoRepository, OperacionPendiente } from '../../domain/repositories/CasoRepository';
-import { conSanidadDelGrupo, crearAnimalesDelCaso, sanidadCambio } from '../../domain/services/AnimalesDelCaso';
+import { AnimalCaso } from '../../domain/models/Animal';
+import { conSanidadDelGrupo, crearAnimalesDelCaso, resumenSanidad, sanidadCambio } from '../../domain/services/AnimalesDelCaso';
 import { getDatabase } from '../local/Database';
 import { generarUUID } from '../local/uuid';
 import {
@@ -243,17 +244,9 @@ export class CasoRepositoryImpl implements CasoRepository {
       params
     );
 
-    // Delta: calcular solo campos modificados
-    const changedFields: Record<string, any> = { id: caso.id, updated_at: caso.updatedAt };
-    if (anterior) {
-      for (const [k, v] of Object.entries(caso)) {
-        if (JSON.stringify(v) !== JSON.stringify((anterior as any)[k])) {
-          changedFields[k] = v;
-        }
-      }
-    } else {
-      Object.assign(changedFields, caso);
-    }
+    // Se encola el caso completo: el motor lo compara con la ultima version conocida del servidor y
+    // manda solo los campos que cambiaron (con nombres de columna que el servidor entiende).
+    const changedFields = caso;
 
     const idempotencyKey = generarUUID();
     await db.runAsync(
@@ -268,6 +261,59 @@ export class CasoRepositoryImpl implements CasoRepository {
     }
 
     return caso;
+  }
+
+  async obtenerAnimales(casoId: string): Promise<AnimalCaso[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<AnimalRow>('SELECT * FROM animales WHERE caso_id = ? ORDER BY nombre ASC;', [casoId]);
+    return rows.map(animalFromRow);
+  }
+
+  async actualizarAnimal(animal: AnimalCaso): Promise<AnimalCaso> {
+    const db = await getDatabase();
+    const ahora = Date.now();
+    const guardado: AnimalCaso = { ...animal, syncStatus: 'PENDING', updatedAt: ahora };
+    await db.runAsync(
+      `UPDATE animales SET nombre = $nombre, castrado = $castrado, virales_vif_vilef = $virales_vif_vilef,
+         embarazada = $embarazada, peso_gramos = $peso_gramos,
+         fecha_primera_desparasitacion = $fecha_primera_desparasitacion,
+         fecha_segunda_desparasitacion = $fecha_segunda_desparasitacion,
+         fallecido = $fallecido, motivo_fallecimiento = $motivo_fallecimiento,
+         sync_status = $sync_status, updated_at = $updated_at
+       WHERE id = $id;`,
+      animalToParams(guardado)
+    );
+    await db.runAsync(
+      `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+       VALUES (?, ?, ?, ?, 0, ?);`,
+      [generarUUID(), 'ANIMAL', 'UPDATE', JSON.stringify(guardado), ahora]
+    );
+
+    // La ficha del caso es el resumen del grupo: se actualiza sin tocar la de los demas animales.
+    const caso = await this.obtenerPorId(animal.casoId);
+    const resumen = resumenSanidad(await this.obtenerAnimales(animal.casoId));
+    if (caso && resumen && sanidadCambio(caso.sanidad, resumen)) {
+      const conResumen: Caso = { ...caso, sanidad: resumen, syncStatus: 'PENDING', updatedAt: ahora };
+      await db.runAsync(
+        `UPDATE casos SET castrado = $castrado, virales_vif_vilef = $virales,
+           fecha_primera_desparasitacion = $d1, fecha_segunda_desparasitacion = $d2,
+           sync_status = 'PENDING', updated_at = $ahora WHERE id = $id;`,
+        {
+          $id: caso.id,
+          $castrado: resumen.castrado,
+          $virales: resumen.virales,
+          $d1: resumen.fechaPrimeraDesparasitacion ?? null,
+          $d2: resumen.fechaSegundaDesparasitacion ?? null,
+          $ahora: ahora,
+        }
+      );
+      await db.runAsync(
+        `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+         VALUES (?, ?, ?, ?, 0, ?);`,
+        [generarUUID(), 'CASO', 'UPDATE', JSON.stringify(conResumen), ahora]
+      );
+    }
+    return guardado;
   }
 
   private async aplicarSanidadAAnimales(caso: Caso): Promise<void> {

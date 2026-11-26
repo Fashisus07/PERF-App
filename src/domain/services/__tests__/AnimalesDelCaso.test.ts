@@ -1,5 +1,7 @@
 import { Caso } from '../../models/Caso';
-import { conSanidadDelGrupo, crearAnimalesDelCaso, sanidadCambio } from '../AnimalesDelCaso';
+import { camposComparables, diferenciasCaso } from '../../../data/remote/sincronizacion/mapeo';
+import { AnimalCaso } from '../../models/Animal';
+import { conSanidadDelGrupo, crearAnimalesDelCaso, resumenSanidad, sanidadCambio } from '../AnimalesDelCaso';
 
 const caso = (cantidad: number): Caso => ({
   id: 'c1',
@@ -56,5 +58,57 @@ describe('Animales de un caso', () => {
   test('sanidadCambio detecta cambios y trata undefined y null como lo mismo', () => {
     expect(sanidadCambio({ castrado: 'SI', virales: 'NEGATIVO' }, { castrado: 'SI', virales: 'NEGATIVO', fechaPrimeraDesparasitacion: null })).toBe(false);
     expect(sanidadCambio({ castrado: 'SI', virales: 'NEGATIVO' }, { castrado: 'NO', virales: 'NEGATIVO' })).toBe(true);
+  });
+
+  describe('resumen de sanidad del grupo', () => {
+    const base = (id: string, extra: Partial<AnimalCaso> = {}): AnimalCaso => ({
+      id,
+      casoId: 'c1',
+      nombre: id,
+      castrado: 'SI',
+      virales: 'NEGATIVO',
+      embarazada: false,
+      fechaPrimeraDesparasitacion: 100,
+      fechaSegundaDesparasitacion: 200,
+      fallecido: false,
+      syncStatus: 'SYNCED',
+      updatedAt: 1,
+      ...extra,
+    });
+
+    test('sin animales no hay resumen', () => {
+      expect(resumenSanidad([])).toBeNull();
+    });
+
+    test('si todos estan castrados y negativos, el grupo tambien', () => {
+      expect(resumenSanidad([base('a'), base('b')])).toMatchObject({ castrado: 'SI', virales: 'NEGATIVO' });
+    });
+
+    test('un solo animal pendiente deja el grupo pendiente', () => {
+      expect(resumenSanidad([base('a'), base('b', { castrado: 'PENDIENTE' })])?.castrado).toBe('PENDIENTE');
+    });
+
+    test('un positivo cuenta para todo el grupo, y VIF + ViLeF en animales distintos dan ambos', () => {
+      expect(resumenSanidad([base('a'), base('b', { virales: 'VIF_POSITIVO' })])?.virales).toBe('VIF_POSITIVO');
+      expect(resumenSanidad([base('a', { virales: 'VIF_POSITIVO' }), base('b', { virales: 'VILEF_POSITIVO' })])?.virales).toBe('AMBOS_POSITIVOS');
+    });
+
+    test('la desparasitacion solo cuenta si la tienen todos, con la fecha mas antigua', () => {
+      const r = resumenSanidad([base('a', { fechaPrimeraDesparasitacion: 300 }), base('b', { fechaPrimeraDesparasitacion: 100 })]);
+      expect(r?.fechaPrimeraDesparasitacion).toBe(100);
+      expect(resumenSanidad([base('a'), base('b', { fechaSegundaDesparasitacion: null })])?.fechaSegundaDesparasitacion).toBeNull();
+    });
+
+    test('un animal fallecido no cuenta, salvo que todos lo esten', () => {
+      expect(resumenSanidad([base('a'), base('b', { castrado: 'PENDIENTE', fallecido: true })])?.castrado).toBe('SI');
+      expect(resumenSanidad([base('b', { castrado: 'PENDIENTE', fallecido: true })])?.castrado).toBe('PENDIENTE');
+    });
+  });
+
+  test('editar la sanidad de un caso llega al servidor con nombres de columna (antes se perdia)', () => {
+    const original = caso(1);
+    const editado: Caso = { ...original, sanidad: { ...original.sanidad, castrado: 'NO' }, estadoVisible: 'Cojea' };
+    const dif = diferenciasCaso(editado, camposComparables(original), 5);
+    expect(dif.cambios).toEqual({ castrado: 'NO', estado_visible: 'Cojea' });
   });
 });

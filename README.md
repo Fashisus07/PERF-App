@@ -234,7 +234,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 | — | Aprobación de voluntarios y cambio de clave | ✅ Correo a coordinadores, Panel de Coordinación y `CambiarClaveScreen` |
 | 13 | Seguridad y acceso desde el backend | 🟡 Hecho: login con JWT, RLS en todas las tablas, fotos privadas. Falta sacar la clave `service_role` de la app (ver "Base de datos compartida") |
 | 10 | Un único administrador | ✅ Migración `20261112000000_administrador_unico.sql` aplicada en Supabase |
-| 1 | Animales con seguimiento individual | 🟡 Fase 1 hecha: la app guarda y sincroniza `animales` (crea los de cada caso nuevo y baja los del servidor). Falta la fase 2: pantallas con un animal por vez y la migración `20261126000000` en Supabase |
+| 1 | Animales con seguimiento individual | 🟡 Hecho en la app: tabla `animales` sincronizada y ficha sanitaria por animal (selector cuando el caso tiene varios). Falta aplicar la migración `20261126000000` en Supabase para los casos que ya existían |
 | 2 | Coordinador responsable como registro fijo | ❌ Falta |
 | 3 | Tests virales como registro fijo | ❌ Falta |
 | 7 | Registro de veterinarios | ❌ Falta |
@@ -269,7 +269,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - [ ] **Botón Guardar** (12): que los cambios no se apliquen solos, sino al tocar Guardar. Definir en qué pantallas.
 - [x] **Administrador único** (10): migración `20261112000000_administrador_unico.sql` aplicada en Supabase (había un solo coordinador, así que no cambió el rol de nadie).
 - [ ] **Registro de veterinarios y horarios por veterinario** (7, 8): hoy los centros son locales y los horarios son una lista fija por centro.
-- [ ] **Animales con seguimiento individual** (1): **fase 1 hecha** (modelo `AnimalCaso`, tabla local, sincronización con la tabla `animales`, animales creados con cada caso nuevo; editar la sanidad del caso la aplica a todos sus animales). **Falta la fase 2**: que la ficha sanitaria muestre un animal por vez con selector cuando el caso tiene varios, y aplicar en Supabase `20261126000000_cargar_animales_de_casos_existentes.sql` para los casos que ya existían. Archivos compartidos: coordinar con Mateo.
+- [x] **Animales con seguimiento individual** (1): en la app, el caso guarda y sincroniza sus animales; la ficha sanitaria se edita animal por animal (selector cuando hay varios) y la del caso es el resumen del grupo (lo peor de cada uno). Falta aplicar en Supabase `20261126000000_cargar_animales_de_casos_existentes.sql` para los casos que ya existían (y, si se quiere, editar nombre, peso, embarazo y fallecimiento de cada animal).
 - [ ] **Coordinador responsable y tests virales como registros fijos** (2, 3): con ID propio. Con eso "Mis casos" deja de comparar por nombre.
 - [ ] **Prioridad con "última revisión"** (11): guardar la fecha de la última revisión de cada caso y usarla en el cálculo.
 - [ ] **Unificar el cálculo de prioridad**: hoy conviven `CalcularPrioridadCasoUseCase` (gravedad, vulnerabilidad y días) y `domain/services/PrioridadCaso.ts` (pesos por animal). Dejar uno solo y **validar los pesos con el refugio** (el profesor pidió que responda a necesidades reales).
