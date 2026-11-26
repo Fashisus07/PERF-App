@@ -1,3 +1,4 @@
+import { abrirWhatsApp } from '../../contacto';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -271,6 +272,14 @@ export function DirectorioClinicasScreen({ navigation }: Props) {
                   {/* Acciones MD3 (Touch Targets >= 48dp) */}
                   <View style={styles.acciones}>
                     <Pressable
+                      style={styles.btnWhatsApp}
+                      onPress={() => abrirWhatsApp(c.telefono, `Hola, escribo de PERF (rescate animal) por una consulta.`)}
+                      accessibilityLabel={`Escribir por WhatsApp a ${c.nombre}`}
+                    >
+                      <MaterialIcons name="chat" size={20} color="#fff" />
+                    </Pressable>
+
+                    <Pressable
                       style={styles.btnAccionSecundario}
                       onPress={() => llamar(c)}
                       accessibilityLabel={`Llamar a ${c.nombre}`}
@@ -452,6 +461,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  btnWhatsApp: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#25D366' },
   btnAccionSecundario: {
     flex: 1,
     height: 44,
