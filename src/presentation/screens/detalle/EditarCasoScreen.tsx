@@ -69,7 +69,7 @@ export function EditarCasoScreen({ route, navigation }: Props) {
   if (cargando || !caso) {
     return (
       <View style={styles.screen}>
-        <StackHeader titulo="Editar Ficha del Caso" onBack={() => navigation?.goBack?.()} />
+        <StackHeader titulo="Editar caso" onBack={() => navigation?.goBack?.()} />
         <View style={styles.centro}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
@@ -155,7 +155,7 @@ export function EditarCasoScreen({ route, navigation }: Props) {
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <StackHeader titulo="Editar Datos del Caso" onBack={() => navigation?.goBack?.()} />
+      <StackHeader titulo="Editar caso" onBack={() => navigation?.goBack?.()} />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: bottom + 40 }]}

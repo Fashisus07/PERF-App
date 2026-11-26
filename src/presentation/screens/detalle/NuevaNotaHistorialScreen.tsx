@@ -60,7 +60,7 @@ export function NuevaNotaHistorialScreen({ route, navigation }: Props) {
   if (cargando || !caso) {
     return (
       <View style={styles.screen}>
-        <StackHeader titulo="Agregar Nota" onBack={() => navigation?.goBack?.()} />
+        <StackHeader titulo="Nueva nota" onBack={() => navigation?.goBack?.()} />
         <View style={styles.centro}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
@@ -73,7 +73,7 @@ export function NuevaNotaHistorialScreen({ route, navigation }: Props) {
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <StackHeader titulo="Nueva Nota Operativa" onBack={() => navigation?.goBack?.()} />
+      <StackHeader titulo="Nueva nota" onBack={() => navigation?.goBack?.()} />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: bottom + 40 }]}

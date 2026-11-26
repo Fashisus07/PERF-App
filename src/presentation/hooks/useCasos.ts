@@ -1,7 +1,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { authRepository } from '../../di/container';
-import { sigueElCaso, Voluntario } from '../../domain/models/Ajustes';
+import { esMiCaso, Voluntario } from '../../domain/models/Ajustes';
 import { Caso, prioridadDeCaso, UMBRAL_URGENTE_DIAS } from '../../domain/models/Caso';
 import { useCasoStore, FiltroUrgencia, FiltroEstado, OrdenCasos } from '../stores/useCasoStore';
 import { obtenerAjustes } from './useAjustes';
@@ -55,7 +55,7 @@ export function useCasos() {
 
   // Con "Mis casos" activo solo se ven los que sigue el voluntario de la sesión.
   const base = useMemo(() => {
-    const deMios = soloMios ? casos.filter((c) => sigueElCaso(c.quienSigueCaso, voluntario)) : casos;
+    const deMios = soloMios ? casos.filter((c) => esMiCaso(c, voluntario)) : casos;
     return estadoFiltro === 'todos' ? deMios : deMios.filter((c) => c.estadoCaso === estadoFiltro);
   }, [casos, soloMios, voluntario, estadoFiltro]);
   const estadosDisponibles = useMemo(
@@ -63,7 +63,7 @@ export function useCasos() {
     [casos]
   );
   const cantidadMios = useMemo(
-    () => casos.filter((c) => sigueElCaso(c.quienSigueCaso, voluntario)).length,
+    () => casos.filter((c) => esMiCaso(c, voluntario)).length,
     [casos, voluntario]
   );
 

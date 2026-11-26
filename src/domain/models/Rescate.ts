@@ -74,4 +74,21 @@ export function formatoFecha(d: Date): string {
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
 }
 
+/** Fecha corta "dd/mm/aa", para mostrar fechas fijas (no relativas) sin que se corten en tarjetas angostas. */
+export function formatoFechaCorta(fecha: number | string | Date): string {
+  const d = fecha instanceof Date ? fecha : new Date(fecha);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const aa = String(d.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${aa}`;
+}
+
+/** Igual que formatoFechaCorta, agregando la hora: "dd/mm/aa hh:mm". */
+export function formatoFechaHoraCorta(fecha: number | string | Date): string {
+  const d = fecha instanceof Date ? fecha : new Date(fecha);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${formatoFechaCorta(d)} ${hh}:${min}`;
+}
+
 export { ETIQUETA_ESPECIE } from './Caso';

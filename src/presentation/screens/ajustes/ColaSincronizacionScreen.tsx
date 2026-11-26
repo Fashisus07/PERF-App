@@ -1,3 +1,4 @@
+import { formatoFechaHoraCorta } from '../../../domain/models/Rescate';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
@@ -77,8 +78,7 @@ export function ColaSincronizacionScreen({ navigation }: Props) {
   };
 
   const formatearFecha = (ts: number) => {
-    const f = new Date(ts);
-    return `${f.toLocaleDateString('es-AR')} ${f.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} hs`;
+    return `${formatoFechaHoraCorta(ts)} hs`;
   };
 
   const formatearPayload = (payloadStr: string) => {
@@ -101,7 +101,7 @@ export function ColaSincronizacionScreen({ navigation }: Props) {
 
   return (
     <View style={styles.screen}>
-      <StackHeader titulo="Cola de Sincronización" onBack={() => navigation?.goBack?.()} />
+      <StackHeader titulo="Sincronización" onBack={() => navigation?.goBack?.()} />
 
       {cargando ? (
         <View style={styles.centro}>

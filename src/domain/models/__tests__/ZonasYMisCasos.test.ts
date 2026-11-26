@@ -1,6 +1,8 @@
 import {
   ETIQUETA_ROL,
   esAdministrador,
+  esMiCaso,
+  idDeCreadorValido,
   sigueElCaso,
   ZONAS_DISPONIBLES,
   zonasATexto,
@@ -97,5 +99,32 @@ describe('Roles: un único administrador', () => {
     expect(esAdministrador('voluntario')).toBe(false);
     expect(esAdministrador(null)).toBe(false);
     expect(esAdministrador(undefined)).toBe(false);
+  });
+});
+
+describe('"Mis casos": también los que cargó el voluntario', () => {
+  const yo = { id: '11111111-2222-3333-4444-555555555555', nombre: 'Camila Pérez' };
+
+  test('un caso que cargué yo es mío aunque el responsable sea otro coordinador', () => {
+    expect(esMiCaso({ quienSigueCaso: 'Cami', creadoPorUserId: yo.id }, yo)).toBe(true);
+  });
+
+  test('un caso donde figuro como responsable es mío aunque lo haya cargado otra persona', () => {
+    expect(esMiCaso({ quienSigueCaso: 'Camila', creadoPorUserId: 'otro' }, yo)).toBe(true);
+  });
+
+  test('un caso que cargó otra persona y sigue otro no es mío', () => {
+    expect(esMiCaso({ quienSigueCaso: 'Cami', creadoPorUserId: '99999999-2222-3333-4444-555555555555' }, yo)).toBe(false);
+    expect(esMiCaso({ quienSigueCaso: 'Cami' }, yo)).toBe(false);
+  });
+
+  test('sin voluntario en sesión no hay casos propios', () => {
+    expect(esMiCaso({ quienSigueCaso: 'Cami', creadoPorUserId: yo.id }, null)).toBe(false);
+  });
+
+  test('el id de la sesión demo no es un uuid: no se manda como creador al servidor', () => {
+    expect(idDeCreadorValido('voluntario-1')).toBe(false);
+    expect(idDeCreadorValido(undefined)).toBe(false);
+    expect(idDeCreadorValido(yo.id)).toBe(true);
   });
 });

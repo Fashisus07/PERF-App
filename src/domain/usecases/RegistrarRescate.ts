@@ -1,3 +1,4 @@
+import { idDeCreadorValido } from '../models/Ajustes';
 import { Caso } from '../models/Caso';
 import { BorradorRescate, faltantesDelRescate } from '../models/Rescate';
 import { CasoRepository } from '../repositories/CasoRepository';
@@ -7,7 +8,7 @@ import { calcularPrioridadCasoUseCase } from './CalcularPrioridadCasoUseCase';
 export class RegistrarRescate {
   constructor(private readonly repo: CasoRepository) {}
 
-  async ejecutar(b: BorradorRescate, sinConexion: boolean = false): Promise<Caso> {
+  async ejecutar(b: BorradorRescate, sinConexion: boolean = false, creadoPorUserId?: string): Promise<Caso> {
     const faltan = faltantesDelRescate(b);
     if (faltan.length) {
       throw new Error(`Falta completar: ${faltan.join(', ')}`);
@@ -49,6 +50,7 @@ export class RegistrarRescate {
       fotoSyncStatus: b.fotoUri ? 'PENDING' : 'SYNCED',
       fechaRescate: ahora,
       quienSigueCaso: b.quienSigueCaso || 'PERF',
+      creadoPorUserId: idDeCreadorValido(creadoPorUserId) ? creadoPorUserId : undefined,
       transito: {
         nombre: b.transitoNombre.trim(),
         telefono: b.transitoTelefono.trim(),
@@ -62,7 +64,7 @@ export class RegistrarRescate {
       motivoUrgencia: prioridad.motivoUrgencia,
       puntajePrioridad: prioridad.puntajePrioridad,
       esUrgente: prioridad.esUrgente,
-      syncStatus: sinConexion ? 'PENDING' : 'SYNCED',
+      syncStatus: 'PENDING', // siempre queda en la cola hasta que el motor lo confirme en el servidor
       updatedAt: ahora,
     };
 

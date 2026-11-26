@@ -1,3 +1,4 @@
+import { formatoFechaCorta } from '../../../domain/models/Rescate';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useMemo, useState } from 'react';
@@ -193,11 +194,7 @@ export function ArchivoScreen({ navigation }: { navigation?: any }) {
           renderItem={({ item }) => {
             const fotoSource = fotoCasoSource(item);
             const esAdoptado = item.estadoCaso === 'ADOPTADO';
-            const fechaCierre = new Date(item.updatedAt).toLocaleDateString('es-AR', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            });
+            const fechaCierre = formatoFechaCorta(item.updatedAt);
 
             return (
               <Pressable

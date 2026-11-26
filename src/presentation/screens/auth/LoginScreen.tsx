@@ -4,13 +4,16 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,6 +45,17 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
   const [iniciando, setIniciando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const online = useOnline();
+  const { height: alto } = useWindowDimensions();
+  // Todo entra en una sola pantalla: solo se puede desplazar mientras el teclado está abierto.
+  const [tecladoVisible, setTecladoVisible] = useState(false);
+  useEffect(() => {
+    const abre = Keyboard.addListener('keyboardDidShow', () => setTecladoVisible(true));
+    const cierra = Keyboard.addListener('keyboardDidHide', () => setTecladoVisible(false));
+    return () => {
+      abre.remove();
+      cierra.remove();
+    };
+  }, []);
 
   useEffect(() => {
     // Pre-cargar usuario recordado si existe
@@ -96,24 +110,21 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: top + 16, paddingBottom: bottom + 32 }]}
+        contentContainerStyle={[styles.content, { paddingTop: Math.max(top, StatusBar.currentHeight ?? 0) + 16, paddingBottom: bottom + 12 }]}
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={tecladoVisible}
+        bounces={false}
+        overScrollMode="never"
+        showsVerticalScrollIndicator={false}
       >
+        <Image source={require('../../../../assets/images/casos/tigre.jpg')} style={[styles.banner, { height: Math.round(Math.min(240, Math.max(110, alto * 0.24))) }]} resizeMode="cover" />
+
         <View style={styles.hero}>
           <View style={styles.brandRow}>
             <Image source={require('../../../../assets/images/logo.png')} style={styles.brandLogo} />
             <View>
-              <Text style={styles.brandTitle}>PERF MÓVIL</Text>
-              <Text style={styles.text}>Red de Rescate Felino · Buenos Aires</Text>
-            </View>
-          </View>
-          <View style={styles.welcomeRow}>
-            <View style={styles.welcomeText}>
-              <Text style={styles.textDark}>¡Hola de nuevo!</Text>
-              <Text style={styles.text}>Accedé para sincronizar tus rescates.</Text>
-            </View>
-            <View style={styles.photoBox}>
-              <Image source={require('../../../../assets/images/login-gato.jpg')} style={styles.photo} />
+              <Text style={styles.brandTitle}>PERF</Text>
+              <Text style={styles.text}>¡Hola de nuevo!</Text>
             </View>
           </View>
         </View>
@@ -128,8 +139,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
         <View style={styles.form}>
           <View style={styles.field}>
             <View style={styles.labelRow}>
-              <Text style={styles.textDark}>Correo electrónico</Text>
-              <Text style={styles.text}>Tu cuenta de voluntario</Text>
+              <Text style={styles.textDark}>Correo</Text>
             </View>
             <View>
               <TextInput
@@ -139,7 +149,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
                   setUsuario(t);
                   if (errorMsg) setErrorMsg(null);
                 }}
-                placeholder="ej: voluntario@perfelino.org"
+                placeholder="tu@correo.com"
                 placeholderTextColor={colors.placeholderField}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -164,7 +174,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
                   setClave(t);
                   if (errorMsg) setErrorMsg(null);
                 }}
-                placeholder="Tu contraseña"
+                placeholder="Tu clave"
                 placeholderTextColor={colors.placeholderField}
                 secureTextEntry={!verClave}
                 autoCapitalize="none"
@@ -190,7 +200,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
               <View style={[styles.checkbox, !recordar && styles.checkboxOff]}>
                 {recordar && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
               </View>
-              <Text style={styles.textDark}>Recordar usuario</Text>
+              <Text style={styles.textDark}>Recordarme</Text>
             </Pressable>
           </View>
 
@@ -201,13 +211,13 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
               ) : (
                 <>
                   <MaterialIcons name="login" size={18} color={colors.onPrimary} />
-                  <Text style={[styles.textDark, { color: colors.onPrimary }]}>Iniciar sesión</Text>
+                  <Text style={[styles.textDark, { color: colors.onPrimary }]}>Entrar</Text>
                 </>
               )}
             </Pressable>
             <Pressable style={[styles.btn, styles.btnSecondary]} onPress={handleBiometria} disabled={iniciando}>
               <MaterialIcons name="fingerprint" size={22} color={colors.brand} />
-              <Text style={styles.textDark}>Ingresar con huella digital</Text>
+              <Text style={styles.textDark}>Entrar con huella</Text>
             </Pressable>
             <Pressable
               style={[styles.btn, styles.btnDemo]}
@@ -229,7 +239,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
             >
               <MaterialIcons name="offline-pin" size={20} color={colors.primary} />
               <Text style={[styles.textDark, { color: colors.primary, fontFamily: fonts.bold }]}>
-                Ingresar como Voluntario Demo (Modo Offline)
+                Probar sin cuenta
               </Text>
             </Pressable>
           </View>
@@ -238,14 +248,14 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
         {!online && (
           <View style={styles.offlineChip}>
             <MaterialIcons name="cloud-off" size={14} color={colors.atencion} />
-            <Text style={styles.chipText}>Modo offline · Guardando en el teléfono</Text>
+            <Text style={styles.chipText}>Sin conexión</Text>
           </View>
         )}
 
         <View style={styles.registroCard}>
-          <Text style={[styles.text, styles.center]}>{'¿Todavía no sos parte del equipo de\nrescate?'}</Text>
+          <Text style={[styles.text, styles.center]}>¿Sos nuevo?</Text>
           <Pressable style={styles.registroBtn} onPress={onRegistro}>
-            <Text style={styles.link}>Registrate como voluntario</Text>
+            <Text style={styles.link}>Sumate como voluntario</Text>
             <MaterialIcons name="arrow-forward" size={14} color={colors.primary} />
           </Pressable>
         </View>
@@ -261,7 +271,8 @@ const styles = StyleSheet.create({
   textDark: { fontFamily: fonts.regular, fontSize: 16, lineHeight: 24, color: colors.text },
   center: { textAlign: 'center' },
 
-  hero: { backgroundColor: colors.surfaceCard, borderRadius: 12, padding: 16, gap: 8, marginBottom: 16, ...SHADOW_SM },
+  banner: { width: '100%', height: 210, borderRadius: 16, marginBottom: 12, backgroundColor: colors.surfaceChip },
+  hero: { backgroundColor: colors.surfaceCard, borderRadius: 12, padding: 12, gap: 4, marginBottom: 10, ...SHADOW_SM },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandLogo: { width: 40, height: 40 },
   brandTitle: {
@@ -284,11 +295,11 @@ const styles = StyleSheet.create({
   },
   photo: { position: 'absolute', top: 0, height: 64, width: 64 * 1.8351, left: -64 * 0.4176 },
 
-  form: { gap: 16 },
+  form: { gap: 10 },
   field: { gap: 6 },
   labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   input: {
-    height: 56,
+    height: 50,
     borderRadius: 12,
     backgroundColor: colors.surface,
     paddingLeft: 48,
@@ -298,7 +309,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...SHADOW_SM,
   },
-  iconLeft: { position: 'absolute', left: 16, top: 18 },
+  iconLeft: { position: 'absolute', left: 16, top: 15 },
   eyeBtn: {
     position: 'absolute',
     right: 4,
@@ -328,7 +339,7 @@ const styles = StyleSheet.create({
 
   actions: { gap: 8, paddingTop: 8 },
   btn: {
-    height: 56,
+    height: 50,
     borderRadius: 9999,
     flexDirection: 'row',
     alignItems: 'center',
@@ -369,12 +380,12 @@ const styles = StyleSheet.create({
   chipText: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: colors.textMuted },
 
   registroCard: {
-    marginTop: 24,
+    marginTop: 12,
     backgroundColor: colors.surfaceCard,
     borderRadius: 12,
-    padding: 16,
+    padding: 8,
     alignItems: 'center',
-    gap: 4,
+    gap: 0,
   },
   registroBtn: {
     flexDirection: 'row',

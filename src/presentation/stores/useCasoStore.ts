@@ -13,6 +13,7 @@ import { BorradorRescate } from '../../domain/models/Rescate';
 import { generarUUID } from '../../data/local/uuid';
 import {
   ajustesRepository,
+  authRepository,
   casoRepository,
   listarCasosPorUrgencia,
   obtenerCasoUseCase,
@@ -121,11 +122,15 @@ export const useCasoStore = create<CasoState>((set, get) => ({
   registrarRescate: async (borrador: BorradorRescate, sinConexion = false) => {
     set({ cargando: true, error: null });
     try {
-      const nuevo = await registrarRescateUseCase.ejecutar(borrador, sinConexion);
+      // Queda registrado quién lo cargó: así aparece en "Mis casos" de esa persona.
+      const voluntario = await authRepository.obtenerVoluntarioActual().catch(() => null);
+      const nuevo = await registrarRescateUseCase.ejecutar(borrador, sinConexion, voluntario?.id);
       set((state) => ({
         casos: [nuevo, ...state.casos].sort((a, b) => b.puntajePrioridad - a.puntajePrioridad || b.fechaRescate - a.fechaRescate),
         cargando: false,
       }));
+      // Con señal se sube enseguida; si falla (sin sesión o sin red) queda en la cola para el próximo intento.
+      if (!sinConexion) void casoRepository.sincronizar().then(() => get().cargarCasos(undefined, true)).catch(() => {});
       return nuevo;
     } catch (e: any) {
       set({ cargando: false, error: e?.message || 'Error al guardar rescate' });

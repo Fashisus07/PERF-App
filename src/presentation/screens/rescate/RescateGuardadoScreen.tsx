@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StackHeader } from '../../components/StackHeader';
 import { fotoCasoSource } from '../../components/fotoCaso';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
+import { prioridadDeCaso } from '../../../domain/models/Caso';
+import { useCasoStore } from '../../stores/useCasoStore';
 import { useCaso } from '../../hooks/useCaso';
 import { colors, fonts } from '../../theme';
 import { AvatarPerfil } from './BarraRescate';
@@ -14,7 +16,11 @@ export function RescateGuardadoScreen({ route, navigation }: { route?: { params?
   const { bottom } = useSafeAreaInsets();
   const p = route?.params;
   const { caso } = useCaso(p?.casoId ?? '');
+  const umbral = useCasoStore((s) => s.umbralDias);
   if (!p || !caso) return <View style={styles.screen} />;
+
+  // "Sincronizado" solo si el caso ya está en la base central; si no, queda pendiente de subir.
+  const pendiente = p.sinConexion || caso.syncStatus !== 'SYNCED';
 
   const irALista = () => navigation?.popTo?.('Main');
 
@@ -38,13 +44,13 @@ export function RescateGuardadoScreen({ route, navigation }: { route?: { params?
             </View>
           </View>
           <View style={styles.sync}>
-            <MaterialIcons name={p.sinConexion ? 'cloud-off' : 'cloud-done'} size={16} color={colors.textMuted} />
-            <Text style={styles.syncText}>{p.sinConexion ? 'Guardado sin conexión' : 'Sincronizado'}</Text>
+            <MaterialIcons name={pendiente ? 'cloud-off' : 'cloud-done'} size={16} color={colors.textMuted} />
+            <Text style={styles.syncText}>{p.sinConexion ? 'Guardado sin conexión' : pendiente ? 'Pendiente de sincronizar' : 'Sincronizado'}</Text>
           </View>
           <Text style={styles.titulo}>¡Rescate guardado en tu teléfono!</Text>
           <Text style={styles.subtitulo}>
-            {p.sinConexion
-              ? 'El caso quedó almacenado en la memoria del dispositivo. Se sincronizará con la base central de PERF apenas tengas señal móvil o Wi-Fi.'
+            {pendiente
+              ? 'El caso quedó almacenado en la memoria del dispositivo. Se sincronizará con la base central de PERF apenas haya sesión iniciada y señal móvil o Wi-Fi.'
               : 'El caso quedó guardado y ya aparece en la lista de casos activos.'}
           </Text>
         </View>
@@ -58,7 +64,7 @@ export function RescateGuardadoScreen({ route, navigation }: { route?: { params?
             <View style={{ flex: 1, gap: 2 }}>
               <View style={styles.nombreRow}>
                 <Text style={styles.nombre} numberOfLines={1}>{caso.nombreProvisorio}</Text>
-                <UrgenciaBadge urgencia={caso.esUrgente ? 'urgente' : 'aldia'} />
+                <UrgenciaBadge urgencia={prioridadDeCaso(caso, umbral).urgencia} />
               </View>
               <Text style={styles.descripcion} numberOfLines={1}>
                 {caso.especie} · {caso.edadEstimada}

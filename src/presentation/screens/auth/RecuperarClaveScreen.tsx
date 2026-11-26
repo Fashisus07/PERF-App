@@ -49,7 +49,7 @@ export function RecuperarClaveScreen({ navigation }: Props) {
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <StackHeader titulo="Recuperar Contraseña" onBack={() => navigation?.goBack?.()} />
+      <StackHeader titulo="Recuperar clave" onBack={() => navigation?.goBack?.()} />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: bottom + 32 }]}

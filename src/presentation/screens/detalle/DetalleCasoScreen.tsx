@@ -1,4 +1,4 @@
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -27,6 +27,9 @@ import { StackHeader } from '../../components/StackHeader';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { obtenerAjustes } from '../../hooks/useAjustes';
 import { useAnimales } from '../../hooks/useAnimales';
+import { abrirWhatsApp } from '../../contacto';
+import { BotonFavorito } from '../../components/BotonFavorito';
+import { formatoFechaCorta, formatoFechaHoraCorta } from '../../../domain/models/Rescate';
 import { useCaso } from '../../hooks/useCaso';
 import { useCasoStore } from '../../stores/useCasoStore';
 import { colors, fonts } from '../../theme';
@@ -35,7 +38,7 @@ import { ESTADOS_CASO, infoEstado } from '../estado/estadosCaso';
 /** "Hoy", "Ayer" o "Hace 5 días (13/11/2026)". */
 function textoUltimaRevision(ms: number): string {
   const dias = Math.max(0, Math.floor((Date.now() - ms) / (24 * 60 * 60 * 1000)));
-  const fecha = new Date(ms).toLocaleDateString('es-AR');
+  const fecha = formatoFechaCorta(ms);
   if (dias === 0) return `Hoy (${fecha})`;
   if (dias === 1) return `Ayer (${fecha})`;
   return `Hace ${dias} días (${fecha})`;
@@ -78,7 +81,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
 
   const header = (
     <StackHeader
-      titulo="Ficha Operativa del Caso"
+      titulo="Ficha del caso"
       onBack={() => navigation?.goBack?.()}
       derecha={
         caso ? (
@@ -87,8 +90,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
             onPress={() => navigation?.navigate?.('EditarCaso', { casoId: caso.id })}
             accessibilityLabel="Editar datos del caso"
           >
-            <MaterialIcons name="edit" size={16} color={colors.primary} />
-            <Text style={styles.btnEditarText}>Editar</Text>
+            <MaterialIcons name="edit" size={20} color={colors.primary} />
           </Pressable>
         ) : undefined
       }
@@ -131,11 +133,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
   const estadoActual = caso.estadoCaso ?? 'EN_TRANSITO';
   const esArchivado = estadoActual === 'ADOPTADO' || estadoActual === 'FALLECIDO';
   const fotoSource = fotoCasoSource(caso);
-  const fechaRescateTexto = new Date(caso.fechaRescate).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  const fechaRescateTexto = formatoFechaCorta(caso.fechaRescate);
 
   const abrirMapa = () => {
     if (caso.coordenadas) {
@@ -187,13 +185,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
                 {caso.especie} · {caso.edadEstimada || 'Edad a determinar'} · Coordina: {caso.quienSigueCaso || 'PERF'}
               </Text>
             </View>
-            <Pressable
-              style={styles.star}
-              onPress={() => setFavorito((f) => !f)}
-              accessibilityLabel={favorito ? 'Quitar de favoritos' : 'Marcar como favorito'}
-            >
-              <MaterialIcons name={favorito ? 'star' : 'star-border'} size={24} color="#fff" />
-            </Pressable>
+            <BotonFavorito favorito={favorito} onAlternar={() => setFavorito((f) => !f)} />
           </View>
         </View>
 
@@ -380,8 +372,8 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
                     {ETIQUETA_CASTRACION[a.castrado]} · Virales: {ETIQUETA_VIRALES[a.virales]}
                   </Text>
                   <Text style={styles.animalDato}>
-                    1° desp.: {a.fechaPrimeraDesparasitacion ? new Date(a.fechaPrimeraDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'} · 2° desp.:{' '}
-                    {a.fechaSegundaDesparasitacion ? new Date(a.fechaSegundaDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'}
+                    1° desp.: {a.fechaPrimeraDesparasitacion ? formatoFechaCorta(a.fechaPrimeraDesparasitacion) : 'Pendiente'} · 2° desp.:{' '}
+                    {a.fechaSegundaDesparasitacion ? formatoFechaCorta(a.fechaSegundaDesparasitacion) : 'Pendiente'}
                   </Text>
                 </View>
               ))}
@@ -402,7 +394,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               <Text style={styles.sanidadLabel}>1° Desparasitación</Text>
               <Text style={styles.sanidadValor}>
                 {caso.sanidad.fechaPrimeraDesparasitacion
-                  ? new Date(caso.sanidad.fechaPrimeraDesparasitacion).toLocaleDateString('es-AR')
+                  ? formatoFechaCorta(caso.sanidad.fechaPrimeraDesparasitacion)
                   : 'Pendiente'}
               </Text>
             </View>
@@ -411,7 +403,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               <Text style={styles.sanidadLabel}>2° Desparasitación</Text>
               <Text style={styles.sanidadValor}>
                 {caso.sanidad.fechaSegundaDesparasitacion
-                  ? new Date(caso.sanidad.fechaSegundaDesparasitacion).toLocaleDateString('es-AR')
+                  ? formatoFechaCorta(caso.sanidad.fechaSegundaDesparasitacion)
                   : 'Pendiente'}
               </Text>
             </View>
@@ -457,13 +449,22 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
             </View>
 
             {caso.transito.telefono ? (
-              <Pressable
-                style={styles.llamarBtn}
-                onPress={llamarTransito}
-                accessibilityLabel="Llamar al tránsito"
-              >
-                <MaterialIcons name="call" size={20} color="#fff" />
-              </Pressable>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  style={[styles.llamarBtn, { backgroundColor: '#25D366' }]}
+                  onPress={() => abrirWhatsApp(caso.transito.telefono, `Hola ${caso.transito.nombre || ''}, te escribo de PERF por ${caso.nombreProvisorio}.`)}
+                  accessibilityLabel="Escribir por WhatsApp al tránsito"
+                >
+                  <MaterialCommunityIcons name="whatsapp" size={24} color="#fff" />
+                </Pressable>
+                <Pressable
+                  style={styles.llamarBtn}
+                  onPress={llamarTransito}
+                  accessibilityLabel="Llamar al tránsito"
+                >
+                  <MaterialIcons name="call" size={20} color="#fff" />
+                </Pressable>
+              </View>
             ) : null}
           </View>
         </View>
@@ -601,12 +602,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
 }
 
 function ItemHistorial({ evento, color, ultimo }: { evento: EventoHistorial; color: string; ultimo: boolean }) {
-  const fechaTexto = new Date(evento.fecha).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const fechaTexto = formatoFechaHoraCorta(evento.fecha);
 
   return (
     <View style={styles.itemRow}>
@@ -915,13 +911,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.primarySoft,
   },
+  // Solo el lápiz: se entiende que es "editar" y no le quita lugar al título.
   btnEditarHeader: {
-    flexDirection: 'row',
+    width: 40,
+    height: 40,
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    justifyContent: 'center',
+    borderRadius: 9999,
     backgroundColor: colors.primarySoft,
   },
   criterioRow: {

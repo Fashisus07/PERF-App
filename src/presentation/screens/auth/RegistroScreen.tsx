@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -29,9 +30,9 @@ type Props = {
 type Icono = keyof typeof MaterialIcons.glyphMap;
 
 const RECURSOS: { id: string; icono: Icono; titulo: string; detalle: string }[] = [
-  { id: 'canil', icono: 'home', titulo: 'Tengo canil propio', detalle: 'Rígido o jaula trampa reglamentaria' },
-  { id: 'movil', icono: 'directions-car', titulo: 'Móvil propio / Auto', detalle: 'Disponibilidad para traslados y veterinarias' },
-  { id: 'transito', icono: 'location-on', titulo: 'Tránsito disponible', detalle: 'Habitación de aislamiento / cuarentena' },
+  { id: 'canil', icono: 'home', titulo: 'Tengo canil propio', detalle: 'Transportadora o jaula' },
+  { id: 'movil', icono: 'directions-car', titulo: 'Auto propio', detalle: 'Para traslados' },
+  { id: 'transito', icono: 'location-on', titulo: 'Tránsito disponible', detalle: 'Un cuarto para cuarentena' },
 ];
 
 const DIGITOS_TELEFONO = 10;
@@ -160,104 +161,40 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: top + 16, paddingBottom: bottom + 32 }]}
+        contentContainerStyle={[styles.content, { paddingTop: Math.max(top, StatusBar.currentHeight ?? 0) + 16, paddingBottom: bottom + 32 }]}
         keyboardShouldPersistTaps="handled"
       >
+        <Image source={require('../../../../assets/images/casos/luna.jpg')} style={styles.banner} resizeMode="cover" />
+
         <View style={styles.hero}>
           <View style={styles.heroGlow} />
           <Image source={require('../../../../assets/images/logo.png')} style={styles.heroLogo} />
           <View style={styles.heroBody}>
             <View style={styles.heroTags}>
               <View style={styles.tag}>
-                <Text style={styles.tagText}>PERF RED FELINA</Text>
+                <Text style={styles.tagText}>PERF</Text>
               </View>
               <View style={styles.dot} />
               <Text style={styles.zonaText}>CABA · AMBA</Text>
             </View>
-            <Text style={styles.heroTitle}>Sumate a la red de rescate</Text>
+            <Text style={styles.heroTitle}>¡Sumate al equipo!</Text>
             <Text style={styles.heroText}>
-              Creá tu cuenta de voluntario de campo para registrar rescates y coordinar tránsitos.
+              Creá tu cuenta para cargar rescates.
             </Text>
           </View>
         </View>
 
         <View style={styles.triage}>
-          <View style={styles.triagePhotoBox}>
-            <Image source={require('../../../../assets/images/registro-gato.jpg')} style={styles.triagePhoto} />
-          </View>
           <View style={styles.triageText}>
-            <Text style={styles.triageTitle}>Triage y logística inmediata</Text>
-            <Text style={styles.triageDetail}>Alertas según tu radio geográfico y recursos activos.</Text>
+            <Text style={styles.triageTitle}>Cerca tuyo</Text>
+            <Text style={styles.triageDetail}>Te avisamos de los rescates de tu zona.</Text>
           </View>
         </View>
 
         <View style={styles.form}>
-          <Seccion icono="badge" titulo="Datos de contacto de guardia">
+          <Seccion icono="lock" titulo="Tu cuenta">
             <Campo
-              label="Nombre y apellido"
-              nota="Obligatorio"
-              icono="person"
-              value={nombre}
-              onChangeText={setNombre}
-              placeholder="ej: Mariana Gómez"
-              autoCapitalize="words"
-              error={intento && !nombreValido ? 'Ingresá tu nombre y apellido.' : undefined}
-            />
-            <View>
-              <Campo
-                label="WhatsApp de guardia"
-                nota="Alertas críticas"
-                notaColor={colors.atencion}
-                icono="smartphone"
-                value={formatearTelefono(whatsapp)}
-                onChangeText={(t) => setWhatsapp(t.replace(/\D/g, '').slice(0, DIGITOS_TELEFONO))}
-                placeholder="ej: 11 5555-1234"
-                keyboardType="number-pad"
-                maxLength={12}
-              />
-              {telefonoIncompleto || (intento && !telefonoValido) ? (
-                <Text style={[styles.ayuda, styles.ayudaError]}>
-                  Ingresá los 10 dígitos: código de área + número, sin 0 ni 15.
-                </Text>
-              ) : (
-                <Text style={styles.ayuda}>Te contactaremos sólo ante urgencias y derivaciones activas.</Text>
-              )}
-            </View>
-            <SelectorZonas
-              zonasSeleccionadas={zonas}
-              onChange={setZonas}
-              titulo="Zonas habituales de acción"
-              subtitulo="Podés elegir más de una"
-              error={intento && !zonasValidas ? 'Seleccioná al menos una zona de acción.' : undefined}
-            />
-          </Seccion>
-
-          <Seccion icono="inventory-2" titulo="Recursos y disponibilidad rápida">
-            <Text style={styles.nota}>
-              Podés sumar más de una opción. Ayuda a definir tu rol en rescates de calle:
-            </Text>
-            <View style={styles.recursos}>
-              {RECURSOS.map((r) => {
-                const marcado = recursos.includes(r.id);
-                return (
-                  <Pressable key={r.id} style={styles.recurso} onPress={() => toggleRecurso(r.id)}>
-                    <View style={[styles.checkbox, marcado && styles.checkboxOn]}>
-                      {marcado && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
-                    </View>
-                    <MaterialIcons name={r.icono} size={18} color={colors.primary} />
-                    <View style={styles.recursoText}>
-                      <Text style={styles.recursoTitulo}>{r.titulo}</Text>
-                      <Text style={styles.nota}>{r.detalle}</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Seccion>
-
-          <Seccion icono="lock" titulo="Credenciales de acceso">
-            <Campo
-              label="Correo electrónico"
+              label="Correo"
               icono="mail-outline"
               value={email}
               onChangeText={setEmail}
@@ -285,6 +222,69 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
             />
           </Seccion>
 
+          <Seccion icono="badge" titulo="Tus datos">
+            <Campo
+              label="Nombre y apellido"
+              nota="Obligatorio"
+              icono="person"
+              value={nombre}
+              onChangeText={setNombre}
+              placeholder="ej: Mariana Gómez"
+              autoCapitalize="words"
+              error={intento && !nombreValido ? 'Ingresá tu nombre y apellido.' : undefined}
+            />
+            <View>
+              <Campo
+                label="WhatsApp de guardia"
+                nota="Para urgencias"
+                notaColor={colors.atencion}
+                icono="smartphone"
+                value={formatearTelefono(whatsapp)}
+                onChangeText={(t) => setWhatsapp(t.replace(/\D/g, '').slice(0, DIGITOS_TELEFONO))}
+                placeholder="ej: 11 5555-1234"
+                keyboardType="number-pad"
+                maxLength={12}
+              />
+              {telefonoIncompleto || (intento && !telefonoValido) ? (
+                <Text style={[styles.ayuda, styles.ayudaError]}>
+                  Ingresá los 10 dígitos: código de área + número, sin 0 ni 15.
+                </Text>
+              ) : (
+                <Text style={styles.ayuda}>Solo te escribimos por urgencias.</Text>
+              )}
+            </View>
+            <SelectorZonas
+              zonasSeleccionadas={zonas}
+              onChange={setZonas}
+              titulo="Tus zonas"
+              subtitulo="Podés elegir más de una"
+              error={intento && !zonasValidas ? 'Seleccioná al menos una zona de acción.' : undefined}
+            />
+          </Seccion>
+
+          <Seccion icono="inventory-2" titulo="¿Con qué podés ayudar?">
+            <Text style={styles.nota}>
+              Podés marcar más de una:
+            </Text>
+            <View style={styles.recursos}>
+              {RECURSOS.map((r) => {
+                const marcado = recursos.includes(r.id);
+                return (
+                  <Pressable key={r.id} style={styles.recurso} onPress={() => toggleRecurso(r.id)}>
+                    <View style={[styles.checkbox, marcado && styles.checkboxOn]}>
+                      {marcado && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
+                    </View>
+                    <MaterialIcons name={r.icono} size={18} color={colors.primary} />
+                    <View style={styles.recursoText}>
+                      <Text style={styles.recursoTitulo}>{r.titulo}</Text>
+                      <Text style={styles.nota}>{r.detalle}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Seccion>
+
           <Pressable
             style={[styles.terminos, intento && !acepta && styles.terminosError]}
             onPress={() => setAcepta((a) => !a)}
@@ -293,7 +293,7 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
               {acepta && <MaterialIcons name="check" size={18} color={colors.onPrimary} />}
             </View>
             <Text style={styles.terminosText}>
-              Acepto las <Text style={styles.terminosLink}>pautas de cuidado y bienestar animal</Text> de PERF
+              Acepto las <Text style={styles.terminosLink}>pautas de cuidado animal</Text> de PERF
               Móvil, el protocolo ético de tránsito responsable y el resguardo de datos en intervenciones de
               campo.
             </Text>
@@ -333,7 +333,7 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
               }}
             >
               <MaterialIcons name="offline-pin" size={20} color={colors.primary} />
-              <Text style={styles.offlineBtnText}>Continuar en Modo Offline (Voluntario Local)</Text>
+              <Text style={styles.offlineBtnText}>Seguir sin conexión</Text>
             </Pressable>
           ) : null}
 
@@ -355,14 +355,14 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
               ) : (
                 <>
                   <MaterialIcons name={cuentaCreada ? 'login' : 'person-add'} size={18} color={colors.onPrimary} />
-                  <Text style={styles.ctaText}>{cuentaCreada ? 'Volver a iniciar sesión' : 'Crear cuenta de voluntario'}</Text>
+                  <Text style={styles.ctaText}>{cuentaCreada ? 'Volver a entrar' : 'Crear mi cuenta'}</Text>
                 </>
               )}
             </Pressable>
             <View style={styles.loginRow}>
-              <Text style={styles.loginText}>¿Ya sos voluntario registrado?</Text>
+              <Text style={styles.loginText}>¿Ya tenés cuenta?</Text>
               <Pressable onPress={onLogin} hitSlop={8}>
-                <Text style={styles.loginLink}>Iniciar sesión</Text>
+                <Text style={styles.loginLink}>Entrar</Text>
               </Pressable>
             </View>
           </View>
@@ -405,6 +405,7 @@ const styles = StyleSheet.create({
   heroTitle: { fontFamily: fonts.semibold, fontSize: 22, lineHeight: 27.5, color: colors.text },
   heroText: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 19.25, letterSpacing: 0.14, color: colors.textMuted },
 
+  banner: { width: '100%', height: 210, borderRadius: 16, marginBottom: 12, backgroundColor: colors.surfaceMuted },
   triage: {
     backgroundColor: colors.surface,
     borderRadius: 16,
