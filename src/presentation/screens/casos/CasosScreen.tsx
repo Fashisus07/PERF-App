@@ -102,8 +102,9 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
               onPress={() => setFiltro(activo ? 'todos' : t.key)}
               style={[styles.tab, activo && styles.tabActive]}
             >
-              {t.dot && !activo && <View style={[styles.tabDot, { backgroundColor: t.dot }]} />}
-              <Text style={[styles.tabText, activo && styles.tabTextActive]}>
+              {/* El punto está siempre: así el texto no se mueve al activar o desactivar el filtro. */}
+              {t.dot ? <View style={[styles.tabDot, { backgroundColor: activo ? colors.onPrimary : t.dot }]} /> : null}
+              <Text style={[styles.tabText, activo && styles.tabTextActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
                 {t.label} ({conteo[t.key]})
               </Text>
             </Pressable>
@@ -229,11 +230,12 @@ const styles = StyleSheet.create({
   vistaOpcionActiva: { backgroundColor: colors.primary },
   vistaTexto: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
   vistaTextoActivo: { color: colors.onPrimary },
-  tabs: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, paddingVertical: 8, marginBottom: 4 },
-  tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999, backgroundColor: colors.surfaceChip },
+  // Tres botones del mismo ancho y en una sola fila: al cambiar los números (Todos / Mis casos) no se corren.
+  tabs: { flexDirection: 'row', gap: 8, paddingVertical: 8, marginBottom: 4 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 10, borderRadius: 9999, backgroundColor: colors.surfaceChip },
   tabActive: { backgroundColor: colors.primary },
   tabDot: { width: 8, height: 8, borderRadius: 9999 },
-  tabText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
+  tabText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted, fontVariant: ['tabular-nums'] },
   tabTextActive: { color: colors.onPrimary },
   offBanner: { backgroundColor: colors.offlineBanner, borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
   offBannerTitle: { fontFamily: fonts.semibold, fontSize: 16, lineHeight: 22, color: colors.text },
