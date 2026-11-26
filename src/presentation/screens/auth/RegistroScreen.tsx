@@ -191,6 +191,36 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
         </View>
 
         <View style={styles.form}>
+          <Seccion icono="lock" titulo="Tu cuenta">
+            <Campo
+              label="Correo"
+              icono="mail-outline"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="tu@email.com"
+              keyboardType="email-address"
+              error={intento && !emailValido ? 'Ingresá un correo válido, por ejemplo tu@email.com.' : undefined}
+            />
+            <Campo
+              label="Contraseña"
+              icono="vpn-key"
+              value={clave}
+              onChangeText={setClave}
+              placeholder="Mínimo 6 caracteres"
+              secureTextEntry={!verClave}
+              error={intento && !claveValida ? 'La contraseña debe tener al menos 6 caracteres.' : undefined}
+              derecha={
+                <Pressable
+                  style={styles.eyeBtn}
+                  onPress={() => setVerClave((v) => !v)}
+                  accessibilityLabel="Mostrar contraseña"
+                >
+                  <MaterialIcons name={verClave ? 'visibility-off' : 'visibility'} size={20} color={colors.textMuted} />
+                </Pressable>
+              }
+            />
+          </Seccion>
+
           <Seccion icono="badge" titulo="Tus datos">
             <Campo
               label="Nombre y apellido"
@@ -252,36 +282,6 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
                 );
               })}
             </View>
-          </Seccion>
-
-          <Seccion icono="lock" titulo="Tu cuenta">
-            <Campo
-              label="Correo"
-              icono="mail-outline"
-              value={email}
-              onChangeText={setEmail}
-              placeholder="tu@email.com"
-              keyboardType="email-address"
-              error={intento && !emailValido ? 'Ingresá un correo válido, por ejemplo tu@email.com.' : undefined}
-            />
-            <Campo
-              label="Contraseña"
-              icono="vpn-key"
-              value={clave}
-              onChangeText={setClave}
-              placeholder="Mínimo 6 caracteres"
-              secureTextEntry={!verClave}
-              error={intento && !claveValida ? 'La contraseña debe tener al menos 6 caracteres.' : undefined}
-              derecha={
-                <Pressable
-                  style={styles.eyeBtn}
-                  onPress={() => setVerClave((v) => !v)}
-                  accessibilityLabel="Mostrar contraseña"
-                >
-                  <MaterialIcons name={verClave ? 'visibility-off' : 'visibility'} size={20} color={colors.textMuted} />
-                </Pressable>
-              }
-            />
           </Seccion>
 
           <Pressable
