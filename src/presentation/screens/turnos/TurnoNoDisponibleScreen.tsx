@@ -10,20 +10,21 @@ import {
   ETIQUETA_MOTIVO,
   horaDe,
   MotivoConsulta,
-  AvisoTurno,
   SolicitudTurno,
 } from '../../../domain/models/Turno';
 import { CupoNoDisponible } from '../../../domain/usecases/AgendarTurno';
 import { StackHeader } from '../../components/StackHeader';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { useCaso } from '../../hooks/useCaso';
+import { guardarRecordatorioDefault } from '../../hooks/useAjustes';
 import { agendarTurno, obtenerClinicas } from '../../hooks/useTurnos';
 import { colors, fonts } from '../../theme';
 import { AvatarPerfil } from '../rescate/BarraRescate';
 
 type Params = {
-  solicitud: { casoId: string; clinicaId: string; fecha: string; motivo: MotivoConsulta; notas?: string; avisos: AvisoTurno[] };
+  solicitud: { casoId: string; clinicaId: string; fecha: string; motivo: MotivoConsulta; notas?: string; recordatorioMinutos: number };
   opciones: { fecha: string; espera: number }[];
+  usarSiempreRecordatorio?: boolean;
 };
 
 // Se muestra cuando el horario elegido ya fue reservado por otra guardia.
@@ -52,16 +53,18 @@ export function TurnoNoDisponibleScreen({ route, navigation }: { route?: { param
       centroVeterinarioId: p.solicitud.clinicaId,
       fechaHora,
       motivo: p.solicitud.motivo,
-      recordatorioMinutos: 120,
+      recordatorioMinutos: p.solicitud.recordatorioMinutos,
     };
     try {
       const r = await agendarTurno.ejecutar(solicitud, caso);
-      navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id, avisosProgramados: ['2horas'] });
+      if (p.usarSiempreRecordatorio) await guardarRecordatorioDefault(solicitud.recordatorioMinutos);
+      navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id });
     } catch (e) {
       if (e instanceof CupoNoDisponible) {
         navigation?.replace?.('TurnoNoDisponible', {
           solicitud: p.solicitud,
           opciones: e.opciones.map((o) => ({ fecha: o.fecha.toISOString(), espera: o.espera })),
+          usarSiempreRecordatorio: p.usarSiempreRecordatorio,
         });
       }
       setEligiendo(null);

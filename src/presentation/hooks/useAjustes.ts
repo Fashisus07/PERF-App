@@ -11,8 +11,15 @@ import { Ajustes, ajustesPorDefecto, ResumenAlmacenamiento } from '../../domain/
 
 export const sincronizarAhora = sincronizarAhoraUseCase;
 
-// Para los demás hooks (lista de casos, detalle, formulario de turnos): leen los ajustes guardados.
+// Para los demás hooks (lista de casos, detalle, formulario de turnos): leen o guardan los ajustes directamente.
 export const obtenerAjustes = () => obtenerAjustesUseCase.ejecutar();
+export const guardarAjustes = (ajustes: Ajustes) => guardarAjustesUseCase.ejecutar(ajustes);
+
+// Para marcar "usar siempre esta anticipación" al agendar un turno, sin tocar el resto de los ajustes.
+export const guardarRecordatorioDefault = async (recordatorioMinutosDefault: number) => {
+  const actuales = await obtenerAjustesUseCase.ejecutar();
+  await guardarAjustesUseCase.ejecutar({ ...actuales, recordatorioMinutosDefault });
+};
 
 export function useAjustes() {
   const [guardados, setGuardados] = useState<Ajustes>(ajustesPorDefecto);
@@ -43,5 +50,5 @@ export function useAjustes() {
 
   const actualizarResumen = () => casoRepository.resumenAlmacenamiento().then(setResumen);
 
-  return { borrador, cambiar, hayCambios, guardarCambios, resumen, actualizarResumen, cargando };
+  return { borrador, guardados, cambiar, hayCambios, guardarCambios, resumen, actualizarResumen, cargando };
 }

@@ -53,20 +53,60 @@ export const ETIQUETA_MOTIVO: Record<string, string> = {
   urgencia: 'Urgencia',
 };
 
-export type AvisoTurno = '1dia' | '2horas';
+// ─── Recordatorios: anticipación configurable (valor + unidad, sin opciones fijas) ───
 
-export const ETIQUETA_AVISO: Record<AvisoTurno, string> = {
-  '1dia': '24 horas antes',
-  '2horas': '2 horas antes',
+export type UnidadRecordatorio = 'minutos' | 'horas' | 'dias';
+
+export const UNIDADES_RECORDATORIO: UnidadRecordatorio[] = ['minutos', 'horas', 'dias'];
+
+export const ETIQUETA_UNIDAD: Record<UnidadRecordatorio, { singular: string; plural: string }> = {
+  minutos: { singular: 'minuto', plural: 'minutos' },
+  horas: { singular: 'hora', plural: 'horas' },
+  dias: { singular: 'día', plural: 'días' },
 };
 
-// ─── Recordatorios: opciones predefinidas ───
+/** Cuánto avanza cada toque del selector, según la unidad elegida. */
+export const PASO_UNIDAD: Record<UnidadRecordatorio, number> = { minutos: 5, horas: 1, dias: 1 };
 
-/** Opciones de anticipación que se ofrecen en el formulario. */
-export const OPCIONES_RECORDATORIO = [
-  { label: '2 horas antes', minutos: 120 },
-  { label: '24 horas antes', minutos: 1440 },
-] as const;
+/** Rango permitido de anticipación para cada unidad: minutos hasta completar la hora, horas hasta completar el día. */
+export const LIMITE_UNIDAD: Record<UnidadRecordatorio, { min: number; max: number }> = {
+  minutos: { min: 5, max: 60 },
+  horas: { min: 1, max: 24 },
+  dias: { min: 1, max: 14 },
+};
+
+export const RECORDATORIO_POR_DEFECTO = 120; // 2 horas
+
+export const minutosDeAnticipacion = (valor: number, unidad: UnidadRecordatorio): number =>
+  unidad === 'minutos' ? valor : unidad === 'horas' ? valor * 60 : valor * 1440;
+
+/** Recorta al rango de la unidad y lo redondea al escalón del selector (ej: minutos solo de 5 en 5). */
+export function normalizarValorUnidad(valor: number, unidad: UnidadRecordatorio): number {
+  const { min, max } = LIMITE_UNIDAD[unidad];
+  const paso = PASO_UNIDAD[unidad];
+  const recortado = Math.min(Math.max(valor, min), max);
+  const redondeado = Math.round(recortado / paso) * paso;
+  return Math.min(Math.max(redondeado, min), max);
+}
+
+/** La unidad más grande que representa los minutos exactamente, sin recortar al rango del selector. */
+function mayorUnidadExacta(minutos: number): { valor: number; unidad: UnidadRecordatorio } {
+  if (minutos % 1440 === 0) return { valor: minutos / 1440, unidad: 'dias' };
+  if (minutos % 60 === 0) return { valor: minutos / 60, unidad: 'horas' };
+  return { valor: minutos, unidad: 'minutos' };
+}
+
+/** Para inicializar el selector a partir de un valor guardado: misma idea, pero ajustada al rango y escalón permitidos. */
+export function descomponerAnticipacion(minutos: number): { valor: number; unidad: UnidadRecordatorio } {
+  const { valor, unidad } = mayorUnidadExacta(minutos);
+  return { valor: normalizarValorUnidad(valor, unidad), unidad };
+}
+
+export function etiquetaRecordatorio(minutos: number): string {
+  const { valor, unidad } = mayorUnidadExacta(minutos);
+  const palabra = valor === 1 ? ETIQUETA_UNIDAD[unidad].singular : ETIQUETA_UNIDAD[unidad].plural;
+  return `${valor} ${palabra} antes`;
+}
 
 // ─── Horarios de atención (mock del catálogo de centros) ───
 

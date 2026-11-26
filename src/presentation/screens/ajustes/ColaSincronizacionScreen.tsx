@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { casoRepository } from '../../../di/container';
 import { OperacionPendiente } from '../../../domain/repositories/CasoRepository';
+import { formatoFechaHoraCorta } from '../../../domain/models/Rescate';
 import { StackHeader } from '../../components/StackHeader';
 import { useOnline } from '../../hooks/useOnline';
 import { colors, fonts } from '../../theme';
@@ -75,10 +76,7 @@ export function ColaSincronizacionScreen({ navigation }: Props) {
     }
   };
 
-  const formatearFecha = (ts: number) => {
-    const f = new Date(ts);
-    return `${f.toLocaleDateString('es-AR')} ${f.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} hs`;
-  };
+  const formatearFecha = (ts: number) => `${formatoFechaHoraCorta(ts)} hs`;
 
   const formatearPayload = (payloadStr: string) => {
     try {

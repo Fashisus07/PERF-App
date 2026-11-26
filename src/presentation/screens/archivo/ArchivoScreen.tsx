@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { Caso, EstadoCaso, ETIQUETA_ESTADO } from '../../../domain/models/Caso';
+import { formatoFechaCorta } from '../../../domain/models/Rescate';
 import { casoRepository } from '../../../di/container';
 import { AppHeader } from '../../components/AppHeader';
 import { colors, fonts } from '../../theme';
@@ -194,11 +195,7 @@ export function ArchivoScreen({ navigation }: { navigation?: any }) {
           renderItem={({ item }) => {
             const fotoSource = item.fotoUri ? { uri: item.fotoUri } : FOTO_DEFAULT;
             const esAdoptado = item.estadoCaso === 'ADOPTADO';
-            const fechaCierre = new Date(item.updatedAt).toLocaleDateString('es-AR', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            });
+            const fechaCierre = formatoFechaCorta(item.updatedAt);
 
             return (
               <Pressable

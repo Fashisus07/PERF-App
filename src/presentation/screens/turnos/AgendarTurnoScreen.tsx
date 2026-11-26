@@ -5,23 +5,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Urgencia } from '../../../domain/models/Caso';
 import { formatoFecha } from '../../../domain/models/Rescate';
 import {
-  AvisoTurno,
   Clinica,
   conHora,
-  ETIQUETA_AVISO,
+  descomponerAnticipacion,
   ETIQUETA_MOTIVO,
   HORARIOS_FORMULARIO,
+  minutosDeAnticipacion,
+  normalizarValorUnidad,
   MotivoConsulta,
   mismoDia,
   sumarDias,
   etiquetaDia,
   diaLargo,
+  RECORDATORIO_POR_DEFECTO,
   SolicitudTurno,
+  UnidadRecordatorio,
 } from '../../../domain/models/Turno';
 import { CupoNoDisponible } from '../../../domain/usecases/AgendarTurno';
+import { SelectorAnticipacion } from '../../components/SelectorAnticipacion';
 import { StackHeader } from '../../components/StackHeader';
 import { useCasos } from '../../hooks/useCasos';
-import { obtenerAjustes } from '../../hooks/useAjustes';
+import { guardarRecordatorioDefault, obtenerAjustes } from '../../hooks/useAjustes';
 import { agendarTurno, obtenerClinicas } from '../../hooks/useTurnos';
 import { colors, fonts } from '../../theme';
 import { AvatarPerfil } from '../rescate/BarraRescate';
@@ -46,17 +50,29 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
   const [hora, setHora] = useState<string | null>('10:30');
   const [motivo, setMotivo] = useState<MotivoConsulta>('control');
   const [notas, setNotas] = useState('');
-  const [avisos, setAvisos] = useState<AvisoTurno[]>(['1dia', '2horas']);
+  const defaultAnticipacion = descomponerAnticipacion(RECORDATORIO_POR_DEFECTO);
+  const [recValor, setRecValor] = useState(defaultAnticipacion.valor);
+  const [recUnidad, setRecUnidad] = useState<UnidadRecordatorio>(defaultAnticipacion.unidad);
+  const [usarSiempre, setUsarSiempre] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 
   useEffect(() => {
     obtenerClinicas().then(setClinicas);
-    // Los recordatorios que vienen marcados salen de los Ajustes.
-    obtenerAjustes().then((a) =>
-      setAvisos([...(a.recordatorioUnDia ? (['1dia'] as AvisoTurno[]) : []), ...(a.alertaDosHoras ? (['2horas'] as AvisoTurno[]) : [])]),
-    );
+    // La anticipación por defecto sale de los Ajustes.
+    obtenerAjustes().then((a) => {
+      const d = descomponerAnticipacion(a.recordatorioMinutosDefault);
+      setRecValor(d.valor);
+      setRecUnidad(d.unidad);
+    });
   }, []);
+
+  const recordatorioMinutos = minutosDeAnticipacion(recValor, recUnidad);
+  const cambiarValorRecordatorio = (valor: number) => setRecValor(valor);
+  const cambiarUnidadRecordatorio = (unidad: UnidadRecordatorio) => {
+    setRecUnidad(unidad);
+    setRecValor((v) => normalizarValorUnidad(v, unidad));
+  };
 
   const ahora = new Date();
   const dias = [0, 1, 2].map((n) => sumarDias(ahora, n));
@@ -79,9 +95,6 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
     return e === 'Hoy' || e === 'Mañana' ? `${e} (${formatoFecha(fechaDia)})` : e;
   })();
 
-  const alternarAviso = (a: AvisoTurno) =>
-    setAvisos((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]));
-
   const confirmar = async () => {
     if (!caso || !hora || !clinica || guardando) return;
     setGuardando(true);
@@ -92,16 +105,18 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
       centroVeterinarioId: clinicaId,
       fechaHora: fechaTurno.getTime(),
       motivo,
-      recordatorioMinutos: avisos.includes('1dia') ? 1440 : 120,
+      recordatorioMinutos,
     };
     try {
       const r = await agendarTurno.ejecutar(solicitud, caso);
-      navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id, avisosProgramados: avisos });
+      if (usarSiempre) await guardarRecordatorioDefault(recordatorioMinutos);
+      navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id });
     } catch (e: any) {
       if (e instanceof CupoNoDisponible) {
         navigation?.replace?.('TurnoNoDisponible', {
-          solicitud: { ...solicitud, clinicaId, fecha: fechaTurno.toISOString(), avisos },
+          solicitud: { ...solicitud, clinicaId, fecha: fechaTurno.toISOString() },
           opciones: e.opciones.map((o) => ({ fecha: o.fecha.toISOString(), espera: o.espera })),
+          usarSiempreRecordatorio: usarSiempre,
         });
       } else {
         setErrorGeneral(e?.message || 'Error al agendar el turno. Por favor revisá los datos e intentá nuevamente.');
@@ -263,27 +278,37 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
             <MaterialIcons name="notifications-active" size={16} color={colors.primary} />
             <Text style={styles.seccion}>Recordatorio en el teléfono</Text>
           </View>
-          <View style={styles.horas}>
-            {(Object.keys(ETIQUETA_AVISO) as AvisoTurno[]).map((a) => {
-              const activo = avisos.includes(a);
-              return (
-                <Pressable
-                  key={a}
-                  style={[styles.aviso, activo && styles.horaActiva]}
-                  onPress={() => alternarAviso(a)}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: activo }}
-                >
-                  <MaterialIcons name={activo ? 'check-circle' : 'radio-button-unchecked'} size={18} color={activo ? '#fff' : colors.textMuted} />
-                  <Text style={[styles.horaText, activo && { color: '#fff' }]}>{ETIQUETA_AVISO[a]}</Text>
-                </Pressable>
-              );
-            })}
+          <SelectorAnticipacion
+            valor={recValor}
+            unidad={recUnidad}
+            onCambiarValor={cambiarValorRecordatorio}
+            onCambiarUnidad={cambiarUnidadRecordatorio}
+          />
+          <View style={styles.usoChips}>
+            <Pressable
+              style={[styles.usoChip, !usarSiempre && styles.usoChipActivo]}
+              onPress={() => setUsarSiempre(false)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: !usarSiempre }}
+            >
+              <MaterialIcons name="event" size={16} color={!usarSiempre ? '#fff' : colors.textMuted} />
+              <Text style={[styles.usoChipText, !usarSiempre && { color: '#fff' }]}>Solo para este turno</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.usoChip, usarSiempre && styles.usoChipActivo]}
+              onPress={() => setUsarSiempre(true)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: usarSiempre }}
+            >
+              <MaterialIcons name="repeat" size={16} color={usarSiempre ? '#fff' : colors.textMuted} />
+              <Text style={[styles.usoChipText, usarSiempre && { color: '#fff' }]}>Usar siempre</Text>
+            </Pressable>
           </View>
           <View style={styles.info}>
             <MaterialIcons name="info" size={18} color={colors.textMuted} />
             <Text style={styles.infoText}>
               Te enviaremos una notificación local en este celular para preparar el canil y coordinar el traslado.
+              {usarSiempre ? ' Esta anticipación va a quedar como tu preferencia para los próximos turnos.' : ''}
             </Text>
           </View>
         </View>
@@ -355,7 +380,10 @@ const styles = StyleSheet.create({
   hora: { width: '48.5%', height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 8, backgroundColor: colors.surface, ...sombra },
   horaActiva: { backgroundColor: colors.primary },
   horaText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
-  aviso: { flex: 1, minWidth: '47%', height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 8, backgroundColor: colors.surface, ...sombra },
+  usoChips: { flexDirection: 'row', gap: 8 },
+  usoChip: { flex: 1, height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 9999, backgroundColor: colors.surfaceChip },
+  usoChipActivo: { backgroundColor: colors.primary },
+  usoChipText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted },
 
   clinica: { gap: 10, padding: 14, borderRadius: 12, backgroundColor: colors.surface, ...sombra },
   clinicaTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },

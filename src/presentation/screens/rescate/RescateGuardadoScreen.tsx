@@ -105,13 +105,9 @@ export function RescateGuardadoScreen({ route, navigation }: { route?: { params?
         </View>
 
         <View style={{ gap: 10 }}>
-          <Pressable style={styles.primario} onPress={() => navigation?.navigate?.('AgendarTurno', { casoId: caso.id })}>
-            <MaterialIcons name="event-available" size={20} color="#fff" />
-            <Text style={styles.primarioText}>Agendar primer turno veterinario</Text>
-          </Pressable>
-          <Pressable style={styles.secundario} onPress={irALista}>
-            <MaterialIcons name="assignment" size={18} color={colors.primary} />
-            <Text style={styles.secundarioText}>Ir a la lista de casos</Text>
+          <Pressable style={styles.primario} onPress={irALista}>
+            <MaterialIcons name="assignment" size={18} color="#fff" />
+            <Text style={styles.primarioText}>Ir a la lista de casos</Text>
           </Pressable>
           <Pressable style={styles.terciario} onPress={() => navigation?.replace?.('NuevoRescate')}>
             <MaterialIcons name="add-circle-outline" size={18} color={colors.textMuted} />
@@ -154,8 +150,6 @@ const styles = StyleSheet.create({
 
   primario: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 9999, backgroundColor: colors.brand },
   primarioText: { fontFamily: fonts.semibold, fontSize: 16, color: '#fff' },
-  secundario: { height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 9999, backgroundColor: colors.surfaceChip },
-  secundarioText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.primary },
   terciario: { height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   terciarioText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
 });

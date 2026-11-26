@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { formatoFechaHoraCorta } from '../../../domain/models/Rescate';
 import { SolicitudVoluntarioPendiente } from '../../../domain/repositories/AuthRepository';
 import { authRepository } from '../../../di/container';
 import { colors, fonts } from '../../theme';
@@ -325,14 +326,7 @@ export function AprobacionVoluntariosScreen({ navigation }: Props) {
                       <View style={styles.filaFecha}>
                         <MaterialIcons name="schedule" size={14} color={colors.textMuted} />
                         <Text style={styles.fechaTexto}>
-                          Postulado el{' '}
-                          {new Date(vol.createdAt).toLocaleDateString('es-AR', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          Postulado el {formatoFechaHoraCorta(vol.createdAt)}
                         </Text>
                       </View>
                     ) : null}

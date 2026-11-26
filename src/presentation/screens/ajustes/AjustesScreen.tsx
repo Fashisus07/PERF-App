@@ -3,8 +3,10 @@ import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Image, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UMBRAL_MAX, UMBRAL_MIN, Voluntario } from '../../../domain/models/Ajustes';
+import { descomponerAnticipacion, minutosDeAnticipacion, normalizarValorUnidad, UnidadRecordatorio } from '../../../domain/models/Turno';
 import { candadoActivado, celularTieneBloqueo, guardarCandado } from '../../../data/local/CandadoApp';
 import { authRepository } from '../../../di/container';
+import { SelectorAnticipacion } from '../../components/SelectorAnticipacion';
 import { useAjustes, sincronizarAhora } from '../../hooks/useAjustes';
 import { useOnline } from '../../hooks/useOnline';
 import { colors, fonts } from '../../theme';
@@ -17,7 +19,9 @@ type Props = { navigation?: any };
 export function AjustesScreen({ navigation }: Props) {
   const { top, bottom } = useSafeAreaInsets();
   const online = useOnline();
-  const { borrador, cambiar, hayCambios, guardarCambios, resumen, actualizarResumen, cargando } = useAjustes();
+  const { borrador, guardados, cambiar, hayCambios, guardarCambios, resumen, actualizarResumen, cargando } = useAjustes();
+  const [recUnidad, setRecUnidad] = useState<UnidadRecordatorio>('horas');
+  const [recValor, setRecValor] = useState(2);
   const [sincronizando, setSincronizando] = useState(false);
   const [mensajeSync, setMensajeSync] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -39,6 +43,25 @@ export function AjustesScreen({ navigation }: Props) {
     candadoActivado().then(setCandado);
     celularTieneBloqueo().then(setTieneBloqueo);
   }, []);
+
+  // Se sincroniza con lo guardado (no con cada tecleo del borrador) para no pelear con la edición en curso.
+  useEffect(() => {
+    const d = descomponerAnticipacion(guardados.recordatorioMinutosDefault);
+    setRecValor(d.valor);
+    setRecUnidad(d.unidad);
+  }, [guardados.recordatorioMinutosDefault]);
+
+  const cambiarValorRecordatorio = (valor: number) => {
+    setRecValor(valor);
+    cambiar({ recordatorioMinutosDefault: minutosDeAnticipacion(valor, recUnidad) });
+  };
+
+  const cambiarUnidadRecordatorio = (unidad: UnidadRecordatorio) => {
+    const valor = normalizarValorUnidad(recValor, unidad);
+    setRecUnidad(unidad);
+    setRecValor(valor);
+    cambiar({ recordatorioMinutosDefault: minutosDeAnticipacion(valor, unidad) });
+  };
 
   useEffect(() => {
     authRepository.obtenerVoluntarioActual().then((vol) => {
@@ -250,24 +273,18 @@ export function AjustesScreen({ navigation }: Props) {
             </Tarjeta>
 
             <Tarjeta icono="notifications-active" fondo={colors.atencionBg} color={colors.atencion} titulo="Notificaciones de Turnos" sub="Alertas de traslados a veterinarias asociadas">
-              <FilaToggle
-                icono="event"
-                titulo="Recordatorio anticipado"
-                texto="1 día antes del turno asignado"
-                valor={borrador.recordatorioUnDia}
-                onChange={(v) => cambiar({ recordatorioUnDia: v })}
-              />
-              <View style={styles.separador} />
-              <FilaToggle
-                icono="schedule"
-                titulo="Alerta de salida"
-                texto="2 horas antes (para alistar transportadora)"
-                valor={borrador.alertaDosHoras}
-                onChange={(v) => cambiar({ alertaDosHoras: v })}
+              <Text style={styles.filaTitulo}>Anticipación por defecto del recordatorio</Text>
+              <SelectorAnticipacion
+                valor={recValor}
+                unidad={recUnidad}
+                onCambiarValor={cambiarValorRecordatorio}
+                onCambiarUnidad={cambiarUnidadRecordatorio}
               />
               <View style={styles.info}>
                 <MaterialIcons name="info" size={16} color={colors.textMuted} />
-                <Text style={styles.infoText}>Las notificaciones se envían al dispositivo si tenés la app activa o en segundo plano.</Text>
+                <Text style={styles.infoText}>
+                  Se usa como valor inicial al agendar un turno; podés elegir otra anticipación en cada turno.
+                </Text>
               </View>
             </Tarjeta>
 
@@ -418,7 +435,6 @@ const styles = StyleSheet.create({
   fila: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   filaTitulo: { fontFamily: fonts.bold, fontSize: 16, color: colors.text },
   filaTexto: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 19, color: colors.textMuted },
-  separador: { height: 1, backgroundColor: colors.border },
   toggle: { width: 56, height: 32, borderRadius: 9999, justifyContent: 'center' },
   toggleOn: { backgroundColor: colors.primary },
   toggleOff: { backgroundColor: colors.surfaceChip },

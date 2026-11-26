@@ -23,6 +23,7 @@ import {
   EventoHistorial,
   nivelAUrgencia,
 } from '../../../domain/models/Caso';
+import { formatoFechaCorta, formatoFechaHoraCorta } from '../../../domain/models/Rescate';
 import { StackHeader } from '../../components/StackHeader';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { useCaso } from '../../hooks/useCaso';
@@ -89,11 +90,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
   const estadoActual = caso.estadoCaso ?? 'EN_TRANSITO';
   const esArchivado = estadoActual === 'ADOPTADO' || estadoActual === 'FALLECIDO';
   const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;
-  const fechaRescateTexto = new Date(caso.fechaRescate).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  const fechaRescateTexto = formatoFechaCorta(caso.fechaRescate);
 
   const abrirMapa = () => {
     if (caso.coordenadas) {
@@ -313,7 +310,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               <Text style={styles.sanidadLabel}>1° Desparasitación</Text>
               <Text style={styles.sanidadValor}>
                 {caso.sanidad.fechaPrimeraDesparasitacion
-                  ? new Date(caso.sanidad.fechaPrimeraDesparasitacion).toLocaleDateString('es-AR')
+                  ? formatoFechaCorta(caso.sanidad.fechaPrimeraDesparasitacion)
                   : 'Pendiente'}
               </Text>
             </View>
@@ -322,7 +319,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               <Text style={styles.sanidadLabel}>2° Desparasitación</Text>
               <Text style={styles.sanidadValor}>
                 {caso.sanidad.fechaSegundaDesparasitacion
-                  ? new Date(caso.sanidad.fechaSegundaDesparasitacion).toLocaleDateString('es-AR')
+                  ? formatoFechaCorta(caso.sanidad.fechaSegundaDesparasitacion)
                   : 'Pendiente'}
               </Text>
             </View>
@@ -491,12 +488,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
 }
 
 function ItemHistorial({ evento, color, ultimo }: { evento: EventoHistorial; color: string; ultimo: boolean }) {
-  const fechaTexto = new Date(evento.fecha).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const fechaTexto = formatoFechaHoraCorta(evento.fecha);
 
   return (
     <View style={styles.itemRow}>
