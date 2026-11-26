@@ -126,6 +126,8 @@ export const useCasoStore = create<CasoState>((set, get) => ({
         casos: [nuevo, ...state.casos].sort((a, b) => b.puntajePrioridad - a.puntajePrioridad || b.fechaRescate - a.fechaRescate),
         cargando: false,
       }));
+      // Con señal se sube enseguida; si falla (sin sesión o sin red) queda en la cola para el próximo intento.
+      if (!sinConexion) void casoRepository.sincronizar().then(() => get().cargarCasos(undefined, true)).catch(() => {});
       return nuevo;
     } catch (e: any) {
       set({ cargando: false, error: e?.message || 'Error al guardar rescate' });
