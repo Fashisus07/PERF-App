@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  calcularUrgencia,
   diasEnEspera,
   ETIQUETA_CASTRACION,
   ETIQUETA_ESTADO,
@@ -21,12 +20,13 @@ import {
   ETIQUETA_VIRALES,
   ETIQUETA_VULNERABILIDAD,
   EventoHistorial,
-  nivelAUrgencia,
+  prioridadDeCaso,
 } from '../../../domain/models/Caso';
 import { StackHeader } from '../../components/StackHeader';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { useAnimales } from '../../hooks/useAnimales';
 import { useCaso } from '../../hooks/useCaso';
+import { useCasoStore } from '../../stores/useCasoStore';
 import { colors, fonts } from '../../theme';
 import { ESTADOS_CASO, infoEstado } from '../estado/estadosCaso';
 
@@ -43,6 +43,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
   const casoId = route?.params?.casoId ?? '';
   const { caso, historial, cargando } = useCaso(casoId);
   const { animales } = useAnimales(casoId);
+  const umbral = useCasoStore((s) => s.umbralDias);
   const [favorito, setFavorito] = useState(false);
   const [aviso, setAviso] = useState(false);
 
@@ -86,7 +87,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
     );
   }
 
-  const urgencia = caso.nivelPrioridad ? nivelAUrgencia(caso.nivelPrioridad) : calcularUrgencia(caso, 15);
+  const { urgencia, motivoUrgencia, puntajePrioridad } = prioridadDeCaso(caso, umbral);
   const dias = diasEnEspera(caso);
   const estadoActual = caso.estadoCaso ?? 'EN_TRANSITO';
   const esArchivado = estadoActual === 'ADOPTADO' || estadoActual === 'FALLECIDO';
@@ -118,7 +119,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
         <View style={styles.hero}>
           <Image source={fotoSource} style={styles.heroImg} resizeMode="cover" />
           <View style={styles.badgesRow}>
-            <UrgenciaBadge urgencia={urgencia} motivo={caso.motivoUrgencia} grande />
+            <UrgenciaBadge urgencia={urgencia} motivo={motivoUrgencia} grande />
             <View style={styles.badgeEspera}>
               <Text style={styles.badgeEsperaText}>
                 {dias} {dias === 1 ? 'día' : 'días'} en espera
@@ -256,7 +257,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
                   },
                 ]}
               >
-                {caso.puntajePrioridad} pts
+                {puntajePrioridad} pts
               </Text>
             </View>
           </View>
@@ -277,7 +278,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
             <View style={[styles.sanidadItem, { width: '100%' }]}>
               <Text style={styles.sanidadLabel}>Criterio de Urgencia</Text>
               <Text style={[styles.sanidadValor, { fontFamily: fonts.bold, color: colors.primary }]}>
-                {caso.motivoUrgencia || 'Al día'}
+                {motivoUrgencia}
               </Text>
             </View>
           </View>

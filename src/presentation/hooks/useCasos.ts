@@ -2,16 +2,15 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { authRepository } from '../../di/container';
 import { sigueElCaso, Voluntario } from '../../domain/models/Ajustes';
-import { calcularUrgencia, Caso, nivelAUrgencia } from '../../domain/models/Caso';
+import { Caso, prioridadDeCaso, UMBRAL_URGENTE_DIAS } from '../../domain/models/Caso';
 import { useCasoStore, FiltroUrgencia, FiltroEstado, OrdenCasos } from '../stores/useCasoStore';
 import { obtenerAjustes } from './useAjustes';
 
 export type { FiltroUrgencia, FiltroEstado, OrdenCasos };
 
-// Misma regla de urgencia que usa la bandeja: el nivel calculado por el triaje (gravedad,
-// vulnerabilidad y días) si el caso lo trae, o los días de espera si es un caso viejo.
-function urgenciaDe(c: Caso) {
-  return c.nivelPrioridad ? nivelAUrgencia(c.nivelPrioridad) : calcularUrgencia(c, 15);
+// Misma regla de urgencia que muestran las tarjetas: se calcula hoy con el umbral de Ajustes.
+function urgenciaDe(c: Caso, umbral: number) {
+  return prioridadDeCaso(c, umbral).urgencia;
 }
 
 export function useCasos() {
@@ -30,6 +29,7 @@ export function useCasos() {
   const setEstadoFiltro = useCasoStore((s) => s.setEstadoFiltro);
   const limpiarFiltros = useCasoStore((s) => s.limpiarFiltros);
   const cargarCasos = useCasoStore((s) => s.cargarCasos);
+  const umbral = useCasoStore((s) => s.umbralDias);
 
   const [voluntario, setVoluntario] = useState<Voluntario | null>(null);
   useEffect(() => {
@@ -41,7 +41,7 @@ export function useCasos() {
       const ajustes = await obtenerAjustes();
       await cargarCasos(ajustes.umbralUrgenteDias, silencioso);
     } catch {
-      await cargarCasos(15, silencioso);
+      await cargarCasos(UMBRAL_URGENTE_DIAS, silencioso);
     }
   }, [cargarCasos]);
 
@@ -70,17 +70,17 @@ export function useCasos() {
   const conteo = useMemo(
     () => ({
       todos: base.length,
-      urgente: base.filter((c) => urgenciaDe(c) === 'urgente').length,
-      atencion: base.filter((c) => urgenciaDe(c) === 'atencion').length,
-      aldia: base.filter((c) => urgenciaDe(c) === 'aldia').length,
+      urgente: base.filter((c) => urgenciaDe(c, umbral) === 'urgente').length,
+      atencion: base.filter((c) => urgenciaDe(c, umbral) === 'atencion').length,
+      aldia: base.filter((c) => urgenciaDe(c, umbral) === 'aldia').length,
     }),
-    [base]
+    [base, umbral]
   );
 
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     const filtrados = base.filter((c) => {
-      const urg = urgenciaDe(c);
+      const urg = urgenciaDe(c, umbral);
       const cumpleFiltro = filtro === 'todos' || urg === filtro;
       const cumpleBusqueda =
         !q ||
@@ -94,7 +94,7 @@ export function useCasos() {
     if (orden === 'mas_antiguo') return filtrados.slice().sort((a, b) => a.fechaRescate - b.fechaRescate);
     if (orden === 'ultima_revision') return filtrados.slice().sort((a, b) => b.updatedAt - a.updatedAt);
     return filtrados;
-  }, [base, busqueda, filtro, orden]);
+  }, [base, busqueda, filtro, orden, umbral]);
 
   return {
     visibles,

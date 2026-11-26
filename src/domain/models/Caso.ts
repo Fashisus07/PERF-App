@@ -1,3 +1,8 @@
+import {
+  calcularPrioridadCasoUseCase,
+  ResultadoCalculoPrioridad,
+} from '../usecases/CalcularPrioridadCasoUseCase';
+
 // ─── Tipos enumerados alineados con la planilla operativa PERF ───
 
 export type Especie = 'Gato' | 'Perro' | 'Otro';
@@ -156,25 +161,32 @@ export function nivelAUrgencia(nivel: NivelPrioridad): Urgencia {
   }
 }
 
-/**
- * Calcula el nivel de urgencia de un caso usando el modelo multicriterio de PERF.
- */
-export function calcularUrgencia(caso: Partial<Caso>, umbralDias: number = 15): Urgencia {
-  if (caso.estadoCaso === 'ADOPTADO' || caso.estadoCaso === 'FALLECIDO') {
-    return 'aldia';
-  }
-  const gravedad = caso.gravedadClinica ?? 'MODERADA';
-  const vuln = caso.vulnerabilidad ?? 'ESTABLE';
-  const fecha = caso.fechaRescate ?? Date.now();
-  const dias = Math.max(0, Math.floor((Date.now() - fecha) / (1000 * 60 * 60 * 24)));
+/** Días de espera a partir de los cuales un caso pasa a urgente (se puede cambiar en Ajustes). */
+export const UMBRAL_URGENTE_DIAS = 15;
 
-  if (gravedad === 'CRITICA' || vuln === 'LACTANTE_SIN_MADRE' || vuln === 'SIN_TRANSITO' || dias > umbralDias) {
-    return 'urgente';
-  }
-  if (gravedad === 'MODERADA' || vuln === 'EN_TRATAMIENTO' || dias >= Math.ceil(0.7 * umbralDias)) {
-    return 'atencion';
-  }
-  return 'aldia';
+export type PrioridadCaso = ResultadoCalculoPrioridad & { urgencia: Urgencia };
+
+/**
+ * Prioridad de un caso hoy: nivel, motivo y puntaje. Es la ÚNICA fuente de las reglas
+ * (`CalcularPrioridadCasoUseCase`) y se calcula al mostrar, no se lee de lo guardado: con el paso
+ * de los días un caso pasa de "Atención" a "Urgente" sin que nadie lo edite.
+ */
+export function prioridadDeCaso(caso: Partial<Caso>, umbralDias: number = UMBRAL_URGENTE_DIAS): PrioridadCaso {
+  const calculo = calcularPrioridadCasoUseCase.ejecutar(
+    {
+      estadoCaso: caso.estadoCaso ?? 'EN_TRANSITO',
+      gravedadClinica: caso.gravedadClinica,
+      vulnerabilidad: caso.vulnerabilidad,
+      fechaRescate: caso.fechaRescate ?? Date.now(),
+    },
+    umbralDias
+  );
+  return { ...calculo, urgencia: nivelAUrgencia(calculo.nivelPrioridad) };
+}
+
+/** Solo el nivel de urgencia. Usa `prioridadDeCaso`: no hay otra regla. */
+export function calcularUrgencia(caso: Partial<Caso>, umbralDias: number = UMBRAL_URGENTE_DIAS): Urgencia {
+  return prioridadDeCaso(caso, umbralDias).urgencia;
 }
 
 /** Días transcurridos desde el rescate. */

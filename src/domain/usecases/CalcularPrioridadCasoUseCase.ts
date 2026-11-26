@@ -1,9 +1,4 @@
-import {
-  Caso,
-  GravedadClinica,
-  NivelPrioridad,
-  Vulnerabilidad,
-} from '../models/Caso';
+import type { GravedadClinica, NivelPrioridad, Vulnerabilidad } from '../models/Caso';
 
 export interface EntradaCalculoPrioridad {
   estadoCaso: string;
