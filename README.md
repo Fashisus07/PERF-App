@@ -282,7 +282,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - [x] **Sacar la clave `service_role` de la app** (en el código; ver "Por qué no hay clave `service_role` en la app"). Desplegado en Supabase: migración `20261125…sin_service_role` aplicada y las 2 Edge Functions activas. **Falta** cargar los secrets `RESEND_API_KEY` y `APP_URL` (sin ellos el correo no sale), **rotar la clave `service_role`** y probar el correo y el enlace de aprobación.
 - [x] **Cerrar el acceso anónimo** (en el código): migración `20261125000100_cerrar_acceso_anonimo.sql`, que le saca al rol `anon` el permiso sobre todas las tablas (segunda barrera además de RLS). Aplicada en Supabase y verificada (el rol `anon` ya no tiene permisos sobre ninguna tabla).
 - [ ] **Botón "Voluntario Demo (Modo Offline)"** del login: entra sin contraseña. Quitarlo o dejarlo solo en modo desarrollo (`__DEV__`).
-- [ ] **Contraseñas**: cambiar la de la cuenta de administrador de prueba y no dejar contraseñas en un README público.
+- [x] **Contraseñas fuera del README**: se sacó la del voluntario de prueba (el administrador ya no la tenía). **Falta en Supabase** borrar esas cuentas o cambiarles la clave, porque la anterior quedó en el historial de git de un repo público.
 - [x] **Error de notificaciones** "Custom sound 'default' not found": el canal se creaba con `sound: 'default'`, que la librería busca como archivo. Ahora se omite y se usa el sonido del sistema, en un canal nuevo (`turnos-veterinarios`) porque Android no deja modificar un canal ya creado.
 - [ ] **Datos locales de versiones anteriores**: un celular con una instalación vieja muestra mal la urgencia (las columnas de triaje quedan con valores por defecto). Recalcular la prioridad en la migración de la base local, o limpiar los datos de la app.
 
@@ -302,14 +302,14 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - **Zonas múltiples:** cada voluntario elige una o más zonas (`SelectorZonas`). Se guardan en la columna `perfiles.zona` separadas por coma (`"Caballito, Almagro"`), así que no cambió el esquema. Helpers: `zonasDesdeTexto` y `zonasATexto`.
 - **Mis casos:** un caso es "de" un voluntario si `quienSigueCaso` coincide con su nombre o su primer nombre (`sigueElCaso()`). Es una coincidencia por texto hasta que el coordinador responsable pase a ser un registro con ID propio.
 - **Vistas de perfiles:** `PerfilesScreen` lista a los voluntarios aprobados y `PerfilDetalleScreen` muestra el perfil completo. Leen `perfiles`, que solo responde a usuarios autenticados y aprobados: sin sesión la lista sale vacía.
-- **Cuentas de prueba** (correos `@example.com`, solo para desarrollo):
+- **Cuentas de prueba** (correos `@example.com`, solo para desarrollo). **Las contraseñas no van en este archivo**: el repo es público y estas cuentas entran a la base compartida. Se piden al equipo.
 
-  | Rol | Correo | Contraseña |
-  |---|---|---|
-  | Voluntario | `perf.voluntario.test@example.com` | `Perf2026!prueba` |
-  | Administrador | `perf.admin.test@example.com` | pedirla al equipo (el repo es público y esta cuenta tiene permisos sobre la base compartida) |
+  | Rol | Correo |
+  |---|---|
+  | Voluntario | `perf.voluntario.test@example.com` |
+  | Administrador | `perf.admin.test@example.com` |
 
-  Para borrarlas: `delete from auth.users where email like 'perf.%.test@example.com';`
+  Si una contraseña estuvo publicada (la del voluntario estuvo en este README hasta el commit que la sacó, y sigue en el historial de git) hay que **darla por comprometida**: borrar la cuenta y crearla de nuevo con otra clave, o cambiarla desde Supabase → Authentication → Users. Para borrar las dos: `delete from auth.users where email like 'perf.%.test@example.com';` (también se borra su perfil).
 
 ### Base de datos compartida
 - **Proyecto de Supabase del equipo:** el de Tobías (`kdnosvxrgoxsopmzkghh`). Es el valor por defecto de `src/data/remote/supabaseClient.ts`; se puede cambiar con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` en `.env`.
