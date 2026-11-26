@@ -10,6 +10,7 @@ import type {
   NivelPrioridad,
   TipoEvento,
 } from '../../../domain/models/Caso';
+import type { AnimalCaso } from '../../../domain/models/Animal';
 import type { Turno } from '../../../domain/models/Turno';
 import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
 
@@ -214,6 +215,43 @@ export function turnoDesdeServidor(f: FilaServidor): Turno {
     motivo: f.motivo,
     recordatorioMinutos: f.recordatorio_minutos,
     cumplido: Boolean(f.cumplido),
+    syncStatus: 'SYNCED',
+    updatedAt: Date.parse(f.updated_at),
+  };
+}
+
+const iso = (ms: number | null | undefined) => (ms != null ? new Date(ms).toISOString() : null);
+
+/** Fila de `animales` para el servidor. `creado_por` lo pone la base (auth.uid()) y no se envia. */
+export function filaAnimalParaServidor(a: AnimalCaso): FilaServidor {
+  return {
+    id: a.id,
+    caso_id: a.casoId,
+    nombre: a.nombre,
+    castrado: a.castrado,
+    virales_vif_vilef: a.virales,
+    embarazada: a.embarazada,
+    peso_gramos: a.pesoGramos ?? null,
+    fecha_primera_desparasitacion: iso(a.fechaPrimeraDesparasitacion),
+    fecha_segunda_desparasitacion: iso(a.fechaSegundaDesparasitacion),
+    fallecido: a.fallecido,
+    motivo_fallecimiento: a.motivoFallecimiento ?? null,
+  };
+}
+
+export function animalDesdeServidor(f: FilaServidor): AnimalCaso {
+  return {
+    id: f.id,
+    casoId: f.caso_id,
+    nombre: f.nombre,
+    castrado: f.castrado as EstadoCastracion,
+    virales: f.virales_vif_vilef as EstadoVirales,
+    embarazada: Boolean(f.embarazada),
+    pesoGramos: f.peso_gramos ?? null,
+    fechaPrimeraDesparasitacion: aMs(f.fecha_primera_desparasitacion),
+    fechaSegundaDesparasitacion: aMs(f.fecha_segunda_desparasitacion),
+    fallecido: Boolean(f.fallecido),
+    motivoFallecimiento: f.motivo_fallecimiento ?? null,
     syncStatus: 'SYNCED',
     updatedAt: Date.parse(f.updated_at),
   };

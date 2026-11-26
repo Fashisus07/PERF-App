@@ -1,8 +1,11 @@
 import type { Caso, EventoHistorial } from '../../../domain/models/Caso';
+import type { AnimalCaso } from '../../../domain/models/Animal';
 import type { Turno } from '../../../domain/models/Turno';
 import {
   Comparable,
   FilaServidor,
+  animalDesdeServidor,
+  filaAnimalParaServidor,
   camposComparables,
   casoDesdeServidor,
   diferenciasCaso,
@@ -20,7 +23,7 @@ import {
 export interface OperacionCola {
   id: number;
   idempotencyKey?: string;
-  entidad: 'CASO' | 'TURNO' | 'HISTORIAL';
+  entidad: 'CASO' | 'TURNO' | 'HISTORIAL' | 'ANIMAL';
   operacion: 'CREATE' | 'UPDATE' | 'DELETE';
   payload: string;
   reintentos: number;
@@ -48,6 +51,9 @@ export interface ServidorRemoto {
     baseIso: string,
   ): Promise<{ aplicados: string[]; conflictos: string[] }>;
   insertarEvento(fila: FilaServidor): Promise<'creado' | 'existia'>;
+  insertarAnimal(fila: FilaServidor): Promise<'creado' | 'existia'>;
+  /** Actualiza la ficha de un animal; si no existe en el servidor, la crea. */
+  guardarAnimal(fila: FilaServidor): Promise<void>;
   insertarTurno(fila: FilaServidor): Promise<'creado' | 'existia'>;
   marcarTurnoCumplido(id: string): Promise<void>;
   borrarTurno(id: string): Promise<void>;
@@ -56,6 +62,7 @@ export interface ServidorRemoto {
   listarCasos(desdeIso?: string): Promise<FilaServidor[]>;
   listarEventos(desdeIso?: string): Promise<FilaServidor[]>;
   listarTurnos(desdeIso?: string): Promise<FilaServidor[]>;
+  listarAnimales(desdeIso?: string): Promise<FilaServidor[]>;
 }
 
 export interface AlmacenLocal {
@@ -66,6 +73,10 @@ export interface AlmacenLocal {
   guardarCaso(caso: Caso): Promise<void>;
   guardarEvento(evento: EventoHistorial): Promise<void>;
   guardarTurno(turno: Turno): Promise<void>;
+  guardarAnimal(animal: AnimalCaso): Promise<void>;
+  /** Animales de un caso, sin mirar su marca: se suben junto con el caso al crearlo. */
+  leerAnimalesDeCaso(casoId: string): Promise<AnimalCaso[]>;
+  marcarAnimalSincronizado(id: string): Promise<void>;
   /** Eventos del historial creados en este teléfono que todavía no se subieron (no siempre pasan por la cola). */
   leerEventosPendientes(): Promise<EventoHistorial[]>;
   /** Todos los eventos locales de un caso, sin mirar su marca: con señal la app los guarda como SYNCED sin enviarlos. */
@@ -130,7 +141,14 @@ export async function pullRemoteChanges(
     await almacen.guardarEvento(eventoDesdeServidor(fila));
   }
 
-  // 3. Turnos (inmutables / append-only)
+  // 3. Animales de cada caso (ficha sanitaria individual)
+  const filasAnimales = await servidor.listarAnimales(desdeIso);
+  for (const fila of filasAnimales) {
+    if (casosPendientes.has(fila.caso_id)) continue;
+    await almacen.guardarAnimal(animalDesdeServidor(fila));
+  }
+
+  // 4. Turnos (inmutables / append-only)
   const filasTurnos = await servidor.listarTurnos(desdeIso);
   for (const fila of filasTurnos) {
     if (turnosPendientes.has(fila.id) || casosPendientes.has(fila.caso_id)) continue;
@@ -193,6 +211,7 @@ export async function sincronizar({ servidor, almacen, estado, ahora = Date.now 
       if (op.entidad === 'CASO' && p.id) casosPendientes.add(p.id);
       if (op.entidad === 'TURNO' && p.id) turnosPendientes.add(p.id);
       if (op.entidad === 'HISTORIAL' && p.casoId) casosPendientes.add(p.casoId);
+      if (op.entidad === 'ANIMAL' && p.casoId) casosPendientes.add(p.casoId);
     } catch {}
   }
 
@@ -226,6 +245,11 @@ async function subirOperacion(op: OperacionCola, ctx: ContextoSubida): Promise<v
         await servidor.insertarEvento(filaEventoParaServidor(evento));
         await almacen.marcarEventoSincronizado(evento.id);
         resultado.eventos++;
+      }
+      // Lo mismo con sus animales: se crean con el caso (clave foranea) y reenviarlos es inofensivo.
+      for (const animal of await almacen.leerAnimalesDeCaso(caso.id)) {
+        await servidor.insertarAnimal(filaAnimalParaServidor(animal));
+        await almacen.marcarAnimalSincronizado(animal.id);
       }
       bases[caso.id] = camposComparables(caso);
       return;
@@ -264,6 +288,13 @@ async function subirOperacion(op: OperacionCola, ctx: ContextoSubida): Promise<v
         await servidor.insertarCaso(filaCasoParaServidor(local));
       }
       bases[id] = { ...base, ...dif.nuevosValores };
+      return;
+    }
+
+    case 'ANIMAL:UPDATE': {
+      const animal = payload as AnimalCaso;
+      await servidor.guardarAnimal(filaAnimalParaServidor(animal));
+      await almacen.marcarAnimalSincronizado(animal.id);
       return;
     }
 

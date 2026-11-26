@@ -2,9 +2,13 @@ import * as Notifications from 'expo-notifications';
 import { ResumenAlmacenamiento } from '../../domain/models/Ajustes';
 import { Caso, EstadoCaso, EventoHistorial } from '../../domain/models/Caso';
 import { CasoRepository, OperacionPendiente } from '../../domain/repositories/CasoRepository';
+import { conSanidadDelGrupo, crearAnimalesDelCaso, sanidadCambio } from '../../domain/services/AnimalesDelCaso';
 import { getDatabase } from '../local/Database';
 import { generarUUID } from '../local/uuid';
 import {
+  AnimalRow,
+  animalFromRow,
+  animalToParams,
   casoFromRow,
   casoToParams,
   eventoFromRow,
@@ -164,6 +168,22 @@ export class CasoRepositoryImpl implements CasoRepository {
       eventoToParams(eventoLlegada)
     );
 
+    // Cada animal del caso arranca con la ficha sanitaria del grupo. Viajan al servidor junto con el caso.
+    for (const animal of crearAnimalesDelCaso(caso, generarUUID)) {
+      await db.runAsync(
+        `INSERT INTO animales (
+           id, caso_id, nombre, castrado, virales_vif_vilef, embarazada, peso_gramos,
+           fecha_primera_desparasitacion, fecha_segunda_desparasitacion,
+           fallecido, motivo_fallecimiento, sync_status, updated_at
+         ) VALUES (
+           $id, $caso_id, $nombre, $castrado, $virales_vif_vilef, $embarazada, $peso_gramos,
+           $fecha_primera_desparasitacion, $fecha_segunda_desparasitacion,
+           $fallecido, $motivo_fallecimiento, $sync_status, $updated_at
+         );`,
+        animalToParams({ ...animal, syncStatus: caso.syncStatus })
+      );
+    }
+
     // Encolar operación pendiente con idempotency_key
     const idempotencyKey = generarUUID();
     await db.runAsync(
@@ -242,7 +262,42 @@ export class CasoRepositoryImpl implements CasoRepository {
       [idempotencyKey, 'CASO', 'UPDATE', JSON.stringify(changedFields), Date.now()]
     );
 
+    // La pantalla edita la ficha del grupo: se aplica a cada animal del caso y viaja como cambio propio.
+    if (anterior && sanidadCambio(anterior.sanidad, caso.sanidad)) {
+      await this.aplicarSanidadAAnimales(caso);
+    }
+
     return caso;
+  }
+
+  private async aplicarSanidadAAnimales(caso: Caso): Promise<void> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<AnimalRow>('SELECT * FROM animales WHERE caso_id = ?;', [caso.id]);
+    const ahora = Date.now();
+    for (const row of rows) {
+      const animal = conSanidadDelGrupo(animalFromRow(row), caso.sanidad, ahora);
+      await db.runAsync(
+        `UPDATE animales SET castrado = $castrado, virales_vif_vilef = $virales_vif_vilef,
+           fecha_primera_desparasitacion = $fecha_primera_desparasitacion,
+           fecha_segunda_desparasitacion = $fecha_segunda_desparasitacion,
+           sync_status = $sync_status, updated_at = $updated_at
+         WHERE id = $id;`,
+        {
+          $id: animal.id,
+          $castrado: animal.castrado,
+          $virales_vif_vilef: animal.virales,
+          $fecha_primera_desparasitacion: animal.fechaPrimeraDesparasitacion ?? null,
+          $fecha_segunda_desparasitacion: animal.fechaSegundaDesparasitacion ?? null,
+          $sync_status: animal.syncStatus,
+          $updated_at: animal.updatedAt,
+        }
+      );
+      await db.runAsync(
+        `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+         VALUES (?, ?, ?, ?, 0, ?);`,
+        [generarUUID(), 'ANIMAL', 'UPDATE', JSON.stringify(animal), ahora]
+      );
+    }
   }
 
   async actualizarEstado(id: string, nuevoEstado: EstadoCaso, motivo?: string): Promise<Caso> {

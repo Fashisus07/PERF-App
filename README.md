@@ -233,8 +233,8 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 | 11 | Prioridad por nivel de estado | ✅ Triaje multicriterio (gravedad clínica, vulnerabilidad y días de espera), ver "Criterio de Urgencia". "Última revisión" queda pendiente (ver Tareas) |
 | — | Aprobación de voluntarios y cambio de clave | ✅ Correo a coordinadores, Panel de Coordinación y `CambiarClaveScreen` |
 | 13 | Seguridad y acceso desde el backend | 🟡 Hecho: login con JWT, RLS en todas las tablas, fotos privadas. Falta sacar la clave `service_role` de la app (ver "Base de datos compartida") |
-| 10 | Un único administrador | 🟡 Migración escrita (`20261112000000_administrador_unico.sql`); falta pegarla en el SQL Editor |
-| 1 | Animales con seguimiento individual | ❌ La base ya tiene `animales`, la app no está conectada (`Caso.ts`, `CasoMapper`, `Database.ts`) |
+| 10 | Un único administrador | ✅ Migración `20261112000000_administrador_unico.sql` aplicada en Supabase |
+| 1 | Animales con seguimiento individual | 🟡 Fase 1 hecha: la app guarda y sincroniza `animales` (crea los de cada caso nuevo y baja los del servidor). Falta la fase 2: pantallas con un animal por vez y la migración `20261126000000` en Supabase |
 | 2 | Coordinador responsable como registro fijo | ❌ Falta |
 | 3 | Tests virales como registro fijo | ❌ Falta |
 | 7 | Registro de veterinarios | ❌ Falta |
@@ -267,9 +267,9 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - [x] **Sacar al veterinario del guardado de rescate** (14/15): se quitó el botón "Agendar primer turno veterinario" de `RescateGuardadoScreen`; el turno se sigue agendando desde la agenda.
 - [x] **Recordatorio configurable** (9): se elige con cuánta anticipación avisar (30 min, 1 h, 2 h, 1 día o 2 días) al agendar el turno; en Ajustes se define cuál viene marcado por defecto.
 - [ ] **Botón Guardar** (12): que los cambios no se apliquen solos, sino al tocar Guardar. Definir en qué pantallas.
-- [ ] **Administrador único** (10): aplicar `20261112000000_administrador_unico.sql` en el SQL Editor (hoy hay un solo coordinador, así que no cambia el rol de nadie).
+- [x] **Administrador único** (10): migración `20261112000000_administrador_unico.sql` aplicada en Supabase (había un solo coordinador, así que no cambió el rol de nadie).
 - [ ] **Registro de veterinarios y horarios por veterinario** (7, 8): hoy los centros son locales y los horarios son una lista fija por centro.
-- [ ] **Animales con seguimiento individual** (1): conectar la tabla `animales` a la app (`Caso.ts`, `CasoMapper`, `Database.ts`). Archivos compartidos: coordinar con Mateo.
+- [ ] **Animales con seguimiento individual** (1): **fase 1 hecha** (modelo `AnimalCaso`, tabla local, sincronización con la tabla `animales`, animales creados con cada caso nuevo; editar la sanidad del caso la aplica a todos sus animales). **Falta la fase 2**: que la ficha sanitaria muestre un animal por vez con selector cuando el caso tiene varios, y aplicar en Supabase `20261126000000_cargar_animales_de_casos_existentes.sql` para los casos que ya existían. Archivos compartidos: coordinar con Mateo.
 - [ ] **Coordinador responsable y tests virales como registros fijos** (2, 3): con ID propio. Con eso "Mis casos" deja de comparar por nombre.
 - [ ] **Prioridad con "última revisión"** (11): guardar la fecha de la última revisión de cada caso y usarla en el cálculo.
 - [ ] **Unificar el cálculo de prioridad**: hoy conviven `CalcularPrioridadCasoUseCase` (gravedad, vulnerabilidad y días) y `domain/services/PrioridadCaso.ts` (pesos por animal). Dejar uno solo y **validar los pesos con el refugio** (el profesor pidió que responda a necesidades reales).
@@ -277,8 +277,8 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 
 🟠 **Seguridad y riesgos para la demo**
 
-- [x] **Sacar la clave `service_role` de la app** (en el código; ver "Por qué no hay clave `service_role` en la app"). Falta **desplegar**: aplicar `20261125…sin_service_role` y subir las 2 Edge Functions con sus secrets, y probar el correo y el enlace de aprobación.
-- [x] **Cerrar el acceso anónimo** (en el código): migración `20261125000100_cerrar_acceso_anonimo.sql`, que le saca al rol `anon` el permiso sobre todas las tablas (segunda barrera además de RLS). Falta **pegarla en el SQL Editor** de Supabase.
+- [x] **Sacar la clave `service_role` de la app** (en el código; ver "Por qué no hay clave `service_role` en la app"). Desplegado en Supabase: migración `20261125…sin_service_role` aplicada y las 2 Edge Functions activas. **Falta** cargar los secrets `RESEND_API_KEY` y `APP_URL` (sin ellos el correo no sale), **rotar la clave `service_role`** y probar el correo y el enlace de aprobación.
+- [x] **Cerrar el acceso anónimo** (en el código): migración `20261125000100_cerrar_acceso_anonimo.sql`, que le saca al rol `anon` el permiso sobre todas las tablas (segunda barrera además de RLS). Aplicada en Supabase y verificada (el rol `anon` ya no tiene permisos sobre ninguna tabla).
 - [ ] **Botón "Voluntario Demo (Modo Offline)"** del login: entra sin contraseña. Quitarlo o dejarlo solo en modo desarrollo (`__DEV__`).
 - [ ] **Contraseñas**: cambiar la de la cuenta de administrador de prueba y no dejar contraseñas en un README público.
 - [x] **Error de notificaciones** "Custom sound 'default' not found": el canal se creaba con `sound: 'default'`, que la librería busca como archivo. Ahora se omite y se usa el sonido del sistema, en un canal nuevo (`turnos-veterinarios`) porque Android no deja modificar un canal ya creado.
@@ -296,7 +296,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - [ ] **Más animales, no solo gatos**: el formulario ya permite Gato, Perro y Otro, pero "Otro" no pide qué animal es. Que al elegir **Otro** se pueda indicar qué animal doméstico es (conejo, cobayo, ave, tortuga, etc.) con una lista y texto libre, ampliar el `check` de `especie` en `schema.sql` y en la migración, y sacar el "foco felino" de los textos. Los tests virales (FIV/FeLV) son de gatos: para perros definir con el refugio qué estudios y pendientes aplican (parvovirus, moquillo, desparasitación).
 
 ### Roles y perfiles
-- **Dos roles:** un **único administrador** y el resto voluntarios. En la base el rol del administrador se llama `coordinador` (así lo usan `es_coordinador()`, las políticas RLS, el panel de aprobaciones y los correos); la app lo muestra como **Administrador** (`ETIQUETA_ROL`, `esAdministrador()` en `domain/models/Ajustes.ts`). La migración `20261112000000_administrador_unico.sql` agrega un índice único parcial para que haya uno solo; **todavía no está aplicada** (coordinar con el equipo).
+- **Dos roles:** un **único administrador** y el resto voluntarios. En la base el rol del administrador se llama `coordinador` (así lo usan `es_coordinador()`, las políticas RLS, el panel de aprobaciones y los correos); la app lo muestra como **Administrador** (`ETIQUETA_ROL`, `esAdministrador()` en `domain/models/Ajustes.ts`). La migración `20261112000000_administrador_unico.sql` agrega un índice único parcial para que haya uno solo; ya está aplicada en Supabase.
 - **Zonas múltiples:** cada voluntario elige una o más zonas (`SelectorZonas`). Se guardan en la columna `perfiles.zona` separadas por coma (`"Caballito, Almagro"`), así que no cambió el esquema. Helpers: `zonasDesdeTexto` y `zonasATexto`.
 - **Mis casos:** un caso es "de" un voluntario si `quienSigueCaso` coincide con su nombre o su primer nombre (`sigueElCaso()`). Es una coincidencia por texto hasta que el coordinador responsable pase a ser un registro con ID propio.
 - **Vistas de perfiles:** `PerfilesScreen` lista a los voluntarios aprobados y `PerfilDetalleScreen` muestra el perfil completo. Leen `perfiles`, que solo responde a usuarios autenticados y aprobados: sin sesión la lista sale vacía.
@@ -312,9 +312,9 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 ### Base de datos compartida
 - **Proyecto de Supabase del equipo:** el de Tobías (`kdnosvxrgoxsopmzkghh`). Es el valor por defecto de `src/data/remote/supabaseClient.ts`; se puede cambiar con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` en `.env`.
 - **Si se pausa:** los proyectos gratuitos se pausan tras una semana sin uso. Se restaura desde el panel con **Restore project** y no se pierden datos.
-- **Migraciones, en este orden** (SQL Editor, una vez cada una): `20261030…esquema_inicial`, `20261031…animales_pendientes_adopciones`, `20261112…administrador_unico` y `20261124…compatibilidad_etapa2` `20261125…sin_service_role` y `20261125…cerrar_acceso_anonimo`. Esta última adapta la base al código de la Etapa 2 (columnas de triaje en `casos`, bucket `casos-fotos`, `aplicar_cambios_caso()` nueva y las funciones `aprobar_voluntario` / `rechazar_voluntario`).
+- **Migraciones, en este orden** (SQL Editor, una vez cada una): `20261030…esquema_inicial`, `20261031…animales_pendientes_adopciones`, `20261112…administrador_unico` y `20261124…compatibilidad_etapa2` `20261125…sin_service_role`, `20261125…cerrar_acceso_anonimo` y `20261126…cargar_animales_de_casos_existentes` (esta última crea los animales de los casos que ya existían). Esta última adapta la base al código de la Etapa 2 (columnas de triaje en `casos`, bucket `casos-fotos`, `aplicar_cambios_caso()` nueva y las funciones `aprobar_voluntario` / `rechazar_voluntario`).
 - `supabase/schema.sql` es el script completo para un proyecto **vacío**; en el proyecto existente se usan las migraciones, no los dos.
-- **Seguridad:** la app ya no usa la clave `service_role` (ver la sección siguiente). Antes de probar aprobaciones hay que aplicar la migración `20261125…sin_service_role` y desplegar las Edge Functions.
+- **Seguridad:** la app ya no usa la clave `service_role` (ver la sección siguiente). Las migraciones y las Edge Functions ya están aplicadas; para que salga el correo faltan los secrets `RESEND_API_KEY` y `APP_URL`.
 
 ---
 

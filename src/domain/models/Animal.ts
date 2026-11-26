@@ -1,4 +1,4 @@
-import type { EstadoCastracion, EstadoVirales } from './Caso';
+import type { EstadoCastracion, EstadoVirales, SyncStatus } from './Caso';
 
 /**
  * Un caso puede agrupar varios animales (camada, mamá con bebés) y la sanidad
@@ -16,6 +16,8 @@ export interface AnimalCaso {
   fechaSegundaDesparasitacion?: number | null;
   fallecido: boolean;
   motivoFallecimiento?: string | null;
+  syncStatus: SyncStatus;
+  updatedAt: number; // Timestamp
 }
 
 export type TipoPendiente = 'CASTRACION' | 'ESTUDIO' | 'CIRUGIA' | 'ESPECIALISTA' | 'OTRO';

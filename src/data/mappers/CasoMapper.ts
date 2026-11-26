@@ -1,3 +1,4 @@
+import type { AnimalCaso } from '../../domain/models/Animal';
 import {
   Caso,
   EventoHistorial,
@@ -68,6 +69,22 @@ export interface TurnoRow {
   recordatorio_minutos: number;
   cumplido: number;
   notification_id?: string | null;
+  sync_status: string;
+  updated_at: number;
+}
+
+export interface AnimalRow {
+  id: string;
+  caso_id: string;
+  nombre: string;
+  castrado: string;
+  virales_vif_vilef: string;
+  embarazada: number;
+  peso_gramos: number | null;
+  fecha_primera_desparasitacion: number | null;
+  fecha_segunda_desparasitacion: number | null;
+  fallecido: number;
+  motivo_fallecimiento: string | null;
   sync_status: string;
   updated_at: number;
 }
@@ -169,6 +186,24 @@ export function turnoFromRow(row: TurnoRow): Turno {
   };
 }
 
+export function animalFromRow(row: AnimalRow): AnimalCaso {
+  return {
+    id: row.id,
+    casoId: row.caso_id,
+    nombre: row.nombre,
+    castrado: row.castrado as EstadoCastracion,
+    virales: row.virales_vif_vilef as EstadoVirales,
+    embarazada: row.embarazada === 1,
+    pesoGramos: row.peso_gramos,
+    fechaPrimeraDesparasitacion: row.fecha_primera_desparasitacion,
+    fechaSegundaDesparasitacion: row.fecha_segunda_desparasitacion,
+    fallecido: row.fallecido === 1,
+    motivoFallecimiento: row.motivo_fallecimiento,
+    syncStatus: row.sync_status as SyncStatus,
+    updatedAt: row.updated_at,
+  };
+}
+
 export function eventoFromRow(row: EventoHistorialRow): EventoHistorial {
   return {
     id: row.id,
@@ -258,6 +293,24 @@ export function turnoToParams(turno: Turno): SQLiteBindParams {
     $notification_id: turno.notificationId ?? null,
     $sync_status: turno.syncStatus,
     $updated_at: turno.updatedAt,
+  };
+}
+
+export function animalToParams(a: AnimalCaso): SQLiteBindParams {
+  return {
+    $id: a.id,
+    $caso_id: a.casoId,
+    $nombre: a.nombre,
+    $castrado: a.castrado,
+    $virales_vif_vilef: a.virales,
+    $embarazada: a.embarazada ? 1 : 0,
+    $peso_gramos: a.pesoGramos ?? null,
+    $fecha_primera_desparasitacion: a.fechaPrimeraDesparasitacion ?? null,
+    $fecha_segunda_desparasitacion: a.fechaSegundaDesparasitacion ?? null,
+    $fallecido: a.fallecido ? 1 : 0,
+    $motivo_fallecimiento: a.motivoFallecimiento ?? null,
+    $sync_status: a.syncStatus,
+    $updated_at: a.updatedAt,
   };
 }
 
