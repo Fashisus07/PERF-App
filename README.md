@@ -293,9 +293,22 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - [ ] Pruebas de lo nuevo: `sigueElCaso` y zonas.
 - [x] Una sola fuente de verdad del esquema: las migraciones. `supabase/schema.sql` se genera con `node supabase/generar-schema.js` y un test (`SchemaSupabase.test.ts`) falla si se desalinean. Se comprobó que las 8 migraciones y el `schema.sql` completo corren en orden sobre una base vacía (PGlite). **Ojo:** la versión anterior de `schema.sql` (la del esquema integral de la Etapa 2) queda en el historial de git.
 - [ ] Eliminar `data/mock/` y el `MockRemoteApiClient`, y **probar el circuito completo (registro, consulta y actualización) en dos celulares físicos**, la recuperación de datos tras reinstalar y los recordatorios en dispositivos reales (lo pidió el profesor).
-- [ ] Nombre de paquete de la app (`com.anonymous.PERFtmp`) y generar el APK/AAB de entrega.
+- [ ] Nombre de paquete de la app (`com.anonymous.PERFtmp`, hoy un valor de prueba; la app se llama "PERF-tmp"). **El APK de entrega ya se genera** (ver "Cómo generar el APK"): falta decidir el nombre definitivo y, si se cambia el paquete, regenerar la carpeta `android`.
 - [ ] **Limpiar datos de prueba en Supabase**: el usuario de prueba, los casos "PRUEBA SYNC 1/2/3", sus eventos y el conflicto de prueba.
 - [ ] **Más animales, no solo gatos**: el formulario ya permite Gato, Perro y Otro, pero "Otro" no pide qué animal es. Que al elegir **Otro** se pueda indicar qué animal doméstico es (conejo, cobayo, ave, tortuga, etc.) con una lista y texto libre, ampliar el `check` de `especie` en `schema.sql` y en la migración, y sacar el "foco felino" de los textos. Los tests virales (FIV/FeLV) son de gatos: para perros definir con el refugio qué estudios y pendientes aplican (parvovirus, moquillo, desparasitación).
+
+### Cómo generar el APK
+Se arma en la máquina, sin Expo ni cuenta de EAS. Necesita JDK 17 y el SDK de Android (el mismo del emulador).
+
+```powershell
+$env:JAVA_HOME="C:\Program Files\Java\jdk-17"; $env:PATH="$env:JAVA_HOMEin;$env:PATH"
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+$env:JAVA_TOOL_OPTIONS="--enable-native-access=ALL-UNNAMED"   # ver "Problema conocido"
+cd android; .\gradlew.bat assembleRelease
+```
+El archivo queda en `android/app/build/outputs/apk/release/app-release.apk` (unos 116 MB porque lleva las cuatro arquitecturas; para uno más liviano solo de celulares: agregar `-PreactNativeArchitectures=arm64-v8a`). Va firmado con la clave de debug, que alcanza para instalarlo a mano; **no es apto para publicar en Play Store**. El APK lleva el código adentro: abre sin servidor de desarrollo. Se probó instalándolo desde cero en el emulador (login, modo demo y lista de casos).
+
+**Problema conocido:** `android/gradle/gradle-daemon-jvm.properties` (generado, git lo ignora) pide Java 25, y con Java 25 el paso de CMake falla con *"WARNING: A restricted method in java.lang.System has been called"*. Pasar `--enable-native-access` solo a Gradle no alcanza (la herramienta de CMake lanza otro Java); la variable `JAVA_TOOL_OPTIONS` llega a todos los procesos Java y lo resuelve sin tocar archivos del proyecto.
 
 ### Roles y perfiles
 - **Dos roles:** un **único administrador** y el resto voluntarios. En la base el rol del administrador se llama `coordinador` (así lo usan `es_coordinador()`, las políticas RLS, el panel de aprobaciones y los correos); la app lo muestra como **Administrador** (`ETIQUETA_ROL`, `esAdministrador()` en `domain/models/Ajustes.ts`). La migración `20261112000000_administrador_unico.sql` agrega un índice único parcial para que haya uno solo; ya está aplicada en Supabase.
