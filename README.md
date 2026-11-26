@@ -318,15 +318,22 @@ El archivo queda en `android/app/build/outputs/apk/release/app-release.apk` (uno
 - **Mis casos:** un caso es "de" un voluntario si `quienSigueCaso` coincide con su nombre o su primer nombre (`sigueElCaso()`). Es una coincidencia por texto hasta que el coordinador responsable pase a ser un registro con ID propio.
 - **Vistas de perfiles:** `PerfilesScreen` lista a los voluntarios aprobados y `PerfilDetalleScreen` muestra el perfil completo. Leen `perfiles`, que solo responde a usuarios autenticados y aprobados: sin sesión la lista sale vacía.
 - **Para quienes corrigen el TP:** hay dos formas de probar la app, y ninguna requiere esperar una aprobación.
-  1. **Con la cuenta de evaluación** (voluntario ya aprobado): permite probar el login real, la sincronización con Supabase, el historial, los turnos, las fichas sanitarias por animal y las veterinarias. **El correo y la contraseña se entregan junto con el TP, no en este repositorio** (es público).
-  2. **Sin cuenta:** el botón **"Ingresar como Voluntario Demo (Modo Offline)"** del login abre la app con datos locales. Es una sesión solo del teléfono, sin acceso a Supabase, así que no muestra la sincronización.
+  1. **Con la cuenta de evaluación** (voluntario ya aprobado): permite probar el login real, la sincronización con Supabase, el historial, los turnos, las fichas sanitarias por animal y las veterinarias. **El correo y la contraseña están en la sección "Cuentas de evaluación", más abajo.**
+  2. **Sin cuenta:** el botón **"Probar sin cuenta"** del login abre la app con datos locales. Es una sesión solo del teléfono, sin acceso a Supabase, así que no muestra la sincronización.
 
   Un registro nuevo queda **pendiente** hasta que el único administrador lo apruebe (le llega un correo con los botones Aprobar y Rechazar), por eso para evaluar conviene usar la cuenta de evaluación y no registrarse.
 - **Si la app no conecta:** los proyectos gratuitos de Supabase se **pausan tras una semana sin uso**. Entrar a https://supabase.com/dashboard/project/kdnosvxrgoxsopmzkghh y apretar **Restore project**; no se pierden datos.
-- **Cuentas de evaluación** (se entregan junto con el TP; **las contraseñas no están en este repositorio**):
-  - **Voluntario:** `perf.voluntario.test@example.com`, ya aprobado. Prueba el login real, la sincronización, el historial, los turnos, las fichas por animal y las veterinarias.
-  - **Administrador:** la cuenta del único administrador (`rol = coordinador`; el índice `perfiles_un_solo_administrador` no permite crear otro). Permite ver el panel de **Solicitudes de Voluntarios** (aprobar y rechazar) y **cargar o editar veterinarias**. Rechazar una solicitud borra esa cuenta: probar solo con cuentas de prueba.
-  - La contraseña del voluntario estuvo publicada en el historial de git. Se decidió **dejar las cuentas como están**, porque es una base de prueba del TP. Si el proyecto siguiera en uso, habría que cambiarla (`update auth.users set encrypted_password = crypt('<nueva>', gen_salt('bf')) where email = '<correo>';`). **No se borra ninguna de las dos cuentas.**
+- **Cuentas de evaluación** (base de prueba del TP; ver el aviso al final de esta sección):
+
+  | Rol | Correo | Contraseña |
+  |---|---|---|
+  | Voluntario (ya aprobado) | `perf.voluntario.test@example.com` | `Perf2026!prueba` |
+  | Administrador | `perf.admin.test@example.com` | `COMPLETAR_CLAVE_ADMIN` |
+
+  - **Voluntario:** prueba el login real, la sincronización, el historial, los turnos, las fichas por animal y las veterinarias.
+  - **Administrador:** es el único (`rol = coordinador`; el índice `perfiles_un_solo_administrador` no permite crear otro). Permite aprobar o rechazar voluntarios desde **Ajustes** y **cargar o editar veterinarias**. Rechazar una solicitud borra esa cuenta: probar solo con cuentas de prueba.
+  - **Probar la aprobación de un voluntario nuevo:** 1) desde el login, **Sumate como voluntario** y completar el registro; 2) la cuenta queda **pendiente** y al entrar muestra "Tu cuenta todavía no fue aprobada"; 3) cerrar sesión (Ajustes, abajo de todo); 4) entrar como **Administrador**; 5) en Ajustes aparece la solicitud y se toca **Aprobar**; 6) cerrar sesión y entrar con la cuenta nueva.
+  - **Aviso:** estas contraseñas están escritas en un repositorio público y las cuentas entran a la base compartida. Se dejaron a propósito para que quien corrige pueda probar la app. Si el proyecto siguiera en uso habría que cambiarlas (`update auth.users set encrypted_password = extensions.crypt('<nueva>', extensions.gen_salt('bf')) where email = '<correo>';`). **No se borra ninguna de las dos cuentas.**
 
 ### Base de datos compartida
 - **Proyecto de Supabase del equipo:** el de Tobías (`kdnosvxrgoxsopmzkghh`). Es el valor por defecto de `src/data/remote/supabaseClient.ts`; se puede cambiar con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` en `.env`.
