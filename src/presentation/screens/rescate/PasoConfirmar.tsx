@@ -123,6 +123,11 @@ export function PasoConfirmar({ borrador: b, sinConexion, guardando, onVolver, o
                 <Text style={styles.filaValor}>
                   Castrado: {ETIQUETA_CASTRACION[b.castrado || 'PENDIENTE']} · Virales: {ETIQUETA_VIRALES[b.virales || 'PENDIENTE']}
                 </Text>
+                {(b.fechaPrimeraDesparasitacion || b.fechaSegundaDesparasitacion) && (
+                  <Text style={styles.filaSub}>
+                    Desp. 1°: {b.fechaPrimeraDesparasitacion ? new Date(b.fechaPrimeraDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'} · Desp. 2°: {b.fechaSegundaDesparasitacion ? new Date(b.fechaSegundaDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'}
+                  </Text>
+                )}
               </View>
             </View>
 

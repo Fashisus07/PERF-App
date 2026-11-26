@@ -23,6 +23,7 @@ import {
   Vulnerabilidad,
 } from '../../../domain/models/Caso';
 import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
+import { PlanDesparasitacionCard } from '../../components/PlanDesparasitacionCard';
 import { StackHeader } from '../../components/StackHeader';
 import { obtenerAjustes } from '../../hooks/useAjustes';
 import { useCaso } from '../../hooks/useCaso';
@@ -79,8 +80,9 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   const [vulnerabilidad, setVulnerabilidad] = useState<Vulnerabilidad | null>(null);
   const [castrado, setCastrado] = useState<EstadoCastracion | null>(null);
   const [virales, setVirales] = useState<EstadoVirales | null>(null);
-  const [desp1, setDesp1] = useState<boolean | null>(null);
-  const [desp2, setDesp2] = useState<boolean | null>(null);
+  const [desp1Fecha, setDesp1Fecha] = useState<number | null | undefined>(undefined);
+  const [desp2Fecha, setDesp2Fecha] = useState<number | null | undefined>(undefined);
+  const [fechasValidas, setFechasValidas] = useState(true);
   const [estadoVisible, setEstadoVisible] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -96,20 +98,18 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   const valorVulnerabilidad = vulnerabilidad ?? caso?.vulnerabilidad ?? 'ESTABLE';
   const valorCastrado = castrado ?? caso?.sanidad?.castrado ?? 'PENDIENTE';
   const valorVirales = virales ?? caso?.sanidad?.virales ?? 'PENDIENTE';
-  const tieneDesp1 = desp1 !== null ? desp1 : Boolean(caso?.sanidad?.fechaPrimeraDesparasitacion);
-  const tieneDesp2 = desp2 !== null ? desp2 : Boolean(caso?.sanidad?.fechaSegundaDesparasitacion);
+  const fechaDesp1 =
+    desp1Fecha !== undefined ? desp1Fecha : caso?.sanidad?.fechaPrimeraDesparasitacion ?? null;
+  const fechaDesp2 =
+    desp2Fecha !== undefined ? desp2Fecha : caso?.sanidad?.fechaSegundaDesparasitacion ?? null;
   const textoVisible = estadoVisible !== null ? estadoVisible : caso?.estadoVisible ?? '';
 
   const ahoraPreview = Date.now();
   const sanidadPreview = {
     castrado: valorCastrado,
     virales: valorVirales,
-    fechaPrimeraDesparasitacion: tieneDesp1
-      ? caso?.sanidad?.fechaPrimeraDesparasitacion || ahoraPreview
-      : null,
-    fechaSegundaDesparasitacion: tieneDesp2
-      ? caso?.sanidad?.fechaSegundaDesparasitacion || ahoraPreview
-      : null,
+    fechaPrimeraDesparasitacion: fechaDesp1,
+    fechaSegundaDesparasitacion: fechaDesp2,
   };
 
   const prioridadVista = caso
@@ -128,6 +128,10 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
 
   const handleGuardar = async () => {
     if (!caso) return;
+    if (!fechasValidas) {
+      setErrorMsg('Revisá las fechas de desparasitación (formato DD/MM/AAAA).');
+      return;
+    }
     setGuardando(true);
     setErrorMsg(null);
     try {
@@ -136,12 +140,8 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
         ...caso.sanidad,
         castrado: valorCastrado,
         virales: valorVirales,
-        fechaPrimeraDesparasitacion: tieneDesp1
-          ? caso.sanidad.fechaPrimeraDesparasitacion || ahora
-          : null,
-        fechaSegundaDesparasitacion: tieneDesp2
-          ? caso.sanidad.fechaSegundaDesparasitacion || ahora
-          : null,
+        fechaPrimeraDesparasitacion: fechaDesp1,
+        fechaSegundaDesparasitacion: fechaDesp2,
       };
 
       const prioridad = calcularPrioridadCasoUseCase.ejecutar(
@@ -170,11 +170,15 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
 
       await actualizarCaso(casoActualizado);
 
+      const despTexto1 = fechaDesp1 ? new Date(fechaDesp1).toLocaleDateString('es-AR') : 'Pendiente';
+      const despTexto2 = fechaDesp2 ? new Date(fechaDesp2).toLocaleDateString('es-AR') : 'Pendiente';
       const resumenCambios = [
         `Gravedad: ${ETIQUETA_GRAVEDAD[valorGravedad]}`,
         `Vulnerabilidad: ${ETIQUETA_VULNERABILIDAD[valorVulnerabilidad]}`,
         `Castración: ${ETIQUETA_CASTRACION[valorCastrado]}`,
         `Virales: ${ETIQUETA_VIRALES[valorVirales]}`,
+        `1° Desp.: ${despTexto1}`,
+        `2° Desp.: ${despTexto2}`,
         `Prioridad: ${prioridad.motivoUrgencia} (${prioridad.puntajePrioridad} pts)`,
       ].join(' · ');
 
@@ -437,51 +441,13 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
 
         {/* Sección Desparasitaciones */}
         <View style={styles.seccionCard}>
-          <View style={styles.seccionHeader}>
-            <MaterialIcons name="medication" size={20} color={colors.primary} />
-            <Text style={styles.seccionTitulo}>Plan de Desparasitación</Text>
-          </View>
-          <Text style={styles.seccionDesc}>
-            Tratamiento antiparasitario interno (amplio espectro) y externo.
-          </Text>
-
-          <View style={styles.despCard}>
-            <Pressable
-              style={styles.toggleRow}
-              onPress={() => setDesp1(!tieneDesp1)}
-            >
-              <View style={[styles.checkbox, tieneDesp1 && styles.checkboxActivo]}>
-                {tieneDesp1 && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.toggleTitulo}>1° Desparasitación</Text>
-                <Text style={styles.toggleSub}>
-                  {tieneDesp1
-                    ? 'Aplicada · Dosis inicial cumplida'
-                    : 'Pendiente de suministro en tránsito o clínica'}
-                </Text>
-              </View>
-            </Pressable>
-
-            <View style={styles.divider} />
-
-            <Pressable
-              style={styles.toggleRow}
-              onPress={() => setDesp2(!tieneDesp2)}
-            >
-              <View style={[styles.checkbox, tieneDesp2 && styles.checkboxActivo]}>
-                {tieneDesp2 && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.toggleTitulo}>2° Desparasitación (Refuerzo a los 15 días)</Text>
-                <Text style={styles.toggleSub}>
-                  {tieneDesp2
-                    ? 'Aplicada · Refuerzo antiparasitario completado'
-                    : 'Pendiente para cortar ciclo larvario'}
-                </Text>
-              </View>
-            </Pressable>
-          </View>
+          <PlanDesparasitacionCard
+            fechaPrimera={fechaDesp1}
+            fechaSegunda={fechaDesp2}
+            onChangePrimera={setDesp1Fecha}
+            onChangeSegunda={setDesp2Fecha}
+            onValidityChange={setFechasValidas}
+          />
         </View>
 
         {/* Condición Visible y Observaciones Clínicas */}

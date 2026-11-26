@@ -22,6 +22,7 @@ import {
 } from '../../../domain/models/Caso';
 import { BorradorRescate, faltantesDelRescate } from '../../../domain/models/Rescate';
 import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
+import { PlanDesparasitacionCard } from '../../components/PlanDesparasitacionCard';
 import { useUbicacion } from '../../hooks/useUbicacion';
 import { colors, fonts } from '../../theme';
 import { SegmentosPaso } from './BarraRescate';
@@ -65,6 +66,7 @@ const VULNERABILIDADES: { key: Vulnerabilidad; label: string; desc: string; icon
 export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }: Props) {
   const gps = useUbicacion();
   const [intento, setIntento] = useState(false);
+  const [fechasDespValidas, setFechasDespValidas] = useState(true);
   const faltan = faltantesDelRescate(b);
 
   const usarGps = async () => {
@@ -91,7 +93,7 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
   });
 
   const continuar = () => {
-    if (faltan.length) {
+    if (faltan.length || !fechasDespValidas) {
       setIntento(true);
       return;
     }
@@ -485,6 +487,15 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
             ))}
           </View>
         </View>
+
+        <PlanDesparasitacionCard
+          fechaPrimera={b.fechaPrimeraDesparasitacion}
+          fechaSegunda={b.fechaSegundaDesparasitacion}
+          onChangePrimera={(fechaPrimeraDesparasitacion) => onCambio({ fechaPrimeraDesparasitacion })}
+          onChangeSegunda={(fechaSegundaDesparasitacion) => onCambio({ fechaSegundaDesparasitacion })}
+          onValidityChange={setFechasDespValidas}
+          titulo="Plan de Desparasitación (opcional)"
+        />
       </View>
 
       {/* Antecedentes y Estado Clínico */}
@@ -530,11 +541,13 @@ export function PasoDatos({ borrador: b, onCambio, onVolverAFoto, onContinuar }:
         </View>
       </View>
 
-      {intento && faltan.length > 0 && (
+      {intento && (faltan.length > 0 || !fechasDespValidas) && (
         <View style={styles.errorBox}>
           <MaterialIcons name="error-outline" size={18} color={colors.urgente} />
           <Text style={styles.errorText}>
-            Completá los campos obligatorios: {faltan.join(', ')}.
+            {faltan.length > 0
+              ? `Completá los campos obligatorios: ${faltan.join(', ')}.`
+              : 'Revisá las fechas exactas de desparasitación (DD/MM/AAAA).'}
           </Text>
         </View>
       )}
