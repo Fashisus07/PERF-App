@@ -62,7 +62,7 @@ export class RegistrarRescate {
       motivoUrgencia: prioridad.motivoUrgencia,
       puntajePrioridad: prioridad.puntajePrioridad,
       esUrgente: prioridad.esUrgente,
-      syncStatus: sinConexion ? 'PENDING' : 'SYNCED',
+      syncStatus: 'PENDING', // siempre queda en la cola hasta que el motor lo confirme en el servidor
       updatedAt: ahora,
     };
 
