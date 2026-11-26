@@ -301,7 +301,7 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 Se arma en la máquina, sin Expo ni cuenta de EAS. Necesita JDK 17 y el SDK de Android (el mismo del emulador).
 
 ```powershell
-$env:JAVA_HOME="C:\Program Files\Java\jdk-17"; $env:PATH="$env:JAVA_HOMEin;$env:PATH"
+$env:JAVA_HOME="C:\Program Files\Java\jdk-17"; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
 $env:JAVA_TOOL_OPTIONS="--enable-native-access=ALL-UNNAMED"   # ver "Problema conocido"
 cd android; .\gradlew.bat assembleRelease
