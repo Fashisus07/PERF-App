@@ -23,6 +23,7 @@ const ICONO_ENTIDAD: Record<string, keyof typeof MaterialIcons.glyphMap> = {
   CASO: 'pets',
   HISTORIAL: 'history-edu',
   TURNO: 'event',
+  ANIMAL: 'cruelty-free',
 };
 
 export function ColaSincronizacionScreen({ navigation }: Props) {

@@ -7,7 +7,8 @@ import {
   pullRemoteChanges,
 } from '../MotorSincronizacion';
 import { Caso, EventoHistorial } from '../../../../domain/models/Caso';
-import { Turno } from '../../../../domain/models/Turno';
+import { AnimalCaso } from '../../../../domain/models/Animal';
+import { CentroVeterinario, Turno } from '../../../../domain/models/Turno';
 
 describe('Cola Offline First y Sincronización Bidireccional', () => {
   let cola: OperacionCola[];
@@ -17,6 +18,10 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
   let casosRemotos: Map<string, any>;
   let eventosRemotos: any[];
   let turnosRemotos: any[];
+  let animalesLocales: AnimalCaso[];
+  let centrosLocales: CentroVeterinario[];
+  let centrosRemotos: any[];
+  let animalesRemotos: Map<string, any>;
   let ultimaSyncGuardada: number | null;
 
   beforeEach(() => {
@@ -27,6 +32,10 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
     casosRemotos = new Map();
     eventosRemotos = [];
     turnosRemotos = [];
+    animalesLocales = [];
+    centrosLocales = [];
+    centrosRemotos = [];
+    animalesRemotos = new Map();
     ultimaSyncGuardada = null;
   });
 
@@ -52,6 +61,19 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
     },
     async guardarTurno(turno) {
       turnosLocales.push(turno);
+    },
+    async reemplazarCentros(centros) {
+      centrosLocales = centros;
+    },
+    async guardarAnimal(animal) {
+      animalesLocales = [...animalesLocales.filter((a) => a.id !== animal.id), animal];
+    },
+    async leerAnimalesDeCaso(casoId) {
+      return animalesLocales.filter((a) => a.casoId === casoId);
+    },
+    async marcarAnimalSincronizado(id) {
+      const a = animalesLocales.find((x) => x.id === id);
+      if (a) a.syncStatus = 'SYNCED';
     },
     async leerEventosPendientes() {
       return eventosLocales.filter((e) => e.syncStatus === 'PENDING');
@@ -88,6 +110,17 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
       eventosRemotos.push(fila);
       return 'creado';
     },
+    async insertarAnimal(fila) {
+      if (animalesRemotos.has(fila.id)) return 'existia';
+      animalesRemotos.set(fila.id, fila);
+      return 'creado';
+    },
+    async guardarAnimal(fila) {
+      animalesRemotos.set(fila.id, { ...animalesRemotos.get(fila.id), ...fila });
+    },
+    async listarAnimales() {
+      return Array.from(animalesRemotos.values());
+    },
     async insertarTurno(fila) {
       turnosRemotos.push(fila);
       return 'creado';
@@ -103,7 +136,7 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
       return new Set(['centro-1']);
     },
     async listarCentros() {
-      return [];
+      return [...centrosRemotos];
     },
     async listarCasos() {
       return Array.from(casosRemotos.values());
@@ -237,5 +270,156 @@ describe('Cola Offline First y Sincronización Bidireccional', () => {
     expect(casosLocales.has('remoto-1')).toBe(true);
     expect(casosLocales.get('remoto-1')?.nombreProvisorio).toBe('Garfield');
     expect(casosLocales.get('remoto-1')?.gravedadClinica).toBe('CRITICA');
+  });
+
+  describe('Animales de un caso', () => {
+    const casoBase = (): Caso => ({
+      id: 'caso-camada',
+      nombreProvisorio: 'Camada del patio',
+      cantidadAnimales: 2,
+      especie: 'Gato',
+      edadEstimada: '2 meses',
+      historiaOrigen: '',
+      personalidad: '',
+      estadoVisible: '',
+      barrio: 'Caballito',
+      coordenadas: null,
+      fechaRescate: 1700000000000,
+      quienSigueCaso: 'Cami',
+      transito: { nombre: 'Ana', telefono: '1' },
+      sanidad: { castrado: 'PENDIENTE', virales: 'PENDIENTE' },
+      estadoCaso: 'EN_TRANSITO',
+      gravedadClinica: 'MODERADA',
+      vulnerabilidad: 'ESTABLE',
+      nivelPrioridad: 'ATENCION',
+      motivoUrgencia: '',
+      puntajePrioridad: 500,
+      esUrgente: false,
+      syncStatus: 'PENDING',
+      updatedAt: 1700000000000,
+    });
+
+    const animal = (id: string, nombre: string): AnimalCaso => ({
+      id,
+      casoId: 'caso-camada',
+      nombre,
+      castrado: 'PENDIENTE',
+      virales: 'PENDIENTE',
+      embarazada: false,
+      pesoGramos: null,
+      fechaPrimeraDesparasitacion: null,
+      fechaSegundaDesparasitacion: null,
+      fallecido: false,
+      motivoFallecimiento: null,
+      syncStatus: 'PENDING',
+      updatedAt: 1700000000000,
+    });
+
+    test('Al subir un caso nuevo se suben tambien sus animales, sin duplicar si se reintenta', async () => {
+      animalesLocales.push(animal('an-1', 'Camada 1'), animal('an-2', 'Camada 2'));
+      const op = { id: 1, entidad: 'CASO' as const, operacion: 'CREATE' as const, payload: JSON.stringify(casoBase()), reintentos: 0, createdAt: 1700000000000 };
+      cola.push(op);
+
+      await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado, ahora: () => 1700001000000 });
+      expect(animalesRemotos.size).toBe(2);
+      expect(animalesLocales.every((a) => a.syncStatus === 'SYNCED')).toBe(true);
+
+      cola.push({ ...op, id: 2 }); // el mismo UUID reenviado (reintento)
+      await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado, ahora: () => 1700002000000 });
+      expect(animalesRemotos.size).toBe(2);
+    });
+
+    test('Un cambio de sanidad de un animal se sube y no pisa a los otros animales del caso', async () => {
+      animalesRemotos.set('an-1', { id: 'an-1', caso_id: 'caso-camada', nombre: 'Camada 1', castrado: 'PENDIENTE' });
+      animalesRemotos.set('an-2', { id: 'an-2', caso_id: 'caso-camada', nombre: 'Camada 2', castrado: 'NO' });
+      cola.push({
+        id: 1,
+        entidad: 'ANIMAL',
+        operacion: 'UPDATE',
+        payload: JSON.stringify({ ...animal('an-1', 'Camada 1'), castrado: 'SI' }),
+        reintentos: 0,
+        createdAt: 1700000000000,
+      });
+
+      const r = await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado, ahora: () => 1700001000000 });
+      expect(r.fallidas).toBe(0);
+      expect(animalesRemotos.get('an-1').castrado).toBe('SI');
+      expect(animalesRemotos.get('an-2').castrado).toBe('NO');
+    });
+
+    test('Un celular nuevo descarga los animales de un caso del servidor', async () => {
+      animalesRemotos.set('an-9', {
+        id: 'an-9',
+        caso_id: 'caso-remoto',
+        nombre: 'Luna',
+        castrado: 'SI',
+        virales_vif_vilef: 'NEGATIVO',
+        embarazada: true,
+        peso_gramos: 3200,
+        fecha_primera_desparasitacion: '2026-10-01T00:00:00.000Z',
+        fecha_segunda_desparasitacion: null,
+        fallecido: false,
+        motivo_fallecimiento: null,
+        updated_at: '2026-10-02T00:00:00.000Z',
+      });
+
+      await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado, ahora: () => 1700001000000 });
+      const luna = animalesLocales.find((a) => a.id === 'an-9');
+      expect(luna).toMatchObject({ nombre: 'Luna', castrado: 'SI', embarazada: true, pesoGramos: 3200, syncStatus: 'SYNCED' });
+      expect(luna?.fechaPrimeraDesparasitacion).toBe(Date.parse('2026-10-01T00:00:00.000Z'));
+    });
+
+    test('No pisa los animales de un caso que tiene cambios sin subir en este celular', async () => {
+      animalesRemotos.set('an-1', { id: 'an-1', caso_id: 'caso-camada', nombre: 'Viejo', castrado: 'NO', virales_vif_vilef: 'PENDIENTE', updated_at: '2026-10-02T00:00:00.000Z' });
+      animalesLocales.push({ ...animal('an-1', 'Local'), castrado: 'SI' });
+      // La operacion falla (sin cortar la sincronizacion): el caso queda pendiente y su animal local no se pisa.
+      cola.push({ id: 1, entidad: 'CASO', operacion: 'UPDATE', payload: JSON.stringify({ id: 'caso-camada', estado_caso: 'EN_CLINICA' }), reintentos: 0, createdAt: 1 });
+      const original = mockServidor.obtenerCaso;
+      mockServidor.obtenerCaso = async () => {
+        throw new Error('falla del servidor');
+      };
+      const r = await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado });
+      mockServidor.obtenerCaso = original;
+      expect(r.fallidas).toBe(1);
+      expect(animalesLocales.find((a) => a.id === 'an-1')?.nombre).toBe('Local');
+    });
+  });
+
+  describe('Veterinarias que carga el administrador', () => {
+    test('se bajan con sus horarios, ordenados y sin valores inválidos', async () => {
+      centrosRemotos.push({
+        id: 'vet-1',
+        nombre: 'Vet del Parque',
+        medico: 'Dra. Paz',
+        barrio: 'Caballito',
+        direccion: 'Acoyte 100',
+        telefono: '1144',
+        detalle: null,
+        distancia: null,
+        abierto: true,
+        tipo: 'consultorio',
+        horarios: ['16:00', '09:30', '9:5', '09:30', 'tarde'],
+      });
+      await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado, ahora: () => 1700001000000 });
+      expect(centrosLocales).toHaveLength(1);
+      expect(centrosLocales[0]).toMatchObject({ id: 'vet-1', nombre: 'Vet del Parque', medico: 'Dra. Paz', horarios: ['09:30', '16:00'] });
+    });
+
+    test('si el servidor todavía no tiene ninguna, no se borra el catálogo del teléfono', async () => {
+      centrosLocales = [{ id: 'patitas', nombre: 'Patitas', barrio: 'B', direccion: 'D', telefono: '1', abierto: true, tipo: 'consultorio' }];
+      await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado, ahora: () => 1700001000000 });
+      expect(centrosLocales).toHaveLength(1);
+    });
+
+    test('un fallo al bajar las veterinarias no frena el resto de la sincronización', async () => {
+      const original = mockServidor.listarCentros;
+      mockServidor.listarCentros = async () => {
+        throw new Error('permiso denegado');
+      };
+      animalesRemotos.set('an-5', { id: 'an-5', caso_id: 'c', nombre: 'X', castrado: 'NO', virales_vif_vilef: 'PENDIENTE', updated_at: '2026-10-02T00:00:00.000Z' });
+      await sincronizar({ servidor: mockServidor, almacen: mockAlmacen, estado: mockEstado, ahora: () => 1700001000000 });
+      mockServidor.listarCentros = original;
+      expect(animalesLocales.some((a) => a.id === 'an-5')).toBe(true);
+    });
   });
 });

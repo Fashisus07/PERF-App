@@ -1,13 +1,13 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
-  calcularUrgencia,
   Caso,
   descripcionCorta,
   diasEnEspera,
   ETIQUETA_ESTADO,
-  nivelAUrgencia,
+  prioridadDeCaso,
 } from '../../domain/models/Caso';
+import { useCasoStore } from '../stores/useCasoStore';
 import { colors, fonts } from '../theme';
 import { fotoCasoSource } from './fotoCaso';
 import { UbicacionCaso } from './UbicacionCaso';
@@ -16,7 +16,8 @@ import { UrgenciaBadge } from './UrgenciaBadge';
 const COLOR_DIAS = { urgente: colors.urgente, atencion: colors.atencion, aldia: colors.aldia };
 
 export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }) {
-  const urgencia = caso.nivelPrioridad ? nivelAUrgencia(caso.nivelPrioridad) : calcularUrgencia(caso, 15);
+  const umbral = useCasoStore((s) => s.umbralDias);
+  const { urgencia, motivoUrgencia } = prioridadDeCaso(caso, umbral);
   const dias = diasEnEspera(caso);
   const fotoSource = fotoCasoSource(caso);
 
@@ -34,7 +35,7 @@ export function CasoCard({ caso, onPress }: { caso: Caso; onPress?: () => void }
                 </View>
               )}
             </View>
-            <UrgenciaBadge urgencia={urgencia} motivo={caso.motivoUrgencia} />
+            <UrgenciaBadge urgencia={urgencia} motivo={motivoUrgencia} />
           </View>
 
           <View style={styles.metaRow}>

@@ -5,13 +5,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Urgencia } from '../../../domain/models/Caso';
 import { formatoFecha } from '../../../domain/models/Rescate';
 import {
-  AvisoTurno,
   Clinica,
   conHora,
-  ETIQUETA_AVISO,
   ETIQUETA_MOTIVO,
-  HORARIOS_FORMULARIO,
+  horariosDeClinica,
   MotivoConsulta,
+  OPCIONES_RECORDATORIO,
+  RECORDATORIO_POR_DEFECTO_MIN,
   mismoDia,
   sumarDias,
   etiquetaDia,
@@ -47,16 +47,14 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
   const [hora, setHora] = useState<string | null>('10:30');
   const [motivo, setMotivo] = useState<MotivoConsulta>('control');
   const [notas, setNotas] = useState('');
-  const [avisos, setAvisos] = useState<AvisoTurno[]>(['1dia', '2horas']);
+  const [recordatorioMin, setRecordatorioMin] = useState<number>(RECORDATORIO_POR_DEFECTO_MIN);
   const [guardando, setGuardando] = useState(false);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 
   useEffect(() => {
     obtenerClinicas().then(setClinicas);
-    // Los recordatorios que vienen marcados salen de los Ajustes.
-    obtenerAjustes().then((a) =>
-      setAvisos([...(a.recordatorioUnDia ? (['1dia'] as AvisoTurno[]) : []), ...(a.alertaDosHoras ? (['2horas'] as AvisoTurno[]) : [])]),
-    );
+    // La anticipación que viene marcada es la elegida en Ajustes; acá se puede cambiar para este turno.
+    obtenerAjustes().then((a) => setRecordatorioMin(a.recordatorioMinutos));
   }, []);
 
   const ahora = new Date();
@@ -64,6 +62,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
   const fechaDia = dias[dia];
   const caso = casos.find((c) => c.id === casoId);
   const clinica = clinicas.find((c) => c.id === clinicaId);
+  const horariosDelCentro = horariosDeClinica(clinica);
 
   // Hoy no se pueden elegir horarios que ya pasaron.
   const horaPasada = (h: string) => mismoDia(fechaDia, ahora) && conHora(fechaDia, h).getTime() <= ahora.getTime();
@@ -80,8 +79,8 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
     return e === 'Hoy' || e === 'Mañana' ? `${e} (${formatoFecha(fechaDia)})` : e;
   })();
 
-  const alternarAviso = (a: AvisoTurno) =>
-    setAvisos((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]));
+  // Una anticipación no sirve si su momento ya pasó (ej: turno en 3 horas con aviso "1 día antes").
+  const avisoPasado = (min: number) => !!hora && conHora(fechaDia, hora).getTime() - min * 60000 <= ahora.getTime();
 
   const confirmar = async () => {
     if (!caso || !hora || !clinica || guardando) return;
@@ -93,15 +92,15 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
       centroVeterinarioId: clinicaId,
       fechaHora: fechaTurno.getTime(),
       motivo,
-      recordatorioMinutos: avisos.includes('1dia') ? 1440 : 120,
+      recordatorioMinutos: recordatorioMin,
     };
     try {
       const r = await agendarTurno.ejecutar(solicitud, caso);
-      navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id, avisosProgramados: avisos });
+      navigation?.replace?.('TurnoAgendado', { turnoId: r.turno.id });
     } catch (e: any) {
       if (e instanceof CupoNoDisponible) {
         navigation?.replace?.('TurnoNoDisponible', {
-          solicitud: { ...solicitud, clinicaId, fecha: fechaTurno.toISOString(), avisos },
+          solicitud: { ...solicitud, clinicaId, fecha: fechaTurno.toISOString() },
           opciones: e.opciones.map((o) => ({ fecha: o.fecha.toISOString(), espera: o.espera })),
         });
       } else {
@@ -188,7 +187,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
             <Text style={styles.seccion}>Hora de atención</Text>
           </View>
           <View style={styles.horas}>
-            {HORARIOS_FORMULARIO.map((h) => {
+            {horariosDelCentro.map((h) => {
               const activa = hora === h;
               const pasada = horaPasada(h);
               return (
@@ -225,6 +224,7 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
                   onPress={() => {
                     setClinicaId(c.id);
                     setEligiendoClinica(false);
+                    if (hora && !horariosDeClinica(c).includes(hora)) setHora(null);
                   }}
                 >
                   <TarjetaClinica clinica={c} />
@@ -265,18 +265,20 @@ export function AgendarTurnoScreen({ route, navigation }: Props) {
             <Text style={styles.seccion}>Recordatorio en el teléfono</Text>
           </View>
           <View style={styles.horas}>
-            {(Object.keys(ETIQUETA_AVISO) as AvisoTurno[]).map((a) => {
-              const activo = avisos.includes(a);
+            {OPCIONES_RECORDATORIO.map((o) => {
+              const activo = recordatorioMin === o.minutos;
+              const pasado = avisoPasado(o.minutos);
               return (
                 <Pressable
-                  key={a}
-                  style={[styles.aviso, activo && styles.horaActiva]}
-                  onPress={() => alternarAviso(a)}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: activo }}
+                  key={o.minutos}
+                  disabled={pasado}
+                  style={[styles.aviso, activo && styles.horaActiva, pasado && { opacity: 0.4 }]}
+                  onPress={() => setRecordatorioMin(o.minutos)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: activo, disabled: pasado }}
                 >
-                  <MaterialIcons name={activo ? 'check-circle' : 'radio-button-unchecked'} size={18} color={activo ? '#fff' : colors.textMuted} />
-                  <Text style={[styles.horaText, activo && { color: '#fff' }]}>{ETIQUETA_AVISO[a]}</Text>
+                  <MaterialIcons name={activo ? 'radio-button-checked' : 'radio-button-unchecked'} size={18} color={activo ? '#fff' : colors.textMuted} />
+                  <Text style={[styles.horaText, activo && { color: '#fff' }]}>{o.label}</Text>
                 </Pressable>
               );
             })}

@@ -51,5 +51,9 @@ export interface AuthRepository {
   obtenerVoluntariosPendientes?(): Promise<SolicitudVoluntarioPendiente[]>;
   aprobarVoluntario?(userId: string, token?: string): Promise<ResultadoAccionSolicitud>;
   rechazarVoluntario?(userId: string, token?: string): Promise<ResultadoAccionSolicitud>;
+
+  /** Voluntarios aprobados de la red (para las vistas de perfiles). */
+  listarVoluntarios(): Promise<Voluntario[]>;
+  obtenerVoluntario(id: string): Promise<Voluntario | null>;
 }
 

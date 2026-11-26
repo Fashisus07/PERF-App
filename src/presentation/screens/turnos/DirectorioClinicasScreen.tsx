@@ -1,5 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -10,9 +10,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { turnoRepository } from '../../../di/container';
-import { Clinica } from '../../../domain/models/Turno';
+import { authRepository, turnoRepository } from '../../../di/container';
+import { esAdministrador } from '../../../domain/models/Ajustes';
+import { Clinica, horariosDeClinica } from '../../../domain/models/Turno';
 import { StackHeader } from '../../components/StackHeader';
 import { colors, fonts } from '../../theme';
 
@@ -29,15 +31,24 @@ export function DirectorioClinicasScreen({ navigation }: Props) {
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState<FiltroTipo>('todas');
 
-  useEffect(() => {
-    turnoRepository
-      .obtenerClinicas()
-      .then((data) => {
-        setClinicas(data);
-        setCargando(false);
-      })
-      .catch(() => setCargando(false));
-  }, []);
+  const [esAdmin, setEsAdmin] = useState(false);
+
+  // Se recarga al volver de cargar o editar una veterinaria.
+  useFocusEffect(
+    useCallback(() => {
+      turnoRepository
+        .obtenerClinicas()
+        .then((data) => {
+          setClinicas(data);
+          setCargando(false);
+        })
+        .catch(() => setCargando(false));
+      authRepository
+        .obtenerVoluntarioActual()
+        .then((v) => setEsAdmin(esAdministrador(v?.rol)))
+        .catch(() => setEsAdmin(false));
+    }, [])
+  );
 
   const clinicasFiltradas = useMemo(() => {
     return clinicas.filter((c) => {
@@ -81,7 +92,17 @@ export function DirectorioClinicasScreen({ navigation }: Props) {
 
   return (
     <View style={styles.screen}>
-      <StackHeader titulo="Directorio Veterinario" onBack={() => navigation?.goBack?.()} />
+      <StackHeader
+        titulo="Directorio Veterinario"
+        onBack={() => navigation?.goBack?.()}
+        derecha={
+          esAdmin ? (
+            <Pressable onPress={() => navigation?.navigate?.('EditarClinica')} hitSlop={8} accessibilityLabel="Agregar veterinaria">
+              <MaterialIcons name="add-circle" size={28} color={colors.primary} />
+            </Pressable>
+          ) : undefined
+        }
+      />
 
       {/* Barra de Búsqueda MD3 */}
       <View style={styles.searchContainer}>
@@ -234,6 +255,11 @@ export function DirectorioClinicasScreen({ navigation }: Props) {
                     </View>
                   ) : null}
 
+                  <View style={styles.ubicacionRow}>
+                    <MaterialIcons name="schedule" size={18} color={colors.textSubtle} />
+                    <Text style={styles.direccionText}>Turnos: {horariosDeClinica(c).join(' · ')}</Text>
+                  </View>
+
                   {/* Estado y horario */}
                   <View style={styles.estadoRow}>
                     <View style={[styles.puntoEstado, { backgroundColor: c.abierto ? colors.aldia : colors.urgente }]} />
@@ -271,6 +297,17 @@ export function DirectorioClinicasScreen({ navigation }: Props) {
                       <Text style={styles.btnAccionPrimarioText}>Turno</Text>
                     </Pressable>
                   </View>
+
+                  {esAdmin ? (
+                    <Pressable
+                      style={styles.btnAccionSecundario}
+                      onPress={() => navigation?.navigate?.('EditarClinica', { clinicaId: c.id })}
+                      accessibilityLabel={`Editar ${c.nombre}`}
+                    >
+                      <MaterialIcons name="edit" size={18} color={colors.primary} />
+                      <Text style={styles.btnAccionSecundarioText}>Editar veterinaria y horarios</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               );
             })

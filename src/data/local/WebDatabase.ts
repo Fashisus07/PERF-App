@@ -75,11 +75,13 @@ export class WebDatabase {
       }
 
       const existingIdx =
-        cleanSql.toLowerCase().includes('on conflict') && row.id
+        (cleanSql.toLowerCase().includes('on conflict') || cleanSql.toLowerCase().includes('or ignore')) && row.id
           ? table.findIndex((r) => r.id === row.id)
           : -1;
       if (existingIdx >= 0) {
-        table[existingIdx] = { ...table[existingIdx], ...row };
+        if (!cleanSql.toLowerCase().includes('or ignore')) {
+          table[existingIdx] = { ...table[existingIdx], ...row };
+        }
       } else {
         table.push(row);
       }
@@ -149,6 +151,37 @@ export class WebDatabase {
       return [{ count }] as unknown as T[];
     }
 
+    // Consulta especial con subconsulta de ultima_revision (SQL_CASO_CON_REVISION)
+    const conRevisionMatch = cleanSql.match(
+      /^select\s+c\.\*,\s*\([\s\S]+?\)\s+as\s+ultima_revision\s+from\s+casos\s+c(?:\s+where\s+([\s\S]+?))?(?:\s+order\s+by\s+([\s\S]+?))?(?:;|$)/i
+    );
+    if (conRevisionMatch) {
+      const whereClause = conRevisionMatch[1]?.trim();
+      const orderByClause = conRevisionMatch[2]?.trim();
+      const casos = this.ensureTable('casos');
+      const eventos = this.ensureTable('eventos_historial');
+      const excluidos = new Set(['CAMBIO_TRANSITO', 'ADOPCION']);
+
+      let results = casos
+        .filter((row) => this.evalWhere(row, whereClause, params))
+        .map((r) => {
+          let maxFecha: number | null = null;
+          for (const ev of eventos) {
+            if (ev.caso_id === r.id && !excluidos.has(ev.tipo)) {
+              if (maxFecha === null || Number(ev.fecha) > maxFecha) {
+                maxFecha = Number(ev.fecha);
+              }
+            }
+          }
+          return { ...r, ultima_revision: maxFecha };
+        });
+
+      if (orderByClause) {
+        results = this.applyOrderBy(results, orderByClause);
+      }
+      return results as unknown as T[];
+    }
+
     // SELECT query
     const selectMatch = cleanSql.match(/select\s+([\s\S]+?)\s+from\s+([a-zA-Z0-9_]+)(?:\s+where\s+([\s\S]+?))?(?:\s+order\s+by\s+([\s\S]+?))?(?:;|$)/i);
     if (!selectMatch) {
@@ -192,13 +225,13 @@ export class WebDatabase {
     if (!whereClause) return true;
     const clause = whereClause.trim();
 
-    // 1. estado_caso NOT IN ('ADOPTADO', 'FALLECIDO')
-    if (/estado_caso\s+not\s+in/i.test(clause)) {
+    // 1. c.estado_caso / estado_caso NOT IN (...)
+    if (/(?:c\.)?estado_caso\s+not\s+in/i.test(clause)) {
       return row.estado_caso !== 'ADOPTADO' && row.estado_caso !== 'FALLECIDO';
     }
 
-    // 2. estado_caso IN ('ADOPTADO', 'FALLECIDO')
-    if (/estado_caso\s+in/i.test(clause)) {
+    // 2. c.estado_caso / estado_caso IN (...)
+    if (/(?:c\.)?estado_caso\s+in/i.test(clause)) {
       return row.estado_caso === 'ADOPTADO' || row.estado_caso === 'FALLECIDO';
     }
 
@@ -219,13 +252,19 @@ export class WebDatabase {
       return String(row.email ?? '').toLowerCase() === val;
     }
 
-    // 5. id = ? or id = $id
-    if (/^id\s*=\s*(\?|\$id)/i.test(clause)) {
+    // 5. id NOT IN (...) (e.g. DELETE FROM centros_veterinarios WHERE id NOT IN (...))
+    if (/^id\s+not\s+in/i.test(clause)) {
+      const ids = Array.isArray(params) ? params.map(String) : [];
+      return !ids.includes(String(row.id));
+    }
+
+    // 6. c.id = ? / id = ? / id = $id
+    if (/^(?:c\.)?id\s*=\s*(\?|\$id)/i.test(clause)) {
       const targetId = Array.isArray(params) ? params[0] : (params as any)?.$id ?? (params as any)?.id;
       return String(row.id) === String(targetId);
     }
 
-    // 6. caso_id = ?
+    // 7. caso_id = ?
     if (/^caso_id\s*=\s*\?/i.test(clause)) {
       const targetId = Array.isArray(params) ? params[0] : (params as any)?.caso_id;
       return String(row.caso_id) === String(targetId);
@@ -269,7 +308,8 @@ export class WebDatabase {
     const parts = orderBy.split(',').map((p) => p.trim());
     return [...list].sort((a, b) => {
       for (const p of parts) {
-        const [field, direction] = p.split(/\s+/);
+        const [rawField, direction] = p.split(/\s+/);
+        const field = rawField.replace(/^[a-z0-9_]+\./i, '');
         const desc = direction?.toUpperCase() === 'DESC';
         const valA = a[field] ?? '';
         const valB = b[field] ?? '';

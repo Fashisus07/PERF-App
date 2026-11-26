@@ -24,7 +24,10 @@ function horaLocal(d: Date) {
 }
 
 export function CasosScreen({ navigation }: { navigation?: any }) {
-  const { visibles, casos, conteo, cargando, error, recargar, busqueda, setBusqueda, filtro, setFiltro } = useCasos();
+  const {
+    visibles, casos, conteo, cargando, error, recargar, busqueda, setBusqueda, filtro, setFiltro,
+    soloMios, setSoloMios, cantidadMios, sesionIniciada,
+  } = useCasos();
   const online = useOnline();
   const [ultimaSync, setUltimaSync] = useState<Date | null>(null);
   useEffect(() => {
@@ -63,19 +66,51 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
     );
   }
 
+  // Arriba: Todos | Mis casos. Abajo: filtros de urgencia (tocar de nuevo para quitarlos).
+  const vista = sesionIniciada ? (
+    <View style={styles.vista} accessibilityRole="tablist">
+      <Pressable
+        style={[styles.vistaOpcion, !soloMios && styles.vistaOpcionActiva]}
+        onPress={() => setSoloMios(false)}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: !soloMios }}
+      >
+        <MaterialIcons name="pets" size={16} color={!soloMios ? colors.onPrimary : colors.textMuted} />
+        <Text style={[styles.vistaTexto, !soloMios && styles.vistaTextoActivo]}>Todos ({casos.length})</Text>
+      </Pressable>
+      <Pressable
+        style={[styles.vistaOpcion, soloMios && styles.vistaOpcionActiva]}
+        onPress={() => setSoloMios(true)}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: soloMios }}
+      >
+        <MaterialIcons name="person" size={16} color={soloMios ? colors.onPrimary : colors.textMuted} />
+        <Text style={[styles.vistaTexto, soloMios && styles.vistaTextoActivo]}>Mis casos ({cantidadMios})</Text>
+      </Pressable>
+    </View>
+  ) : null;
+
   const tabs = (
-    <View style={styles.tabs}>
-      {TABS.map((t) => {
-        const activo = filtro === t.key;
-        return (
-          <Pressable key={t.key} onPress={() => setFiltro(t.key)} style={[styles.tab, activo && styles.tabActive]}>
-            {t.dot && !activo && <View style={[styles.tabDot, { backgroundColor: t.dot }]} />}
-            <Text style={[styles.tabText, activo && styles.tabTextActive]}>
-              {t.label} ({conteo[t.key]})
-            </Text>
-          </Pressable>
-        );
-      })}
+    <View>
+      {vista}
+      <View style={styles.tabs}>
+        {TABS.filter((t) => t.key !== 'todos').map((t) => {
+          const activo = filtro === t.key;
+          return (
+            <Pressable
+              key={t.key}
+              onPress={() => setFiltro(activo ? 'todos' : t.key)}
+              style={[styles.tab, activo && styles.tabActive]}
+            >
+              {/* El punto está siempre: así el texto no se mueve al activar o desactivar el filtro. */}
+              {t.dot ? <View style={[styles.tabDot, { backgroundColor: activo ? colors.onPrimary : t.dot }]} /> : null}
+              <Text style={[styles.tabText, activo && styles.tabTextActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+                {t.label} ({conteo[t.key]})
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 
@@ -88,7 +123,6 @@ export function CasosScreen({ navigation }: { navigation?: any }) {
           <Text style={styles.summarySep}>•</Text>
           <Text style={styles.summaryActive}>{conteo.todos} activos</Text>
         </View>
-
       </View>
       <View style={styles.search}>
         <MaterialIcons name="search" size={22} color={colors.textMuted} />
@@ -189,14 +223,19 @@ const styles = StyleSheet.create({
   summaryUrgent: { fontFamily: fonts.bold, fontSize: 14, color: colors.urgenteText },
   summarySep: { fontFamily: fonts.regular, fontSize: 15, color: colors.urgenteSoft },
   summaryActive: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
-
   search: { height: 56, backgroundColor: colors.surface, borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingLeft: 14, gap: 8 },
   searchInput: { flex: 1, height: 56, fontFamily: fonts.regular, fontSize: 16, color: colors.text, paddingRight: 40 },
+  vista: { flexDirection: 'row', backgroundColor: colors.surfaceChip, borderRadius: 9999, padding: 4, marginTop: 4 },
+  vistaOpcion: { flex: 1, height: 40, borderRadius: 9999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  vistaOpcionActiva: { backgroundColor: colors.primary },
+  vistaTexto: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
+  vistaTextoActivo: { color: colors.onPrimary },
+  // Tres botones del mismo ancho y en una sola fila: al cambiar los números (Todos / Mis casos) no se corren.
   tabs: { flexDirection: 'row', gap: 8, paddingVertical: 8, marginBottom: 4 },
-  tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999, backgroundColor: colors.surfaceChip },
-  tabActive: { backgroundColor: colors.primary, paddingHorizontal: 16 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 10, borderRadius: 9999, backgroundColor: colors.surfaceChip },
+  tabActive: { backgroundColor: colors.primary },
   tabDot: { width: 8, height: 8, borderRadius: 9999 },
-  tabText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.textMuted },
+  tabText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textMuted, fontVariant: ['tabular-nums'] },
   tabTextActive: { color: colors.onPrimary },
   offBanner: { backgroundColor: colors.offlineBanner, borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
   offBannerTitle: { fontFamily: fonts.semibold, fontSize: 16, lineHeight: 22, color: colors.text },

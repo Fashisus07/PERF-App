@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AvisoTurno, ETIQUETA_AVISO, ETIQUETA_MOTIVO, etiquetaDia, diaLargo, horaDe, mismoDia, sumarDias } from '../../../domain/models/Turno';
+import { ETIQUETA_MOTIVO, etiquetaDia, etiquetaRecordatorio, diaLargo, horaDe, mismoDia, sumarDias } from '../../../domain/models/Turno';
 import { StackHeader } from '../../components/StackHeader';
 import { fotoCasoSource } from '../../components/fotoCaso';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
@@ -9,7 +9,7 @@ import { useTurnoCompleto } from '../../hooks/useTurnos';
 import { colors, fonts } from '../../theme';
 import { AvatarPerfil } from '../rescate/BarraRescate';
 
-type Params = { turnoId: string; avisosProgramados: AvisoTurno[] };
+type Params = { turnoId: string };
 
 const pad = (n: number) => String(n).padStart(2, '0');
 // Formato que entiende Google Calendar: 20261020T103000
@@ -22,8 +22,6 @@ export function TurnoAgendadoScreen({ route, navigation }: { route?: { params?: 
   if (!datos) return <View style={styles.screen} />;
 
   const { turno, clinica, caso } = datos;
-  const programados = route?.params?.avisosProgramados ?? [];
-  const avisosActivos = programados.length > 0;
   const ahora = new Date();
   const fecha = new Date(turno.fechaHora);
   const manana = mismoDia(fecha, sumarDias(ahora, 1));
@@ -104,7 +102,7 @@ export function TurnoAgendadoScreen({ route, navigation }: { route?: { params?: 
             <View style={styles.avisosTitulo}>
               <MaterialIcons name="notifications-active" size={16} color={colors.primary} />
               <Text style={styles.avisosText}>
-                {turno.recordatorioMinutos === 1440 ? 'Aviso 24 horas antes' : 'Aviso 2 horas antes'}
+                Aviso {etiquetaRecordatorio(turno.recordatorioMinutos)}
               </Text>
             </View>
           </View>

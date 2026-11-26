@@ -53,25 +53,48 @@ export const ETIQUETA_MOTIVO: Record<string, string> = {
   urgencia: 'Urgencia',
 };
 
-export type AvisoTurno = '1dia' | '2horas';
-
-export const ETIQUETA_AVISO: Record<AvisoTurno, string> = {
-  '1dia': '24 horas antes',
-  '2horas': '2 horas antes',
-};
-
 // ─── Recordatorios: opciones predefinidas ───
 
-/** Opciones de anticipación que se ofrecen en el formulario. */
+/** Opciones de anticipación que se ofrecen al agendar y en Ajustes (se elige una). */
 export const OPCIONES_RECORDATORIO = [
-  { label: '2 horas antes', minutos: 120 },
-  { label: '24 horas antes', minutos: 1440 },
+  { label: '30 minutos antes', corto: '30 min', minutos: 30 },
+  { label: '1 hora antes', corto: '1 hora', minutos: 60 },
+  { label: '2 horas antes', corto: '2 horas', minutos: 120 },
+  { label: '1 día antes', corto: '1 día', minutos: 1440 },
+  { label: '2 días antes', corto: '2 días', minutos: 2880 },
 ] as const;
+
+export const RECORDATORIO_POR_DEFECTO_MIN = 120;
+
+/** Texto de un recordatorio guardado, también para valores viejos o a medida (ej: 90 → "1 h 30 min antes"). */
+export function etiquetaRecordatorio(minutos: number): string {
+  const op = OPCIONES_RECORDATORIO.find((o) => o.minutos === minutos);
+  if (op) return op.label;
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  return `${h ? `${h} h` : ''}${h && m ? ' ' : ''}${m ? `${m} min` : ''} antes`;
+}
 
 // ─── Horarios de atención (mock del catálogo de centros) ───
 
 export const HORARIOS_CLINICA = ['09:00', '10:30', '11:15', '12:15', '16:00', '18:30'];
 export const HORARIOS_FORMULARIO = ['10:30', '11:15', '16:00', '18:30'];
+
+const FORMATO_HORARIO = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** "9:5" no es un horario; "09:05" sí. */
+export const esHorarioValido = (hhmm: string) => FORMATO_HORARIO.test(hhmm);
+
+/** Sin repetidos, sin valores inválidos y de menor a mayor. */
+export function normalizarHorarios(horarios: readonly string[] | null | undefined): string[] {
+  return Array.from(new Set((horarios ?? []).map((h) => h.trim()).filter(esHorarioValido))).sort();
+}
+
+/** Horarios en que atiende una clínica: los suyos o, si no cargó ninguno, los de siempre. */
+export function horariosDeClinica(clinica?: Pick<CentroVeterinario, 'horarios'> | null): string[] {
+  const propios = normalizarHorarios(clinica?.horarios);
+  return propios.length ? propios : HORARIOS_CLINICA;
+}
 
 /** Lo que dura cada turno: dos turnos a menos de esto de distancia se superponen (45 min = separación mínima entre horarios). */
 export const DURACION_TURNO_MIN = 45;

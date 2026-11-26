@@ -1,0 +1,5 @@
+[functions.notificar-voluntario]
+verify_jwt = false
+
+[functions.gestionar-voluntario]
+verify_jwt = false

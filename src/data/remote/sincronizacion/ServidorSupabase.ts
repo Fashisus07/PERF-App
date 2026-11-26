@@ -44,6 +44,14 @@ export const servidorSupabase: ServidorRemoto = {
   insertarCaso: (fila) => insertar('casos', fila),
   insertarEvento: (fila) => insertar('eventos_historial', fila),
   insertarTurno: (fila) => insertar('turnos', fila),
+  insertarAnimal: (fila) => insertar('animales', fila),
+
+  async guardarAnimal(fila) {
+    const { id, caso_id: _caso, ...cambios } = fila;
+    const { data, error } = await supabase.from('animales').update(cambios).eq('id', id).select('id');
+    if (error) throw traducir(error);
+    if (!data?.length) await insertar('animales', fila); // el animal solo existia en este telefono
+  },
 
   async obtenerCaso(id) {
     const { data, error } = await supabase.from('casos').select('*').eq('id', id).maybeSingle();
@@ -80,4 +88,5 @@ export const servidorSupabase: ServidorRemoto = {
   listarCasos: (desdeIso) => listar('casos', 'updated_at', desdeIso),
   listarEventos: (desdeIso) => listar('eventos_historial', 'created_at', desdeIso),
   listarTurnos: (desdeIso) => listar('turnos', 'updated_at', desdeIso),
+  listarAnimales: (desdeIso) => listar('animales', 'updated_at', desdeIso),
 };

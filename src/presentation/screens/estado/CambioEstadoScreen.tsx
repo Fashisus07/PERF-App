@@ -109,6 +109,7 @@ export function CambioEstadoScreen({ route, navigation }: Props) {
           gravedadClinica: gravedadActiva,
           vulnerabilidad: vulnActiva,
           fechaRescate: caso.fechaRescate,
+          fechaUltimaRevision: caso.fechaUltimaRevision,
           sanidad: caso.sanidad,
         },
         umbralDias

@@ -20,17 +20,26 @@ import {
   ETIQUETA_VIRALES,
   ETIQUETA_VULNERABILIDAD,
   EventoHistorial,
-  nivelAUrgencia,
+  prioridadDeCaso,
 } from '../../../domain/models/Caso';
-import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
 import { fotoCasoSource } from '../../components/fotoCaso';
 import { StackHeader } from '../../components/StackHeader';
 import { UrgenciaBadge } from '../../components/UrgenciaBadge';
 import { obtenerAjustes } from '../../hooks/useAjustes';
+import { useAnimales } from '../../hooks/useAnimales';
 import { useCaso } from '../../hooks/useCaso';
+import { useCasoStore } from '../../stores/useCasoStore';
 import { colors, fonts } from '../../theme';
 import { ESTADOS_CASO, infoEstado } from '../estado/estadosCaso';
 
+/** "Hoy", "Ayer" o "Hace 5 días (13/11/2026)". */
+function textoUltimaRevision(ms: number): string {
+  const dias = Math.max(0, Math.floor((Date.now() - ms) / (24 * 60 * 60 * 1000)));
+  const fecha = new Date(ms).toLocaleDateString('es-AR');
+  if (dias === 0) return `Hoy (${fecha})`;
+  if (dias === 1) return `Ayer (${fecha})`;
+  return `Hace ${dias} días (${fecha})`;
+}
 const COLOR_PUNTO = [colors.primary, colors.atencion, '#bdc9c6'];
 
 type Props = {
@@ -42,9 +51,11 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
   const { bottom } = useSafeAreaInsets();
   const casoId = route?.params?.casoId ?? '';
   const { caso, historial, cargando } = useCaso(casoId);
+  const { animales } = useAnimales(casoId);
+  const umbral = useCasoStore((s) => s.umbralDias);
   const [favorito, setFavorito] = useState(false);
   const [aviso, setAviso] = useState(false);
-  const [umbralDias, setUmbralDias] = useState(15);
+  const [umbralDias, setUmbralDias] = useState(umbral);
 
   useEffect(() => {
     const cargarUmbral = () => {
@@ -114,8 +125,8 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
     );
   }
 
-  const calculoLive = calcularPrioridadCasoUseCase.ejecutar(caso, umbralDias);
-  const urgencia = nivelAUrgencia(calculoLive.nivelPrioridad);
+  const calculoLive = prioridadDeCaso(caso, umbralDias);
+  const urgencia = calculoLive.urgencia;
   const dias = diasEnEspera(caso);
   const estadoActual = caso.estadoCaso ?? 'EN_TRANSITO';
   const esArchivado = estadoActual === 'ADOPTADO' || estadoActual === 'FALLECIDO';
@@ -285,6 +296,10 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               </Text>
             </View>
             <View style={[styles.sanidadItem, { width: '100%' }]}>
+              <Text style={styles.sanidadLabel}>Última revisión</Text>
+              <Text style={styles.sanidadValor}>{textoUltimaRevision(caso.fechaUltimaRevision ?? caso.fechaRescate)}</Text>
+            </View>
+            <View style={[styles.sanidadItem, { width: '100%' }]}>
               <View style={styles.criterioRow}>
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={styles.sanidadLabel}>Criterio de Urgencia</Text>
@@ -356,6 +371,22 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
             </Pressable>
           </View>
 
+          {animales.length > 1 ? (
+            <View style={{ gap: 10 }}>
+              {animales.map((a) => (
+                <View key={a.id} style={styles.animalFila}>
+                  <Text style={styles.animalNombre}>{a.nombre}</Text>
+                  <Text style={styles.animalDato}>
+                    {ETIQUETA_CASTRACION[a.castrado]} · Virales: {ETIQUETA_VIRALES[a.virales]}
+                  </Text>
+                  <Text style={styles.animalDato}>
+                    1° desp.: {a.fechaPrimeraDesparasitacion ? new Date(a.fechaPrimeraDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'} · 2° desp.:{' '}
+                    {a.fechaSegundaDesparasitacion ? new Date(a.fechaSegundaDesparasitacion).toLocaleDateString('es-AR') : 'Pendiente'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
           <View style={styles.sanidadGrid}>
             <View style={styles.sanidadItem}>
               <Text style={styles.sanidadLabel}>Castración</Text>
@@ -385,6 +416,7 @@ export function DetalleCasoScreen({ route, navigation }: Props) {
               </Text>
             </View>
           </View>
+          )}
 
           {caso.estadoVisible ? (
             <View style={styles.notas}>
@@ -742,6 +774,9 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardTitulo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cantidad: { fontFamily: fonts.regular, fontSize: 13, color: colors.textSubtle, marginTop: 2 },
+  animalFila: { padding: 12, borderRadius: 12, backgroundColor: colors.surfaceCard, gap: 2 },
+  animalNombre: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
+  animalDato: { fontFamily: fonts.regular, fontSize: 13, color: colors.textMuted },
   sanidadGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

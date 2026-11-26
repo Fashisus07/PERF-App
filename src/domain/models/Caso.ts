@@ -1,3 +1,8 @@
+import {
+  calcularPrioridadCasoUseCase,
+  ResultadoCalculoPrioridad,
+} from '../usecases/CalcularPrioridadCasoUseCase';
+
 // ─── Tipos enumerados alineados con la planilla operativa PERF ───
 
 export type Especie = 'Gato' | 'Perro' | 'Otro';
@@ -69,6 +74,8 @@ export interface Caso {
   fotoRemotePath?: string | null;
   fotoSyncStatus?: 'PENDING' | 'SYNCED' | 'FAILED';
   fechaRescate: number; // Timestamp
+  /** Última visita, nota o tratamiento del historial. Se deriva de los eventos: no se guarda aparte. */
+  fechaUltimaRevision?: number | null;
   quienSigueCaso: string;
   transito: HogarTransito;
   sanidad: FichaSanitariaFelina;
@@ -156,50 +163,34 @@ export function nivelAUrgencia(nivel: NivelPrioridad): Urgencia {
   }
 }
 
+/** Días de espera a partir de los cuales un caso pasa a urgente (se puede cambiar en Ajustes). */
+export const UMBRAL_URGENTE_DIAS = 15;
+
+export type PrioridadCaso = ResultadoCalculoPrioridad & { urgencia: Urgencia };
+
 /**
- * Calcula el nivel de urgencia de un caso usando el modelo multicriterio de PERF.
+ * Prioridad de un caso hoy: nivel, motivo, puntaje y factores médicos. Es la ÚNICA fuente
+ * de las reglas (`CalcularPrioridadCasoUseCase`) y se calcula al mostrar, no se lee de lo guardado:
+ * con el paso de los días o al editar la ficha sanitaria, el nivel refleja la situación real.
  */
-export function calcularUrgencia(caso: Partial<Caso>, umbralDias: number = 15): Urgencia {
-  if (caso.estadoCaso === 'ADOPTADO' || caso.estadoCaso === 'FALLECIDO') {
-    return 'aldia';
-  }
-  const gravedad = caso.gravedadClinica ?? 'MODERADA';
-  const vuln = caso.vulnerabilidad ?? 'ESTABLE';
-  const virales = caso.sanidad?.virales;
-  const castrado = caso.sanidad?.castrado;
-  const fecha = caso.fechaRescate ?? Date.now();
-  const dias = Math.max(0, Math.floor((Date.now() - fecha) / (1000 * 60 * 60 * 24)));
+export function prioridadDeCaso(caso: Partial<Caso>, umbralDias: number = UMBRAL_URGENTE_DIAS): PrioridadCaso {
+  const calculo = calcularPrioridadCasoUseCase.ejecutar(
+    {
+      estadoCaso: caso.estadoCaso ?? 'EN_TRANSITO',
+      gravedadClinica: caso.gravedadClinica,
+      vulnerabilidad: caso.vulnerabilidad,
+      fechaRescate: caso.fechaRescate ?? Date.now(),
+      fechaUltimaRevision: caso.fechaUltimaRevision,
+      sanidad: caso.sanidad,
+    },
+    umbralDias
+  );
+  return { ...calculo, urgencia: nivelAUrgencia(calculo.nivelPrioridad) };
+}
 
-  if (
-    gravedad === 'CRITICA' ||
-    vuln === 'LACTANTE_SIN_MADRE' ||
-    vuln === 'SIN_TRANSITO' ||
-    virales === 'AMBOS_POSITIVOS' ||
-    virales === 'VILEF_POSITIVO' ||
-    dias > umbralDias
-  ) {
-    return 'urgente';
-  }
-  const desp1 = caso.sanidad?.fechaPrimeraDesparasitacion;
-  const desp2 = caso.sanidad?.fechaSegundaDesparasitacion;
-  const despPendiente =
-    caso.sanidad &&
-    (!desp1 || (!desp2 && Math.floor(Math.max(0, Date.now() - desp1) / (1000 * 60 * 60 * 24)) >= 14));
-
-  if (
-    caso.estadoCaso === 'EN_CLINICA' ||
-    gravedad === 'MODERADA' ||
-    vuln === 'EN_TRATAMIENTO' ||
-    virales === 'VIF_POSITIVO' ||
-    virales === 'PENDIENTE' ||
-    castrado === 'NO' ||
-    castrado === 'PENDIENTE' ||
-    despPendiente ||
-    dias >= Math.ceil(0.7 * umbralDias)
-  ) {
-    return 'atencion';
-  }
-  return 'aldia';
+/** Solo el nivel de urgencia. Usa `prioridadDeCaso`: no hay otra regla. */
+export function calcularUrgencia(caso: Partial<Caso>, umbralDias: number = UMBRAL_URGENTE_DIAS): Urgencia {
+  return prioridadDeCaso(caso, umbralDias).urgencia;
 }
 
 /** Días transcurridos desde el rescate. */
@@ -224,6 +215,9 @@ export type TipoEvento =
   | 'TRATAMIENTO'
   | 'NOTA_CAMPO'
   | 'VACUNACION';
+
+/** Eventos que NO cuentan como revisar al animal: son movimientos administrativos. */
+export const EVENTOS_QUE_NO_SON_REVISION: TipoEvento[] = ['CAMBIO_TRANSITO', 'ADOPCION'];
 
 export interface EventoHistorial {
   id: string;

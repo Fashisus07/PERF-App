@@ -88,6 +88,23 @@ async function crearTablas(db: SQLite.SQLiteDatabase): Promise<void> {
       FOREIGN KEY (caso_id) REFERENCES casos(id)
     );
 
+    CREATE TABLE IF NOT EXISTS animales (
+      id                            TEXT    PRIMARY KEY NOT NULL,
+      caso_id                       TEXT    NOT NULL,
+      nombre                        TEXT    NOT NULL,
+      castrado                      TEXT    NOT NULL DEFAULT 'PENDIENTE',
+      virales_vif_vilef             TEXT    NOT NULL DEFAULT 'PENDIENTE',
+      embarazada                    INTEGER NOT NULL DEFAULT 0,
+      peso_gramos                   INTEGER,
+      fecha_primera_desparasitacion INTEGER,
+      fecha_segunda_desparasitacion INTEGER,
+      fallecido                     INTEGER NOT NULL DEFAULT 0,
+      motivo_fallecimiento          TEXT,
+      sync_status                   TEXT    NOT NULL DEFAULT 'PENDING',
+      updated_at                    INTEGER NOT NULL,
+      FOREIGN KEY (caso_id) REFERENCES casos(id)
+    );
+
     CREATE TABLE IF NOT EXISTS eventos_historial (
       id           TEXT    PRIMARY KEY NOT NULL,
       caso_id      TEXT    NOT NULL,

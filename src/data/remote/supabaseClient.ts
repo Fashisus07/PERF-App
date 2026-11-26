@@ -6,19 +6,16 @@ import { Platform } from 'react-native';
 /**
  * Cliente único de Supabase.
  * La clave "publishable" es pública por diseño: la seguridad real la dan las políticas RLS
- * del servidor (ver supabase/migrations). Nunca poner acá la clave "secret"/service_role.
+ * del servidor (ver supabase/migrations). Nunca poner acá la clave "secret"/service_role: todo lo `EXPO_PUBLIC_` queda dentro del APK.
+ * Lo que necesita permisos de administración (correos a coordinadores, aprobar desde el enlace del
+ * correo) corre en las Edge Functions de supabase/functions.
  */
 export const SUPABASE_URL =
-  process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'https://ibeinjomorryrkqrdpsx.supabase.co';
+  process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'https://kdnosvxrgoxsopmzkghh.supabase.co';
 export const SUPABASE_PUBLISHABLE_KEY =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
   process.env.EXPO_PUBLIC_SUPABASE_KEY ??
-  'sb_publishable_6HdilHj9S5-9BBKJYMXMyg_Tqpoh1gq';
-
-export const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY ??
-  process.env.SUPABASE_SECRET_KEY ??
-  '';
+  'sb_publishable_N9ImvM-07t2h9XIVs0EKhA_xoqPD9Qm';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -28,19 +25,3 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     detectSessionInUrl: Platform.OS === 'web',
   },
 });
-
-/**
- * Cliente con permisos de administración (service_role) para operaciones de coordinación,
- * como listar postulaciones pendientes, aprobar voluntarios y eliminar perfiles rechazados.
- * Requiere configurar EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY en .env (no versionado).
- */
-export const adminSupabase = SUPABASE_SERVICE_ROLE_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
-    })
-  : supabase;
-

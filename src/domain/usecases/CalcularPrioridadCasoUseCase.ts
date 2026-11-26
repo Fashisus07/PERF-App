@@ -12,6 +12,8 @@ export interface EntradaCalculoPrioridad {
   gravedadClinica?: GravedadClinica;
   vulnerabilidad?: Vulnerabilidad;
   fechaRescate: number;
+  /** Última visita, nota o tratamiento del caso. Sin dato, se cuenta desde el rescate. */
+  fechaUltimaRevision?: number | null;
   sanidad?: Partial<FichaSanitariaFelina>;
 }
 
@@ -26,9 +28,10 @@ export interface ResultadoCalculoPrioridad {
 export class CalcularPrioridadCasoUseCase {
   /**
    * Calcula el nivel y puntaje de prioridad de un caso según las reglas de negocio de PERF,
-   * integrando estado operativo, gravedad clínica, vulnerabilidad, ficha sanitaria y tiempo de espera.
+   * integrando estado operativo, gravedad clínica, vulnerabilidad, ficha sanitaria y tiempo de espera
+   * desde la última revisión (o desde el rescate si aún no tuvo revisiones).
    *
-   * @param entrada Datos clínicos, sanitarios, vulnerabilidad, estado y fecha de rescate del caso.
+   * @param entrada Datos clínicos, sanitarios, vulnerabilidad, estado, última revisión y fecha de rescate.
    * @param umbralDias Umbral de días configurable (default: 15).
    * @param ahora Timestamp actual en milisegundos (default: Date.now()).
    */
@@ -37,7 +40,7 @@ export class CalcularPrioridadCasoUseCase {
     umbralDias: number = 15,
     ahora: number = Date.now()
   ): ResultadoCalculoPrioridad {
-    const { estadoCaso, fechaRescate, sanidad } = entrada;
+    const { estadoCaso, fechaRescate, fechaUltimaRevision, sanidad } = entrada;
     const gravedad = entrada.gravedadClinica ?? 'MODERADA';
     const vulnerabilidad = entrada.vulnerabilidad ?? 'ESTABLE';
 
@@ -53,8 +56,13 @@ export class CalcularPrioridadCasoUseCase {
       };
     }
 
-    const msTranscurridos = Math.max(0, ahora - fechaRescate);
+    // Los días se cuentan desde la última revisión: un caso que alguien visitó hace poco no sube de
+    // nivel solo por llevar mucho tiempo en la red. Sin revisiones, desde el rescate.
+    const hayRevision = fechaUltimaRevision != null && fechaUltimaRevision > fechaRescate;
+    const desde = hayRevision ? (fechaUltimaRevision as number) : fechaRescate;
+    const msTranscurridos = Math.max(0, ahora - desde);
     const dias = Math.floor(msTranscurridos / DIA_MS);
+    const sufijo = hayRevision ? ' sin revisión' : '';
     const factoresMedicos: string[] = [];
 
     const esEnClinica = estadoCaso === 'EN_CLINICA';
@@ -173,10 +181,10 @@ export class CalcularPrioridadCasoUseCase {
     }
 
     if (dias > umbralDias) {
-      factoresMedicos.unshift(`Superó umbral de espera (${dias}/${umbralDias} días)`);
+      factoresMedicos.unshift(`Superó umbral de espera (${dias}/${umbralDias} días${sufijo})`);
       return {
         nivelPrioridad: 'URGENTE',
-        motivoUrgencia: `URGENTE • +${dias} días`,
+        motivoUrgencia: `URGENTE • +${dias} días${sufijo}`,
         puntajePrioridad: 700 + dias + ajusteSanitario + bonusClinica,
         esUrgente: true,
         factoresMedicos,
@@ -228,10 +236,10 @@ export class CalcularPrioridadCasoUseCase {
 
     const umbralAtencion = Math.ceil(0.7 * umbralDias);
     if (dias >= umbralAtencion) {
-      factoresMedicos.unshift(`Próximo al umbral (${dias}/${umbralDias} días)`);
+      factoresMedicos.unshift(`Próximo al umbral (${dias}/${umbralDias} días${sufijo})`);
       return {
         nivelPrioridad: 'ATENCION',
-        motivoUrgencia: `ATENCIÓN • ${dias} días en espera`,
+        motivoUrgencia: hayRevision ? `ATENCIÓN • ${dias} días sin revisión` : `ATENCIÓN • ${dias} días en espera`,
         puntajePrioridad: 400 + dias + ajusteSanitario,
         esUrgente: false,
         factoresMedicos,

@@ -113,6 +113,7 @@ export function EditarCasoScreen({ route, navigation }: Props) {
           gravedadClinica: caso.gravedadClinica,
           vulnerabilidad: valVulnerabilidad,
           fechaRescate: caso.fechaRescate,
+          fechaUltimaRevision: caso.fechaUltimaRevision,
           sanidad: caso.sanidad,
         },
         umbralDias,

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authRepository } from '../../../di/container';
-import { Voluntario } from '../../../domain/models/Ajustes';
+import { ETIQUETA_ROL, Voluntario } from '../../../domain/models/Ajustes';
 import {
   guardarZonasCustomUsuario,
   parsearZonas,
@@ -159,7 +159,7 @@ export function PerfilVoluntarioScreen({ navigation }: Props) {
             <Text style={styles.avatarEmail}>{voluntario?.email || 'voluntario@perfelino.org'}</Text>
             <View style={styles.rolBadge}>
               <MaterialIcons name="verified" size={14} color={colors.primary} />
-              <Text style={styles.rolText}>Voluntario Activo · PERF</Text>
+              <Text style={styles.rolText}>{ETIQUETA_ROL[voluntario?.rol ?? 'voluntario']} · PERF</Text>
             </View>
           </View>
         </View>

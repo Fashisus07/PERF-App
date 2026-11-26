@@ -22,10 +22,13 @@ import {
   GravedadClinica,
   Vulnerabilidad,
 } from '../../../domain/models/Caso';
+import { casoRepository } from '../../../di/container';
+import { resumenSanidad } from '../../../domain/services/AnimalesDelCaso';
 import { calcularPrioridadCasoUseCase } from '../../../domain/usecases/CalcularPrioridadCasoUseCase';
 import { PlanDesparasitacionCard } from '../../components/PlanDesparasitacionCard';
 import { StackHeader } from '../../components/StackHeader';
 import { obtenerAjustes } from '../../hooks/useAjustes';
+import { useAnimales } from '../../hooks/useAnimales';
 import { useCaso } from '../../hooks/useCaso';
 import { useCasoStore } from '../../stores/useCasoStore';
 import { colors, fonts } from '../../theme';
@@ -74,6 +77,12 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   const { caso, cargando } = useCaso(casoId);
   const actualizarCaso = useCasoStore((s) => s.actualizarCaso);
   const agregarEventoHistorial = useCasoStore((s) => s.agregarEventoHistorial);
+  const cargarDetalleCaso = useCasoStore((s) => s.cargarDetalleCaso);
+  const { animales } = useAnimales(casoId);
+  // Con varios animales la ficha es de uno por vez; con uno solo (o ninguno) se edita la del caso.
+  const varios = animales.length > 1;
+  const [animalId, setAnimalId] = useState<string | null>(null);
+  const animal = varios ? animales.find((a) => a.id === animalId) ?? animales[0] : undefined;
 
   const [umbralDias, setUmbralDias] = useState(15);
   const [gravedad, setGravedad] = useState<GravedadClinica | null>(null);
@@ -93,15 +102,34 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
       .catch(() => {});
   }, []);
 
-  // Valores inicializados con los del caso si no fueron tocados
+  // Valores inicializados con los del animal elegido (si hay varios) o del caso si no fueron tocados
+  const fuente = animal
+    ? {
+        castrado: animal.castrado,
+        virales: animal.virales,
+        d1: animal.fechaPrimeraDesparasitacion,
+        d2: animal.fechaSegundaDesparasitacion,
+      }
+    : {
+        castrado: caso?.sanidad?.castrado,
+        virales: caso?.sanidad?.virales,
+        d1: caso?.sanidad?.fechaPrimeraDesparasitacion,
+        d2: caso?.sanidad?.fechaSegundaDesparasitacion,
+      };
   const valorGravedad = gravedad ?? caso?.gravedadClinica ?? 'MODERADA';
   const valorVulnerabilidad = vulnerabilidad ?? caso?.vulnerabilidad ?? 'ESTABLE';
-  const valorCastrado = castrado ?? caso?.sanidad?.castrado ?? 'PENDIENTE';
-  const valorVirales = virales ?? caso?.sanidad?.virales ?? 'PENDIENTE';
-  const fechaDesp1 =
-    desp1Fecha !== undefined ? desp1Fecha : caso?.sanidad?.fechaPrimeraDesparasitacion ?? null;
-  const fechaDesp2 =
-    desp2Fecha !== undefined ? desp2Fecha : caso?.sanidad?.fechaSegundaDesparasitacion ?? null;
+  const valorCastrado = castrado ?? fuente.castrado ?? 'PENDIENTE';
+  const valorVirales = virales ?? fuente.virales ?? 'PENDIENTE';
+  const fechaDesp1 = desp1Fecha !== undefined ? desp1Fecha : fuente.d1 ?? null;
+  const fechaDesp2 = desp2Fecha !== undefined ? desp2Fecha : fuente.d2 ?? null;
+
+  const elegirAnimal = (id: string) => {
+    setAnimalId(id);
+    setCastrado(null);
+    setVirales(null);
+    setDesp1Fecha(undefined);
+    setDesp2Fecha(undefined);
+  };
   const textoVisible = estadoVisible !== null ? estadoVisible : caso?.estadoVisible ?? '';
 
   const ahoraPreview = Date.now();
@@ -111,6 +139,12 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
     fechaPrimeraDesparasitacion: fechaDesp1,
     fechaSegundaDesparasitacion: fechaDesp2,
   };
+  const sanidadGrupoPreview =
+    varios && animal
+      ? resumenSanidad(
+          animales.map((a) => (a.id === animal.id ? { ...a, ...sanidadPreview } : a))
+        ) ?? sanidadPreview
+      : sanidadPreview;
 
   const prioridadVista = caso
     ? calcularPrioridadCasoUseCase.ejecutar(
@@ -119,7 +153,8 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
           gravedadClinica: valorGravedad,
           vulnerabilidad: valorVulnerabilidad,
           fechaRescate: caso.fechaRescate,
-          sanidad: sanidadPreview,
+          fechaUltimaRevision: caso.fechaUltimaRevision,
+          sanidad: sanidadGrupoPreview,
         },
         umbralDias,
         ahoraPreview
@@ -136,6 +171,70 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
     setErrorMsg(null);
     try {
       const ahora = Date.now();
+      const despTexto1 = fechaDesp1 ? new Date(fechaDesp1).toLocaleDateString('es-AR') : 'Pendiente';
+      const despTexto2 = fechaDesp2 ? new Date(fechaDesp2).toLocaleDateString('es-AR') : 'Pendiente';
+
+      if (animal) {
+        // Ficha de un animal: se guarda la suya con sus fechas exactas y se recalcula el resumen del grupo.
+        await casoRepository.actualizarAnimal({
+          ...animal,
+          castrado: valorCastrado,
+          virales: valorVirales,
+          fechaPrimeraDesparasitacion: fechaDesp1,
+          fechaSegundaDesparasitacion: fechaDesp2,
+        });
+        const fresco = await casoRepository.obtenerPorId(caso.id);
+        const base = fresco ?? caso;
+        const cambioDatosCaso =
+          base.gravedadClinica !== valorGravedad ||
+          base.vulnerabilidad !== valorVulnerabilidad ||
+          base.estadoVisible !== textoVisible.trim();
+
+        const prioFinal = calcularPrioridadCasoUseCase.ejecutar(
+          {
+            estadoCaso: base.estadoCaso,
+            gravedadClinica: valorGravedad,
+            vulnerabilidad: valorVulnerabilidad,
+            fechaRescate: base.fechaRescate,
+            fechaUltimaRevision: base.fechaUltimaRevision,
+            sanidad: base.sanidad,
+          },
+          umbralDias,
+          ahora
+        );
+
+        if (cambioDatosCaso) {
+          await actualizarCaso({
+            ...base,
+            gravedadClinica: valorGravedad,
+            vulnerabilidad: valorVulnerabilidad,
+            estadoVisible: textoVisible.trim(),
+            nivelPrioridad: prioFinal.nivelPrioridad,
+            motivoUrgencia: prioFinal.motivoUrgencia,
+            puntajePrioridad: prioFinal.puntajePrioridad,
+            esUrgente: prioFinal.esUrgente,
+          });
+        }
+
+        const resumenAnimal = [
+          `Animal: ${animal.nombre}`,
+          `Gravedad: ${ETIQUETA_GRAVEDAD[valorGravedad]}`,
+          `Vulnerabilidad: ${ETIQUETA_VULNERABILIDAD[valorVulnerabilidad]}`,
+          `Castración: ${ETIQUETA_CASTRACION[valorCastrado]}`,
+          `Virales: ${ETIQUETA_VIRALES[valorVirales]}`,
+          `1° Desp.: ${despTexto1}`,
+          `2° Desp.: ${despTexto2}`,
+          `Prioridad: ${prioFinal.motivoUrgencia} (${prioFinal.puntajePrioridad} pts)`,
+        ].join(' · ');
+
+        await agregarEventoHistorial(caso.id, 'TRATAMIENTO', `Actualización médico-sanitaria (${animal.nombre}): ${resumenAnimal}`).catch(
+          () => {}
+        );
+        await cargarDetalleCaso(caso.id);
+        navigation?.navigate?.('DetalleCaso', { casoId: caso.id, estadoActualizado: true });
+        return;
+      }
+
       const nuevaSanidad = {
         ...caso.sanidad,
         castrado: valorCastrado,
@@ -150,6 +249,7 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
           gravedadClinica: valorGravedad,
           vulnerabilidad: valorVulnerabilidad,
           fechaRescate: caso.fechaRescate,
+          fechaUltimaRevision: caso.fechaUltimaRevision,
           sanidad: nuevaSanidad,
         },
         umbralDias,
@@ -170,8 +270,6 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
 
       await actualizarCaso(casoActualizado);
 
-      const despTexto1 = fechaDesp1 ? new Date(fechaDesp1).toLocaleDateString('es-AR') : 'Pendiente';
-      const despTexto2 = fechaDesp2 ? new Date(fechaDesp2).toLocaleDateString('es-AR') : 'Pendiente';
       const resumenCambios = [
         `Gravedad: ${ETIQUETA_GRAVEDAD[valorGravedad]}`,
         `Vulnerabilidad: ${ETIQUETA_VULNERABILIDAD[valorVulnerabilidad]}`,
@@ -221,12 +319,33 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
             <MaterialIcons name="pets" size={24} color={colors.primary} />
           </View>
           <View style={styles.pacienteInfo}>
-            <Text style={styles.pacienteNombre}>{caso.nombreProvisorio}</Text>
+            <Text style={styles.pacienteNombre}>{animal ? animal.nombre : caso.nombreProvisorio}</Text>
             <Text style={styles.pacienteSub}>
               {caso.especie} · {caso.barrio} · {caso.edadEstimada || 'Edad no informada'}
             </Text>
           </View>
         </View>
+
+        {varios ? (
+          <View style={styles.seccionCard}>
+            <View style={styles.seccionHeader}>
+              <MaterialIcons name="pets" size={20} color={colors.primary} />
+              <Text style={styles.seccionTitulo}>¿De qué animal es la ficha?</Text>
+            </View>
+            <Text style={styles.seccionDesc}>La ficha sanitaria es de cada animal. Guardá antes de cambiar de uno a otro.</Text>
+            <View style={styles.chipsRow}>
+              {animales.map((a) => {
+                const activo = animal?.id === a.id;
+                return (
+                  <Pressable key={a.id} style={[styles.chip, activo && styles.chipActivo]} onPress={() => elegirAnimal(a.id)}>
+                    {activo && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
+                    <Text style={[styles.chipText, activo && styles.chipTextActivo]}>{a.nombre}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
 
         {/* Vista en vivo de cómo impactan los cambios en Triaje Multicriterio */}
         {prioridadVista && (
@@ -442,6 +561,7 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
         {/* Sección Desparasitaciones */}
         <View style={styles.seccionCard}>
           <PlanDesparasitacionCard
+            key={animal?.id ?? caso.id}
             fechaPrimera={fechaDesp1}
             fechaSegunda={fechaDesp2}
             onChangePrimera={setDesp1Fecha}

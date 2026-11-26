@@ -7,20 +7,25 @@ import {
   OpcionesActualizacionEstado,
   OperacionPendiente,
 } from '../../domain/repositories/CasoRepository';
+import { AnimalCaso } from '../../domain/models/Animal';
+import { conSanidadDelGrupo, crearAnimalesDelCaso, resumenSanidad, sanidadCambio } from '../../domain/services/AnimalesDelCaso';
 import { calcularPrioridadCasoUseCase } from '../../domain/usecases/CalcularPrioridadCasoUseCase';
 import { AjustesRepositoryImpl } from '../local/AjustesRepositoryImpl';
 import { getDatabase } from '../local/Database';
 import { generarUUID } from '../local/uuid';
 import {
+  AnimalRow,
+  animalFromRow,
+  animalToParams,
   casoFromRow,
   casoToParams,
   eventoFromRow,
   eventoToParams,
   CasoRow,
   EventoHistorialRow,
+  SQL_CASO_CON_REVISION,
 } from '../mappers/CasoMapper';
 import { casosMock, IDS_CASOS_MOCK_ANTERIORES } from '../mock/casosMock';
-import { camposComparables } from '../remote/sincronizacion/mapeo';
 import { sincronizarConSupabase } from '../remote/sincronizacion/SincronizadorSupabase';
 
 export class CasoRepositoryImpl implements CasoRepository {
@@ -40,7 +45,7 @@ export class CasoRepositoryImpl implements CasoRepository {
   private async sembrar(): Promise<void> {
     const db = await getDatabase();
     const CLAVE_SEMILLA = '@perf_seed_casos_version';
-    const VERSION_SEMILLA = 'v2_20_casos';
+    const VERSION_SEMILLA = 'v2_20_casos_animales';
     const versionActual = await AsyncStorage.getItem(CLAVE_SEMILLA).catch(() => null);
     const countResult = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM casos;'
@@ -49,59 +54,81 @@ export class CasoRepositoryImpl implements CasoRepository {
     if (versionActual !== VERSION_SEMILLA || !countResult || countResult.count === 0) {
       // Eliminar únicamente los casos hardcodeados anteriores (conservar casos creados por voluntarios)
       for (const oldId of IDS_CASOS_MOCK_ANTERIORES) {
+        await db.runAsync('DELETE FROM animales WHERE caso_id = ?;', [oldId]);
         await db.runAsync('DELETE FROM turnos WHERE caso_id = ?;', [oldId]);
         await db.runAsync('DELETE FROM eventos_historial WHERE caso_id = ?;', [oldId]);
         await db.runAsync('DELETE FROM casos WHERE id = ?;', [oldId]);
       }
 
-      // Poblar con los 20 casos iniciales completos de PERF
+      // Poblar con los 20 casos iniciales completos de PERF y sus animales individuales
       for (const caso of casosMock) {
         const existe = await db.getFirstAsync<{ id: string }>(
           'SELECT id FROM casos WHERE id = ?;',
           [caso.id]
         );
-        if (existe) continue;
+        if (!existe) {
+          const params = casoToParams(caso);
+          await db.runAsync(
+            `INSERT INTO casos (
+              id, nombre_provisorio, cantidad_animales, especie, edad_estimada,
+              historia_origen, personalidad, estado_visible, barrio, latitud,
+              longitud, foto_uri, foto_local_uri, foto_remote_path, foto_sync_status,
+              fecha_rescate, quien_sigue_caso, transito_nombre,
+              transito_telefono, transito_correo, castrado, virales_vif_vilef,
+              fecha_primera_desparasitacion, fecha_segunda_desparasitacion,
+              estado_caso, gravedad_clinica, vulnerabilidad, nivel_prioridad,
+              motivo_urgencia, puntaje_prioridad, creado_por_user_id, modificado_por_user_id,
+              es_urgente, sync_status, updated_at
+            ) VALUES (
+              $id, $nombre_provisorio, $cantidad_animales, $especie, $edad_estimada,
+              $historia_origen, $personalidad, $estado_visible, $barrio, $latitud,
+              $longitud, $foto_uri, $foto_local_uri, $foto_remote_path, $foto_sync_status,
+              $fecha_rescate, $quien_sigue_caso, $transito_nombre,
+              $transito_telefono, $transito_correo, $castrado, $virales_vif_vilef,
+              $fecha_primera_desparasitacion, $fecha_segunda_desparasitacion,
+              $estado_caso, $gravedad_clinica, $vulnerabilidad, $nivel_prioridad,
+              $motivo_urgencia, $puntaje_prioridad, $creado_por_user_id, $modificado_por_user_id,
+              $es_urgente, $sync_status, $updated_at
+            );`,
+            params
+          );
 
-        const params = casoToParams(caso);
-        await db.runAsync(
-          `INSERT INTO casos (
-            id, nombre_provisorio, cantidad_animales, especie, edad_estimada,
-            historia_origen, personalidad, estado_visible, barrio, latitud,
-            longitud, foto_uri, foto_local_uri, foto_remote_path, foto_sync_status,
-            fecha_rescate, quien_sigue_caso, transito_nombre,
-            transito_telefono, transito_correo, castrado, virales_vif_vilef,
-            fecha_primera_desparasitacion, fecha_segunda_desparasitacion,
-            estado_caso, gravedad_clinica, vulnerabilidad, nivel_prioridad,
-            motivo_urgencia, puntaje_prioridad, creado_por_user_id, modificado_por_user_id,
-            es_urgente, sync_status, updated_at
-          ) VALUES (
-            $id, $nombre_provisorio, $cantidad_animales, $especie, $edad_estimada,
-            $historia_origen, $personalidad, $estado_visible, $barrio, $latitud,
-            $longitud, $foto_uri, $foto_local_uri, $foto_remote_path, $foto_sync_status,
-            $fecha_rescate, $quien_sigue_caso, $transito_nombre,
-            $transito_telefono, $transito_correo, $castrado, $virales_vif_vilef,
-            $fecha_primera_desparasitacion, $fecha_segunda_desparasitacion,
-            $estado_caso, $gravedad_clinica, $vulnerabilidad, $nivel_prioridad,
-            $motivo_urgencia, $puntaje_prioridad, $creado_por_user_id, $modificado_por_user_id,
-            $es_urgente, $sync_status, $updated_at
-          );`,
-          params
-        );
+          // Evento de llegada inicial
+          const eventoLlegada: EventoHistorial = {
+            id: generarUUID(),
+            casoId: caso.id,
+            tipo: 'LLEGADA',
+            fecha: caso.fechaRescate,
+            descripcion: `Rescate registrado en ${caso.barrio}. Coordinado por ${caso.quienSigueCaso || 'PERF'}.`,
+            syncStatus: 'SYNCED',
+          };
+          await db.runAsync(
+            `INSERT INTO eventos_historial (id, caso_id, tipo, fecha, descripcion, sync_status)
+             VALUES ($id, $caso_id, $tipo, $fecha, $descripcion, $sync_status);`,
+            eventoToParams(eventoLlegada)
+          );
+        }
 
-        // Evento de llegada inicial
-        const eventoLlegada: EventoHistorial = {
-          id: generarUUID(),
-          casoId: caso.id,
-          tipo: 'LLEGADA',
-          fecha: caso.fechaRescate,
-          descripcion: `Rescate registrado en ${caso.barrio}. Coordinado por ${caso.quienSigueCaso || 'PERF'}.`,
-          syncStatus: 'SYNCED',
-        };
-        await db.runAsync(
-          `INSERT INTO eventos_historial (id, caso_id, tipo, fecha, descripcion, sync_status)
-           VALUES ($id, $caso_id, $tipo, $fecha, $descripcion, $sync_status);`,
-          eventoToParams(eventoLlegada)
+        const animalesCount = await db.getFirstAsync<{ count: number }>(
+          'SELECT COUNT(*) as count FROM animales WHERE caso_id = ?;',
+          [caso.id]
         );
+        if (!animalesCount || animalesCount.count === 0) {
+          for (const animal of crearAnimalesDelCaso(caso, generarUUID, caso.updatedAt)) {
+            await db.runAsync(
+              `INSERT INTO animales (
+                 id, caso_id, nombre, castrado, virales_vif_vilef, embarazada, peso_gramos,
+                 fecha_primera_desparasitacion, fecha_segunda_desparasitacion,
+                 fallecido, motivo_fallecimiento, sync_status, updated_at
+               ) VALUES (
+                 $id, $caso_id, $nombre, $castrado, $virales_vif_vilef, $embarazada, $peso_gramos,
+                 $fecha_primera_desparasitacion, $fecha_segunda_desparasitacion,
+                 $fallecido, $motivo_fallecimiento, $sync_status, $updated_at
+               );`,
+              animalToParams({ ...animal, syncStatus: 'SYNCED' })
+            );
+          }
+        }
       }
 
       await AsyncStorage.setItem(CLAVE_SEMILLA, VERSION_SEMILLA).catch(() => {});
@@ -113,7 +140,7 @@ export class CasoRepositoryImpl implements CasoRepository {
     await this.asegurarSemilla();
     const db = await getDatabase();
     const rows = await db.getAllAsync<CasoRow>(
-      `SELECT * FROM casos WHERE estado_caso NOT IN ('ADOPTADO', 'FALLECIDO') ORDER BY puntaje_prioridad DESC, fecha_rescate DESC;`
+      `${SQL_CASO_CON_REVISION} WHERE c.estado_caso NOT IN ('ADOPTADO', 'FALLECIDO') ORDER BY c.puntaje_prioridad DESC, c.fecha_rescate DESC;`
     );
     return rows.map(casoFromRow);
   }
@@ -122,7 +149,7 @@ export class CasoRepositoryImpl implements CasoRepository {
     await this.asegurarSemilla();
     const db = await getDatabase();
     const rows = await db.getAllAsync<CasoRow>(
-      `SELECT * FROM casos WHERE estado_caso IN ('ADOPTADO', 'FALLECIDO') ORDER BY updated_at DESC;`
+      `${SQL_CASO_CON_REVISION} WHERE c.estado_caso IN ('ADOPTADO', 'FALLECIDO') ORDER BY c.updated_at DESC;`
     );
     return rows.map(casoFromRow);
   }
@@ -131,7 +158,7 @@ export class CasoRepositoryImpl implements CasoRepository {
     await this.asegurarSemilla();
     const db = await getDatabase();
     const rows = await db.getAllAsync<CasoRow>(
-      `SELECT * FROM casos ORDER BY fecha_rescate DESC;`
+      `${SQL_CASO_CON_REVISION} ORDER BY c.fecha_rescate DESC;`
     );
     return rows.map(casoFromRow);
   }
@@ -140,7 +167,7 @@ export class CasoRepositoryImpl implements CasoRepository {
     await this.asegurarSemilla();
     const db = await getDatabase();
     const row = await db.getFirstAsync<CasoRow>(
-      `SELECT * FROM casos WHERE id = ?;`,
+      `${SQL_CASO_CON_REVISION} WHERE c.id = ?;`,
       [id]
     );
     return row ? casoFromRow(row) : undefined;
@@ -191,6 +218,22 @@ export class CasoRepositoryImpl implements CasoRepository {
       eventoToParams(eventoLlegada)
     );
 
+    // Cada animal del caso arranca con la ficha sanitaria del grupo. Viajan al servidor junto con el caso.
+    for (const animal of crearAnimalesDelCaso(caso, generarUUID)) {
+      await db.runAsync(
+        `INSERT INTO animales (
+           id, caso_id, nombre, castrado, virales_vif_vilef, embarazada, peso_gramos,
+           fecha_primera_desparasitacion, fecha_segunda_desparasitacion,
+           fallecido, motivo_fallecimiento, sync_status, updated_at
+         ) VALUES (
+           $id, $caso_id, $nombre, $castrado, $virales_vif_vilef, $embarazada, $peso_gramos,
+           $fecha_primera_desparasitacion, $fecha_segunda_desparasitacion,
+           $fallecido, $motivo_fallecimiento, $sync_status, $updated_at
+         );`,
+        animalToParams({ ...animal, syncStatus: caso.syncStatus })
+      );
+    }
+
     // Encolar operación pendiente con idempotency_key
     const idempotencyKey = generarUUID();
     await db.runAsync(
@@ -227,6 +270,7 @@ export class CasoRepositoryImpl implements CasoRepository {
         gravedadClinica: caso.gravedadClinica,
         vulnerabilidad: caso.vulnerabilidad,
         fechaRescate: caso.fechaRescate,
+        fechaUltimaRevision: caso.fechaUltimaRevision,
         sanidad: caso.sanidad,
       },
       umbralDias,
@@ -284,19 +328,9 @@ export class CasoRepositoryImpl implements CasoRepository {
       params
     );
 
-    // Delta: calcular solo campos modificados en nombres de columnas de servidor
-    const changedFields: Record<string, any> = { id: casoActualizado.id, updated_at: ahora };
-    if (anterior) {
-      const compAnterior = camposComparables(anterior);
-      const compNuevo = camposComparables(casoActualizado);
-      for (const [k, v] of Object.entries(compNuevo)) {
-        if (compAnterior[k] !== v) {
-          changedFields[k] = v;
-        }
-      }
-    } else {
-      Object.assign(changedFields, casoActualizado);
-    }
+    // Se encola el caso completo: el motor lo compara con la última versión conocida del servidor y
+    // manda solo los campos que cambiaron (con nombres de columna que el servidor entiende).
+    const changedFields = casoActualizado;
 
     const idempotencyKey = generarUUID();
     await db.runAsync(
@@ -305,7 +339,123 @@ export class CasoRepositoryImpl implements CasoRepository {
       [idempotencyKey, 'CASO', 'UPDATE', JSON.stringify(changedFields), ahora]
     );
 
+    // La pantalla edita la ficha del grupo: se aplica a cada animal del caso y viaja como cambio propio.
+    if (anterior && sanidadCambio(anterior.sanidad, casoActualizado.sanidad)) {
+      await this.aplicarSanidadAAnimales(casoActualizado);
+    }
+
     return casoActualizado;
+  }
+
+  async obtenerAnimales(casoId: string): Promise<AnimalCaso[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<AnimalRow>('SELECT * FROM animales WHERE caso_id = ? ORDER BY nombre ASC;', [casoId]);
+    return rows.map(animalFromRow);
+  }
+
+  async actualizarAnimal(animal: AnimalCaso): Promise<AnimalCaso> {
+    const db = await getDatabase();
+    const ahora = Date.now();
+    const guardado: AnimalCaso = { ...animal, syncStatus: 'PENDING', updatedAt: ahora };
+    await db.runAsync(
+      `UPDATE animales SET nombre = $nombre, castrado = $castrado, virales_vif_vilef = $virales_vif_vilef,
+         embarazada = $embarazada, peso_gramos = $peso_gramos,
+         fecha_primera_desparasitacion = $fecha_primera_desparasitacion,
+         fecha_segunda_desparasitacion = $fecha_segunda_desparasitacion,
+         fallecido = $fallecido, motivo_fallecimiento = $motivo_fallecimiento,
+         sync_status = $sync_status, updated_at = $updated_at
+       WHERE id = $id;`,
+      animalToParams(guardado)
+    );
+    await db.runAsync(
+      `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+       VALUES (?, ?, ?, ?, 0, ?);`,
+      [generarUUID(), 'ANIMAL', 'UPDATE', JSON.stringify(guardado), ahora]
+    );
+
+    // La ficha del caso es el resumen del grupo: se recalcula sin tocar la de los demás animales.
+    const caso = await this.obtenerPorId(animal.casoId);
+    const resumen = resumenSanidad(await this.obtenerAnimales(animal.casoId));
+    if (caso && resumen && sanidadCambio(caso.sanidad, resumen)) {
+      const umbralDias = await this.obtenerUmbralActual();
+      const prio = calcularPrioridadCasoUseCase.ejecutar(
+        {
+          estadoCaso: caso.estadoCaso,
+          gravedadClinica: caso.gravedadClinica,
+          vulnerabilidad: caso.vulnerabilidad,
+          fechaRescate: caso.fechaRescate,
+          fechaUltimaRevision: caso.fechaUltimaRevision,
+          sanidad: resumen,
+        },
+        umbralDias,
+        ahora
+      );
+      const conResumen: Caso = {
+        ...caso,
+        sanidad: resumen,
+        nivelPrioridad: prio.nivelPrioridad,
+        motivoUrgencia: prio.motivoUrgencia,
+        puntajePrioridad: prio.puntajePrioridad,
+        esUrgente: prio.esUrgente,
+        syncStatus: 'PENDING',
+        updatedAt: ahora,
+      };
+      await db.runAsync(
+        `UPDATE casos SET castrado = $castrado, virales_vif_vilef = $virales,
+           fecha_primera_desparasitacion = $d1, fecha_segunda_desparasitacion = $d2,
+           nivel_prioridad = $nivel, motivo_urgencia = $motivo,
+           puntaje_prioridad = $puntaje, es_urgente = $urgente,
+           sync_status = 'PENDING', updated_at = $ahora WHERE id = $id;`,
+        {
+          $id: caso.id,
+          $castrado: resumen.castrado,
+          $virales: resumen.virales,
+          $d1: resumen.fechaPrimeraDesparasitacion ?? null,
+          $d2: resumen.fechaSegundaDesparasitacion ?? null,
+          $nivel: prio.nivelPrioridad,
+          $motivo: prio.motivoUrgencia,
+          $puntaje: prio.puntajePrioridad,
+          $urgente: prio.esUrgente ? 1 : 0,
+          $ahora: ahora,
+        }
+      );
+      await db.runAsync(
+        `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+         VALUES (?, ?, ?, ?, 0, ?);`,
+        [generarUUID(), 'CASO', 'UPDATE', JSON.stringify(conResumen), ahora]
+      );
+    }
+    return guardado;
+  }
+
+  private async aplicarSanidadAAnimales(caso: Caso): Promise<void> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<AnimalRow>('SELECT * FROM animales WHERE caso_id = ?;', [caso.id]);
+    const ahora = Date.now();
+    for (const row of rows) {
+      const animal = conSanidadDelGrupo(animalFromRow(row), caso.sanidad, ahora);
+      await db.runAsync(
+        `UPDATE animales SET castrado = $castrado, virales_vif_vilef = $virales_vif_vilef,
+           fecha_primera_desparasitacion = $fecha_primera_desparasitacion,
+           fecha_segunda_desparasitacion = $fecha_segunda_desparasitacion,
+           sync_status = $sync_status, updated_at = $updated_at
+         WHERE id = $id;`,
+        {
+          $id: animal.id,
+          $castrado: animal.castrado,
+          $virales_vif_vilef: animal.virales,
+          $fecha_primera_desparasitacion: animal.fechaPrimeraDesparasitacion ?? null,
+          $fecha_segunda_desparasitacion: animal.fechaSegundaDesparasitacion ?? null,
+          $sync_status: animal.syncStatus,
+          $updated_at: animal.updatedAt,
+        }
+      );
+      await db.runAsync(
+        `INSERT INTO operaciones_pendientes (idempotency_key, entidad, operacion, payload, reintentos, created_at)
+         VALUES (?, ?, ?, ?, 0, ?);`,
+        [generarUUID(), 'ANIMAL', 'UPDATE', JSON.stringify(animal), ahora]
+      );
+    }
   }
 
   async actualizarEstado(
@@ -341,6 +491,7 @@ export class CasoRepositoryImpl implements CasoRepository {
         gravedadClinica,
         vulnerabilidad,
         fechaRescate: anterior.fechaRescate,
+        fechaUltimaRevision: anterior.fechaUltimaRevision,
         sanidad: anterior.sanidad,
       },
       umbralDias,

@@ -1,6 +1,6 @@
 // Cola Offline First: operaciones que no pudieron sincronizarse con el backend.
 
-export type EntidadPendiente = 'CASO' | 'TURNO' | 'HISTORIAL';
+export type EntidadPendiente = 'CASO' | 'TURNO' | 'HISTORIAL' | 'ANIMAL';
 export type TipoOperacion = 'CREATE' | 'UPDATE' | 'DELETE';
 
 export interface OperacionPendiente {
