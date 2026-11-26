@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -160,7 +161,7 @@ export function RegistroScreen({ onRegistrar, onLogin }: Props) {
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: top + 16, paddingBottom: bottom + 32 }]}
+        contentContainerStyle={[styles.content, { paddingTop: Math.max(top, StatusBar.currentHeight ?? 0) + 16, paddingBottom: bottom + 32 }]}
         keyboardShouldPersistTaps="handled"
       >
         <Image source={require('../../../../assets/images/casos/luna.jpg')} style={styles.banner} resizeMode="cover" />

@@ -9,6 +9,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -109,7 +110,7 @@ export function LoginScreen({ onLogin, onRegistro, onRecuperarClave }: Props) {
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: top + 16, paddingBottom: bottom + 12 }]}
+        contentContainerStyle={[styles.content, { paddingTop: Math.max(top, StatusBar.currentHeight ?? 0) + 16, paddingBottom: bottom + 12 }]}
         keyboardShouldPersistTaps="handled"
         scrollEnabled={tecladoVisible}
         bounces={false}
