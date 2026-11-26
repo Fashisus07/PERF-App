@@ -302,14 +302,13 @@ Estado real de la lista de pedidos de la segunda etapa (actualizado el 24/11/202
 - **Zonas múltiples:** cada voluntario elige una o más zonas (`SelectorZonas`). Se guardan en la columna `perfiles.zona` separadas por coma (`"Caballito, Almagro"`), así que no cambió el esquema. Helpers: `zonasDesdeTexto` y `zonasATexto`.
 - **Mis casos:** un caso es "de" un voluntario si `quienSigueCaso` coincide con su nombre o su primer nombre (`sigueElCaso()`). Es una coincidencia por texto hasta que el coordinador responsable pase a ser un registro con ID propio.
 - **Vistas de perfiles:** `PerfilesScreen` lista a los voluntarios aprobados y `PerfilDetalleScreen` muestra el perfil completo. Leen `perfiles`, que solo responde a usuarios autenticados y aprobados: sin sesión la lista sale vacía.
-- **Cuentas de prueba** (correos `@example.com`, solo para desarrollo). **Las contraseñas no van en este archivo**: el repo es público y estas cuentas entran a la base compartida. Se piden al equipo.
+- **Para quienes corrigen el TP:** hay dos formas de probar la app, y ninguna requiere esperar una aprobación.
+  1. **Con la cuenta de evaluación** (voluntario ya aprobado): permite probar el login real, la sincronización con Supabase, el historial, los turnos, las fichas sanitarias por animal y las veterinarias. **El correo y la contraseña se entregan junto con el TP, no en este repositorio** (es público).
+  2. **Sin cuenta:** el botón **"Ingresar como Voluntario Demo (Modo Offline)"** del login abre la app con datos locales. Es una sesión solo del teléfono, sin acceso a Supabase, así que no muestra la sincronización.
 
-  | Rol | Correo |
-  |---|---|
-  | Voluntario | `perf.voluntario.test@example.com` |
-  | Administrador | `perf.admin.test@example.com` |
-
-  Si una contraseña estuvo publicada (la del voluntario estuvo en este README hasta el commit que la sacó, y sigue en el historial de git) hay que **darla por comprometida**: borrar la cuenta y crearla de nuevo con otra clave, o cambiarla desde Supabase → Authentication → Users. Para borrar las dos: `delete from auth.users where email like 'perf.%.test@example.com';` (también se borra su perfil).
+  Un registro nuevo queda **pendiente** hasta que el único administrador lo apruebe (le llega un correo con los botones Aprobar y Rechazar), por eso para evaluar conviene usar la cuenta de evaluación y no registrarse.
+- **Si la app no conecta:** los proyectos gratuitos de Supabase se **pausan tras una semana sin uso**. Entrar a https://supabase.com/dashboard/project/kdnosvxrgoxsopmzkghh y apretar **Restore project**; no se pierden datos.
+- **Cuentas de prueba de desarrollo** (`perf.voluntario.test@example.com` y `perf.admin.test@example.com`): sus contraseñas anteriores estuvieron publicadas en el historial de git, así que se consideran comprometidas. Se borran con `delete from auth.users where email like 'perf.%.test@example.com';` y se reemplazan por la cuenta de evaluación.
 
 ### Base de datos compartida
 - **Proyecto de Supabase del equipo:** el de Tobías (`kdnosvxrgoxsopmzkghh`). Es el valor por defecto de `src/data/remote/supabaseClient.ts`; se puede cambiar con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` en `.env`.
