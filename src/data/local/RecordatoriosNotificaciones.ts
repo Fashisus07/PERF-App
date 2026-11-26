@@ -4,7 +4,10 @@ import { Clinica, horaDe, Turno } from '../../domain/models/Turno';
 import { RecordatorioTurnos } from '../../domain/services/RecordatorioTurnos';
 import { getDatabase } from './Database';
 
-const CANAL = 'turnos';
+// Canal nuevo: el anterior ('turnos') se creó con un sonido inexistente y Android no deja modificar
+// un canal ya creado.
+const CANAL = 'turnos-veterinarios';
+const CANAL_ANTERIOR = 'turnos';
 export const CATEGORIA = 'turno';
 export const ACCION_LLAMAR = 'llamar';
 
@@ -23,12 +26,14 @@ export async function configurarNotificaciones() {
       }),
     });
     if (Platform.OS === 'android') {
+      await Notifications.deleteNotificationChannelAsync(CANAL_ANTERIOR).catch(() => {});
+      // Sin la clave `sound`, Android usa el sonido de notificación del sistema. Ponerle 'default'
+      // hace que se lo busque como archivo y falla con "Custom sound 'default' not found".
       await Notifications.setNotificationChannelAsync(CANAL, {
         name: 'Turnos veterinarios',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         enableVibrate: true,
-        sound: 'default',
         lightColor: '#005c55',
       });
     }

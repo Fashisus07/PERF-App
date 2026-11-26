@@ -1,3 +1,4 @@
+import { AnimalCaso } from '../models/Animal';
 import { Caso, EventoHistorial, EstadoCaso } from '../models/Caso';
 import { ResumenAlmacenamiento } from '../models/Ajustes';
 
@@ -21,6 +22,11 @@ export interface CasoRepository {
   resumenAlmacenamiento(): Promise<ResumenAlmacenamiento>;
   sincronizar(): Promise<number>;
   obtenerOperacionesPendientes(): Promise<OperacionPendiente[]>;
+
+  // Animales del caso (ficha sanitaria individual)
+  obtenerAnimales(casoId: string): Promise<AnimalCaso[]>;
+  /** Guarda la ficha de un animal y recalcula la sanidad resumen del caso. */
+  actualizarAnimal(animal: AnimalCaso): Promise<AnimalCaso>;
 
   // Historial de eventos
   obtenerHistorial(casoId: string): Promise<EventoHistorial[]>;

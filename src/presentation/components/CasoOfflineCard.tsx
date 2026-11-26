@@ -1,6 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { calcularUrgencia, Caso, diasEnEspera } from '../../domain/models/Caso';
+import { Caso, diasEnEspera, prioridadDeCaso } from '../../domain/models/Caso';
+import { useCasoStore } from '../stores/useCasoStore';
 import { colors, fonts } from '../theme';
 import { UbicacionCaso } from './UbicacionCaso';
 
@@ -15,7 +16,8 @@ const URGENCIA = {
 type Props = { caso: Caso; onFicha?: () => void; onAccion?: () => void };
 
 export function CasoOfflineCard({ caso, onFicha, onAccion }: Props) {
-  const urgencia = calcularUrgencia(caso, 10);
+  const umbral = useCasoStore((s) => s.umbralDias);
+  const { urgencia } = prioridadDeCaso(caso, umbral);
   const u = URGENCIA[urgencia];
   const dias = diasEnEspera(caso);
   const fotoSource = caso.fotoUri ? { uri: caso.fotoUri } : FOTO_DEFAULT;

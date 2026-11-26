@@ -1,10 +1,15 @@
 import { Caso, EventoHistorial } from '../../../domain/models/Caso';
-import { Turno } from '../../../domain/models/Turno';
+import { AnimalCaso } from '../../../domain/models/Animal';
+import { CentroVeterinario, Turno } from '../../../domain/models/Turno';
 import { getDatabase } from '../../local/Database';
 import {
+  AnimalRow,
   CasoRow,
   EventoHistorialRow,
+  SQL_CASO_CON_REVISION,
   TurnoRow,
+  animalFromRow,
+  animalToParams,
   casoFromRow,
   casoToParams,
   eventoFromRow,
@@ -36,7 +41,7 @@ export const almacenSqlite: AlmacenLocal = {
 
   async obtenerCaso(id) {
     const db = await getDatabase();
-    const row = await db.getFirstAsync<CasoRow>('SELECT * FROM casos WHERE id = ?;', [id]);
+    const row = await db.getFirstAsync<CasoRow>(`${SQL_CASO_CON_REVISION} WHERE c.id = ?;`, [id]);
     return row ? casoFromRow(row) : undefined;
   },
 
@@ -132,6 +137,54 @@ export const almacenSqlite: AlmacenLocal = {
     await db.runAsync(`UPDATE eventos_historial SET sync_status = 'SYNCED' WHERE id = ?;`, [id]);
   },
 
+  // Lo que baja del servidor reemplaza la ficha local del animal.
+  async guardarAnimal(animal: AnimalCaso) {
+    const db = await getDatabase();
+    await db.runAsync(
+      `INSERT INTO animales (
+         id, caso_id, nombre, castrado, virales_vif_vilef, embarazada, peso_gramos,
+         fecha_primera_desparasitacion, fecha_segunda_desparasitacion,
+         fallecido, motivo_fallecimiento, sync_status, updated_at
+       ) VALUES (
+         $id, $caso_id, $nombre, $castrado, $virales_vif_vilef, $embarazada, $peso_gramos,
+         $fecha_primera_desparasitacion, $fecha_segunda_desparasitacion,
+         $fallecido, $motivo_fallecimiento, $sync_status, $updated_at
+       )
+       ON CONFLICT(id) DO UPDATE SET
+         nombre = excluded.nombre,
+         castrado = excluded.castrado,
+         virales_vif_vilef = excluded.virales_vif_vilef,
+         embarazada = excluded.embarazada,
+         peso_gramos = excluded.peso_gramos,
+         fecha_primera_desparasitacion = excluded.fecha_primera_desparasitacion,
+         fecha_segunda_desparasitacion = excluded.fecha_segunda_desparasitacion,
+         fallecido = excluded.fallecido,
+         motivo_fallecimiento = excluded.motivo_fallecimiento,
+         sync_status = 'SYNCED',
+         updated_at = excluded.updated_at;`,
+      animalToParams(animal)
+    );
+  },
+
+  async leerAnimalesDeCaso(casoId: string) {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<AnimalRow>('SELECT * FROM animales WHERE caso_id = ? ORDER BY nombre ASC;', [casoId]);
+    return rows.map(animalFromRow);
+  },
+
+  async marcarAnimalSincronizado(id: string) {
+    const db = await getDatabase();
+    await db.runAsync(`UPDATE animales SET sync_status = 'SYNCED' WHERE id = ?;`, [id]);
+  },
+
+  async reemplazarCentros(centros: CentroVeterinario[]) {
+    const db = await getDatabase();
+    for (const c of centros) await guardarCentroLocal(c);
+    // Lo que ya no está en el servidor (el catálogo de prueba o una baja) se saca del teléfono.
+    const marcas = centros.map(() => '?').join(', ');
+    await db.runAsync(`DELETE FROM centros_veterinarios WHERE id NOT IN (${marcas});`, centros.map((c) => c.id));
+  },
+
   async guardarTurno(turno: Turno) {
     const db = await getDatabase();
     await db.runAsync(
@@ -156,3 +209,30 @@ export const almacenSqlite: AlmacenLocal = {
     );
   },
 };
+
+/** Alta o cambio de una veterinaria en la base del teléfono. */
+export async function guardarCentroLocal(c: CentroVeterinario): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `INSERT INTO centros_veterinarios (id, nombre, medico, barrio, direccion, telefono, detalle, distancia, abierto, tipo, horarios)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       nombre = excluded.nombre, medico = excluded.medico, barrio = excluded.barrio,
+       direccion = excluded.direccion, telefono = excluded.telefono, detalle = excluded.detalle,
+       distancia = excluded.distancia, abierto = excluded.abierto, tipo = excluded.tipo,
+       horarios = excluded.horarios;`,
+    [
+      c.id,
+      c.nombre,
+      c.medico ?? null,
+      c.barrio,
+      c.direccion,
+      c.telefono,
+      c.detalle ?? null,
+      c.distancia ?? null,
+      c.abierto ? 1 : 0,
+      c.tipo,
+      JSON.stringify(c.horarios ?? []),
+    ]
+  );
+}

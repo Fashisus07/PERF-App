@@ -22,6 +22,7 @@
 8. [Fase 7: Sistema de Aprobación de Voluntarios por Correo y Panel de Coordinación](#8-fase-7-sistema-de-aprobación-de-voluntarios-por-correo-y-panel-de-coordinación)
 9. [Matriz de Archivos Creados y Modificados](#9-matriz-de-archivos-creados-y-modificados)
 10. [Verificación y Cobertura de Pruebas Automatizadas](#10-verificación-y-cobertura-de-pruebas-automatizadas)
+11. [Fase 8: Seguridad sin clave maestra, animales por caso y mejoras (noviembre 2026)](#11-fase-8-seguridad-sin-clave-maestra-animales-por-caso-y-mejoras-noviembre-2026)
 
 ---
 
@@ -254,6 +255,52 @@ Se ejecutó la suite completa de verificación técnica:
    Time:        6.719 s
    Ran all test suites.
    ```
+
+---
+
+## 11. Fase 8: Seguridad sin clave maestra, animales por caso y mejoras (noviembre 2026)
+
+Trabajo hecho sobre `feature/integracion-main-perfiles` (PR #1) después de la Fase 7. Todo está probado con `npx jest` (78 tests) y, lo visual, en el emulador y en un APK instalado desde cero. El detalle y el estado de cada pendiente están en el `README.md` (sección "Checklist del proyecto").
+
+### 11.1. Seguridad: la app ya no lleva la clave `service_role`
+- Se sacó `SUPABASE_SERVICE_ROLE_KEY` y `adminSupabase` de `supabaseClient.ts`: todo lo `EXPO_PUBLIC_*` queda dentro del APK.
+- Aprobar y rechazar voluntarios desde la app usa las funciones SQL `aprobar_voluntario` / `rechazar_voluntario` (solo para el coordinador, con su sesión).
+- El correo a los coordinadores y el enlace de aprobación pasaron a **Edge Functions** (`supabase/functions/notificar-voluntario` y `gestionar-voluntario`), con token de un solo uso generado en el servidor. Necesitan los secrets `RESEND_API_KEY` y `APP_URL`.
+- Migración `20261125000100_cerrar_acceso_anonimo.sql`: el rol `anon` no tiene permisos sobre ninguna tabla (segunda barrera además de RLS).
+
+### 11.2. Animales por caso (ficha sanitaria individual)
+- `AnimalCaso` + tabla local `animales` sincronizada con la tabla de Supabase: cada caso nuevo crea sus animales; los de otros celulares se bajan al sincronizar.
+- La ficha sanitaria se edita animal por animal (selector cuando el caso tiene varios) y la del caso es el **resumen del grupo** (`resumenSanidad`: lo peor de cada animal).
+- Migración `20261126000000_cargar_animales_de_casos_existentes.sql` para los casos que ya existían.
+
+### 11.3. Prioridad: una sola regla, y con "última revisión"
+- `CalcularPrioridadCasoUseCase` es la única fuente; `calcularUrgencia()` y el nuevo `prioridadDeCaso()` de `Caso.ts` la usan. Se borró `domain/services/PrioridadCaso.ts` (no lo usaba nadie).
+- La prioridad **se calcula al mostrar** con el umbral de Ajustes (antes las tarjetas leían el nivel guardado, que quedaba viejo con los días).
+- `fechaUltimaRevision` se deriva del historial (visita, nota, tratamiento, desparasitación, vacunación o cirugía; no cuentan cambio de tránsito ni adopción) y los días se cuentan desde ahí.
+
+### 11.4. Turnos y veterinarias
+- Recordatorio configurable: 30 min, 1 h, 2 h, 1 día o 2 días (antes solo 24 h / 2 h, y solo uno se guardaba de verdad). El valor por defecto se elige en Ajustes.
+- Las veterinarias las carga y edita el administrador desde el Directorio Veterinario (`EditarClinicaScreen`, `CentrosVeterinariosService`) y se bajan al sincronizar. Cada una tiene **sus horarios**: agendar ofrece solo esos y el caso de uso rechaza reservar fuera de ellos.
+
+### 11.5. Correcciones
+- **Sincronización:** al editar un caso la cola mandaba claves en camelCase (`sanidad`, `estadoVisible`) que el servidor ignoraba, así que esos cambios nunca llegaban a Supabase. Ahora se encola el caso completo y el motor manda solo los campos que cambiaron.
+- Canal de notificaciones: se quitó `sound: 'default'`, que Android interpretaba como un archivo inexistente.
+- Los botones de filtro de urgencia no se corren al pasar de "Todos" a "Mis casos".
+- Se quitó el botón "Filtrar" (igual que en `main`) y el botón de agendar turno al guardar un rescate.
+
+### 11.6. Esquema de Supabase: una sola fuente
+`supabase/schema.sql` se **genera** a partir de `supabase/migrations/` con `node supabase/generar-schema.js`; un test (`SchemaSupabase.test.ts`) falla si se desalinean. Se comprobó en PGlite que las migraciones, en orden, corren sobre una base vacía. La versión anterior de `schema.sql` queda en el historial de git.
+
+### 11.7. Para unir con `feature/triaje-dinamico-zonas-20casos`
+La rama de Facu (un commit, 45 archivos) y esta se pisan en 15 archivos. **Criterio acordado: donde hicimos lo mismo, manda lo de Facu y lo nuestro se monta encima.**
+
+| Zona | Archivos en conflicto | Qué hacer |
+|---|---|---|
+| Prioridad | `CalcularPrioridadCasoUseCase.ts` (+ su test), `Caso.ts` | Base: su triaje médico (`sanidad`, `factoresMedicos`). Agregar encima `fechaUltimaRevision` y `prioridadDeCaso()`. |
+| Ficha sanitaria | `EditarSanidadScreen.tsx`, `DetalleCasoScreen.tsx` | Base: su edición de ficha. Adaptar el selector de animal y la lista por animal. |
+| Guardado de casos | `CasoRepositoryImpl.ts`, `CasoRepository.ts`, `CasoMapper.ts`, `useCasoStore.ts` | Conservar lo suyo y sumar animales, `actualizarAnimal` y las lecturas con `SQL_CASO_CON_REVISION`. |
+| Multizona y perfil | `SelectorZonas.tsx`, `PerfilVoluntarioScreen.tsx`, `RegistroScreen.tsx`, `AppHeader.tsx`, `AjustesScreen.tsx` | Queda su versión. |
+| Fotos | `CasoOfflineCard.tsx` (y su `fotoCaso.ts`) | Queda su `fotoCasoSource`. |
 
 ---
 

@@ -1,15 +1,30 @@
 -- =============================================================================
--- PERF Móvil: Esquema Integral de Infraestructura y Seguridad (Supabase / PostgreSQL)
--- Cumple requerimientos Etapa 2: Clean Architecture, Offline First, RLS, Storage y Delta Merge
+-- PERF Móvil: esquema completo de Supabase (PostgreSQL)
+--
+-- ARCHIVO GENERADO. NO SE EDITA A MANO.
+-- Es la suma, en orden, de supabase/migrations/*.sql. Para cambiar el esquema se agrega una
+-- migración nueva y se corre:  node supabase/generar-schema.js
+--
+-- Cuándo usarlo: en un proyecto de Supabase VACÍO (pegarlo entero en el SQL Editor).
+-- En un proyecto que ya tiene datos NO se usa: se aplican solo las migraciones que falten.
 -- =============================================================================
 
--- Extensiones necesarias
-create extension if not exists "uuid-ossp";
+-- ───────────────────────────── 20261030000000_esquema_inicial.sql ─────────────────────────────
 
--- ─────────────────────────────────────────────────────────────────────────────
--- 1. Perfiles de Voluntarios (Mapeo 1:1 con auth.users)
--- ─────────────────────────────────────────────────────────────────────────────
-create table if not exists public.perfiles (
+-- PERF-App: esquema inicial de Supabase (PostgreSQL).
+--
+-- Decisiones de diseño (responden a la devolución de la preentrega):
+--  * Acceso: solo voluntarios APROBADOS por un coordinador ven casos, fotos y ubicaciones (RLS).
+--  * Duplicados: los ids (uuid) los genera el cliente, así reintentar un envío no crea otro registro.
+--  * Conflictos: el caso se fusiona CAMPO A CAMPO (no se pisa la fila entera) y, si dos voluntarios
+--    cambiaron el mismo campo, el valor perdedor queda guardado en `conflictos` (no se pierde nada).
+--  * Historial: tabla de solo-agregar (no se edita ni se borra), así nunca hay conflicto.
+--  * Fotos: bucket privado en Storage; cada foto tiene ruta única, así tampoco hay conflicto.
+
+-- ─────────────────────────────────────────────────────────────
+-- Perfiles de voluntarios (1 a 1 con auth.users)
+-- ─────────────────────────────────────────────────────────────
+create table public.perfiles (
   id          uuid primary key references auth.users (id) on delete cascade,
   nombre      text not null,
   email       text not null,
@@ -22,67 +37,78 @@ create table if not exists public.perfiles (
   created_at  timestamptz not null default now()
 );
 
--- Funciones de validación de rol y sesión
-create or replace function public.es_voluntario_activo() returns boolean
+create function public.es_voluntario_activo() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.perfiles where id = auth.uid() and aprobado);
+$$;
+
+create function public.es_coordinador() returns boolean
 language sql stable security definer set search_path = '' as $$
   select exists (
-    select 1 from public.perfiles
-    where id = auth.uid() and aprobado = true
+    select 1 from public.perfiles where id = auth.uid() and aprobado and rol = 'coordinador'
   );
 $$;
 
-create or replace function public.es_coordinador() returns boolean
-language sql stable security definer set search_path = '' as $$
-  select exists (
-    select 1 from public.perfiles
-    where id = auth.uid() and aprobado = true and rol = 'coordinador'
-  );
-$$;
-
--- Trigger para auto-crear perfil al registrarse en auth.users
-create or replace function public.crear_perfil_al_registrarse() returns trigger
+-- Al registrarse en Supabase Auth se crea el perfil (pendiente de aprobación).
+create function public.crear_perfil_al_registrarse() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
   insert into public.perfiles (id, nombre, email, telefono, brigada, zona)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data ->> 'nombre', 'Voluntario'),
+    coalesce(new.raw_user_meta_data ->> 'nombre', ''),
     new.email,
     new.raw_user_meta_data ->> 'telefono',
-    coalesce(new.raw_user_meta_data ->> 'brigada', 'Brigada General'),
+    coalesce(new.raw_user_meta_data ->> 'brigada', ''),
     new.raw_user_meta_data ->> 'zona'
-  ) on conflict (id) do nothing;
+  );
   return new;
 end;
 $$;
 
-drop trigger if exists al_crear_usuario on auth.users;
 create trigger al_crear_usuario
   after insert on auth.users
   for each row execute function public.crear_perfil_al_registrarse();
 
--- Protección de roles y aprobación (solo un coordinador puede aprobar)
-create or replace function public.proteger_rol_y_aprobacion() returns trigger
+-- Un voluntario no puede aprobarse a sí mismo ni cambiarse el rol (desde la API).
+create function public.proteger_rol_y_aprobacion() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
   if auth.uid() is not null and not public.es_coordinador()
      and (new.rol is distinct from old.rol or new.aprobado is distinct from old.aprobado) then
-    raise exception 'Solo un coordinador de PERF puede cambiar el rol o la aprobación.' using errcode = '42501';
+    raise exception 'Solo un coordinador puede cambiar el rol o la aprobación.' using errcode = '42501';
   end if;
   return new;
 end;
 $$;
 
-drop trigger if exists proteger_perfil on public.perfiles;
 create trigger proteger_perfil
   before update on public.perfiles
   for each row execute function public.proteger_rol_y_aprobacion();
 
--- ─────────────────────────────────────────────────────────────────────────────
--- 2. Casos de Rescate Animal (Offline First con Trazabilidad y Multicriterio)
--- ─────────────────────────────────────────────────────────────────────────────
-create table if not exists public.casos (
-  id                            uuid primary key, -- UUID v4 generado por el cliente
+alter table public.perfiles enable row level security;
+
+create policy perfiles_ver_propio_o_coordinador on public.perfiles
+  for select to authenticated
+  using (id = auth.uid() or public.es_coordinador());
+
+create policy perfiles_ver_voluntarios_activos on public.perfiles
+  for select to authenticated
+  using (public.es_voluntario_activo() and aprobado);
+
+create policy perfiles_editar_propio on public.perfiles
+  for update to authenticated
+  using (id = auth.uid()) with check (id = auth.uid());
+
+create policy perfiles_editar_coordinador on public.perfiles
+  for update to authenticated
+  using (public.es_coordinador()) with check (public.es_coordinador());
+
+-- ─────────────────────────────────────────────────────────────
+-- Casos
+-- ─────────────────────────────────────────────────────────────
+create table public.casos (
+  id                            uuid primary key,              -- lo genera el cliente (sin duplicados)
   nombre_provisorio             text not null,
   cantidad_animales             integer not null default 1 check (cantidad_animales > 0),
   especie                       text not null default 'Gato' check (especie in ('Gato', 'Perro', 'Otro')),
@@ -93,7 +119,6 @@ create table if not exists public.casos (
   barrio                        text not null,
   latitud                       double precision,
   longitud                      double precision,
-  foto_remote_path              text,
   fecha_rescate                 timestamptz not null,
   quien_sigue_caso              text,
   transito_nombre               text,
@@ -101,31 +126,202 @@ create table if not exists public.casos (
   transito_correo               text,
   castrado                      text not null default 'PENDIENTE' check (castrado in ('SI', 'NO', 'PENDIENTE')),
   virales_vif_vilef             text not null default 'PENDIENTE'
-                                check (virales_vif_vilef in ('PENDIENTE', 'NEGATIVO', 'VIF_POSITIVO', 'VILEF_POSITIVO', 'AMBOS_POSITIVOS')),
+                                check (virales_vif_vilef in
+                                  ('PENDIENTE', 'NEGATIVO', 'VIF_POSITIVO', 'VILEF_POSITIVO', 'AMBOS_POSITIVOS')),
   fecha_primera_desparasitacion timestamptz,
   fecha_segunda_desparasitacion timestamptz,
   estado_caso                   text not null default 'EN_TRANSITO'
-                                check (estado_caso in ('EN_TRANSITO', 'EN_CLINICA', 'EN_ADOPCION', 'PRE_ADOPTADO', 'ADOPTADO', 'FALLECIDO')),
-  gravedad_clinica              text not null default 'MODERADA' check (gravedad_clinica in ('CRITICA', 'MODERADA', 'LEVE', 'SANA')),
-  vulnerabilidad                text not null default 'ESTABLE' check (vulnerabilidad in ('LACTANTE_SIN_MADRE', 'SIN_TRANSITO', 'EN_TRATAMIENTO', 'ESTABLE')),
-  nivel_prioridad               text not null default 'ATENCION' check (nivel_prioridad in ('URGENTE', 'ATENCION', 'AL_DIA')),
-  motivo_urgencia               text,
-  puntaje_prioridad             integer not null default 0,
-  campos_ts                     jsonb not null default '{}'::jsonb, -- Timestamps de cada campo modificado
-  creado_por_user_id            uuid not null default auth.uid() references auth.users(id),
-  modificado_por_user_id        uuid references auth.users(id),
+                                check (estado_caso in
+                                  ('EN_TRANSITO', 'EN_CLINICA', 'EN_ADOPCION', 'PRE_ADOPTADO', 'ADOPTADO', 'FALLECIDO')),
+  -- Gravedad clínica al ingreso. Reemplaza al flag es_urgente y a la urgencia por días.
+  -- Los valores definitivos hay que validarlos con el refugio.
+  gravedad                      text not null default 'estable' check (gravedad in ('critico', 'urgente', 'estable')),
+  -- Último cambio (epoch ms del cliente) por campo, para fusionar sin pisar.
+  campos_ts                     jsonb not null default '{}'::jsonb,
+  creado_por                    uuid not null default auth.uid() references public.perfiles (id),
   created_at                    timestamptz not null default now(),
   updated_at                    timestamptz not null default now()
 );
 
-create index if not exists casos_estado_idx on public.casos (estado_caso);
-create index if not exists casos_prioridad_idx on public.casos (puntaje_prioridad desc);
-create index if not exists casos_updated_idx on public.casos (updated_at desc);
+create index casos_estado_idx on public.casos (estado_caso);
+create index casos_updated_idx on public.casos (updated_at);
 
--- ─────────────────────────────────────────────────────────────────────────────
--- 3. Centros Veterinarios y Turnos (Inmutables / Append-Only)
--- ─────────────────────────────────────────────────────────────────────────────
-create table if not exists public.centros_veterinarios (
+alter table public.casos enable row level security;
+
+create policy casos_ver on public.casos
+  for select to authenticated using (public.es_voluntario_activo());
+
+-- Alta: reintentar con el mismo id no duplica (el cliente usa upsert ignorando duplicados).
+create policy casos_crear on public.casos
+  for insert to authenticated
+  with check (public.es_voluntario_activo() and creado_por = auth.uid());
+
+-- No hay política de UPDATE ni DELETE: los cambios pasan por aplicar_cambios_caso().
+
+-- ─────────────────────────────────────────────────────────────
+-- Conflictos detectados (dos voluntarios cambiaron el mismo campo)
+-- ─────────────────────────────────────────────────────────────
+create table public.conflictos (
+  id                bigint generated always as identity primary key,
+  caso_id           uuid not null references public.casos (id) on delete cascade,
+  campo             text not null,
+  valor_aplicado    jsonb,
+  valor_descartado  jsonb,
+  autor_descartado  uuid references public.perfiles (id),
+  detectado_en      timestamptz not null default now(),
+  resuelto          boolean not null default false
+);
+
+alter table public.conflictos enable row level security;
+
+create policy conflictos_ver on public.conflictos
+  for select to authenticated using (public.es_voluntario_activo());
+
+create policy conflictos_resolver on public.conflictos
+  for update to authenticated using (public.es_coordinador()) with check (public.es_coordinador());
+
+-- ─────────────────────────────────────────────────────────────
+-- Fusión campo a campo
+--   p_cambios : {"campo": valor, ...}           campos que el voluntario modificó
+--   p_campos_ts: {"campo": epoch_ms, ...}        cuándo modificó cada uno
+--   p_base    : última vez que ese dispositivo bajó datos del servidor
+-- Regla: gana el cambio más reciente de CADA campo. Si el servidor ya tenía un cambio de otro
+-- voluntario posterior a p_base, se registra en `conflictos` el valor que no se aplicó.
+-- Limitación conocida: el orden depende del reloj de los teléfonos.
+-- ─────────────────────────────────────────────────────────────
+create function public.aplicar_cambios_caso(p_id uuid, p_cambios jsonb, p_campos_ts jsonb, p_base timestamptz)
+returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  c_editables constant text[] := array[
+    'nombre_provisorio', 'cantidad_animales', 'especie', 'edad_estimada', 'historia_origen',
+    'personalidad', 'estado_visible', 'barrio', 'latitud', 'longitud', 'quien_sigue_caso',
+    'transito_nombre', 'transito_telefono', 'transito_correo', 'castrado', 'virales_vif_vilef',
+    'fecha_primera_desparasitacion', 'fecha_segunda_desparasitacion', 'estado_caso', 'gravedad'
+  ];
+  v_caso      public.casos;
+  v_campo     text;
+  v_ms_nuevo  bigint;
+  v_ms_actual bigint;
+  v_actual    jsonb;
+  v_nuevo     jsonb;
+  v_aplicados text[] := '{}';
+  v_conflictos text[] := '{}';
+begin
+  if not public.es_voluntario_activo() then
+    raise exception 'No autorizado.' using errcode = '42501';
+  end if;
+
+  select * into v_caso from public.casos where id = p_id for update;
+  if not found then
+    raise exception 'El caso % no existe en el servidor.', p_id using errcode = 'P0002';
+  end if;
+
+  foreach v_campo in array c_editables loop
+    continue when not (p_cambios ? v_campo);
+
+    v_nuevo     := p_cambios -> v_campo;
+    v_actual    := to_jsonb(v_caso) -> v_campo;
+    v_ms_nuevo  := coalesce((p_campos_ts ->> v_campo)::bigint, 0);
+    v_ms_actual := coalesce((v_caso.campos_ts ->> v_campo)::bigint, 0);
+
+    continue when v_actual is not distinct from v_nuevo;
+
+    -- ¿Otro voluntario cambió este campo después de la última sincronización de este dispositivo?
+    if v_ms_actual > (extract(epoch from p_base) * 1000)::bigint then
+      v_conflictos := v_conflictos || v_campo;
+      insert into public.conflictos (caso_id, campo, valor_aplicado, valor_descartado, autor_descartado)
+      values (
+        p_id, v_campo,
+        case when v_ms_nuevo > v_ms_actual then v_nuevo else v_actual end,
+        case when v_ms_nuevo > v_ms_actual then v_actual else v_nuevo end,
+        auth.uid()
+      );
+    end if;
+
+    if v_ms_nuevo > v_ms_actual then
+      execute format(
+        'update public.casos
+            set %1$I = (jsonb_populate_record(null::public.casos, jsonb_build_object(%1$L, $1))).%1$I,
+                campos_ts = campos_ts || jsonb_build_object(%1$L, $2),
+                updated_at = now()
+          where id = $3',
+        v_campo
+      ) using v_nuevo, v_ms_nuevo, p_id;
+      v_aplicados := v_aplicados || v_campo;
+    end if;
+  end loop;
+
+  return jsonb_build_object('aplicados', v_aplicados, 'conflictos', v_conflictos);
+end;
+$$;
+
+revoke all on function public.aplicar_cambios_caso(uuid, jsonb, jsonb, timestamptz) from public, anon;
+grant execute on function public.aplicar_cambios_caso(uuid, jsonb, jsonb, timestamptz) to authenticated;
+
+-- ─────────────────────────────────────────────────────────────
+-- Historial del caso (solo agregar)
+-- ─────────────────────────────────────────────────────────────
+create table public.eventos_historial (
+  id           uuid primary key,                                 -- lo genera el cliente
+  caso_id      uuid not null references public.casos (id) on delete cascade,
+  tipo         text not null,
+  fecha        timestamptz not null,
+  descripcion  text not null,
+  autor        uuid not null default auth.uid() references public.perfiles (id),
+  created_at   timestamptz not null default now()
+);
+
+create index eventos_caso_idx on public.eventos_historial (caso_id, fecha);
+
+alter table public.eventos_historial enable row level security;
+
+create policy eventos_ver on public.eventos_historial
+  for select to authenticated using (public.es_voluntario_activo());
+
+create policy eventos_agregar on public.eventos_historial
+  for insert to authenticated
+  with check (public.es_voluntario_activo() and autor = auth.uid());
+
+-- ─────────────────────────────────────────────────────────────
+-- Fotos (cada foto es una fila nueva con ruta única: no hay conflicto posible)
+-- ─────────────────────────────────────────────────────────────
+create table public.fotos_caso (
+  id          uuid primary key,                                  -- lo genera el cliente
+  caso_id     uuid not null references public.casos (id) on delete cascade,
+  ruta        text not null unique,                              -- 'caso_id/foto_id.jpg' dentro del bucket
+  principal   boolean not null default false,
+  subida_por  uuid not null default auth.uid() references public.perfiles (id),
+  created_at  timestamptz not null default now()
+);
+
+create index fotos_caso_idx on public.fotos_caso (caso_id);
+
+alter table public.fotos_caso enable row level security;
+
+create policy fotos_ver on public.fotos_caso
+  for select to authenticated using (public.es_voluntario_activo());
+
+create policy fotos_agregar on public.fotos_caso
+  for insert to authenticated
+  with check (public.es_voluntario_activo() and subida_por = auth.uid());
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('fotos-casos', 'fotos-casos', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+
+create policy fotos_storage_ver on storage.objects
+  for select to authenticated
+  using (bucket_id = 'fotos-casos' and public.es_voluntario_activo());
+
+create policy fotos_storage_subir on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'fotos-casos' and public.es_voluntario_activo());
+
+-- ─────────────────────────────────────────────────────────────
+-- Turnos veterinarios
+-- ─────────────────────────────────────────────────────────────
+create table public.centros_veterinarios (
   id         uuid primary key,
   nombre     text not null,
   medico     text,
@@ -133,79 +329,358 @@ create table if not exists public.centros_veterinarios (
   direccion  text not null,
   telefono   text not null,
   detalle    text,
-  distancia  text,
   abierto    boolean not null default true,
   tipo       text not null check (tipo in ('consultorio', 'hospital', 'quirurgico')),
   horarios   text[] not null default array['09:00', '10:30', '11:15', '12:15', '16:00', '18:30']
 );
 
-create table if not exists public.turnos (
-  id                     uuid primary key, -- UUID v4 generado en el dispositivo
+alter table public.centros_veterinarios enable row level security;
+
+create policy centros_ver on public.centros_veterinarios
+  for select to authenticated using (public.es_voluntario_activo());
+
+create policy centros_administrar on public.centros_veterinarios
+  for all to authenticated
+  using (public.es_coordinador()) with check (public.es_coordinador());
+
+create table public.turnos (
+  id                     uuid primary key,                       -- lo genera el cliente
   caso_id                uuid not null references public.casos (id) on delete cascade,
   centro_veterinario_id  uuid references public.centros_veterinarios (id),
   fecha_hora             timestamptz not null,
   motivo                 text not null,
   recordatorio_minutos   integer not null default 120,
   cumplido               boolean not null default false,
-  notification_id        text, -- Identificador local de expo-notifications
-  creado_por             uuid not null default auth.uid() references auth.users (id),
+  creado_por             uuid not null default auth.uid() references public.perfiles (id),
   updated_at             timestamptz not null default now()
 );
 
-create index if not exists turnos_caso_idx on public.turnos (caso_id);
-create index if not exists turnos_fecha_idx on public.turnos (fecha_hora);
+create index turnos_caso_idx on public.turnos (caso_id);
+create index turnos_fecha_idx on public.turnos (fecha_hora);
 
--- ─────────────────────────────────────────────────────────────────────────────
--- 4. Historial del Caso (Inmutable / Append-Only)
--- ─────────────────────────────────────────────────────────────────────────────
-create table if not exists public.eventos_historial (
-  id           uuid primary key, -- UUID v4 generado en cliente
+alter table public.turnos enable row level security;
+
+create policy turnos_ver on public.turnos
+  for select to authenticated using (public.es_voluntario_activo());
+
+create policy turnos_crear on public.turnos
+  for insert to authenticated
+  with check (public.es_voluntario_activo() and creado_por = auth.uid());
+
+-- Solo se puede marcar como cumplido (el resto del turno no se edita).
+create policy turnos_marcar_cumplido on public.turnos
+  for update to authenticated
+  using (public.es_voluntario_activo()) with check (public.es_voluntario_activo());
+
+create function public.limitar_edicion_turno() returns trigger
+language plpgsql as $$
+begin
+  if (new.caso_id, new.centro_veterinario_id, new.fecha_hora, new.motivo, new.recordatorio_minutos, new.creado_por)
+     is distinct from
+     (old.caso_id, old.centro_veterinario_id, old.fecha_hora, old.motivo, old.recordatorio_minutos, old.creado_por) then
+    raise exception 'Un turno solo puede marcarse como cumplido.' using errcode = '42501';
+  end if;
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+create trigger limitar_turno
+  before update on public.turnos
+  for each row execute function public.limitar_edicion_turno();
+
+-- ─────────────────────────────────────────────────────────────
+-- Permisos de la Data API (solo usuarios con sesión; anon no accede a nada).
+-- Las políticas RLS de arriba restringen además qué filas puede tocar cada uno.
+-- ─────────────────────────────────────────────────────────────
+grant usage on schema public to authenticated;
+
+grant select, update          on public.perfiles             to authenticated;
+grant select, insert          on public.casos                to authenticated;
+grant select, update          on public.conflictos           to authenticated;
+grant select, insert          on public.eventos_historial    to authenticated;
+grant select, insert          on public.fotos_caso           to authenticated;
+grant select, insert, update, delete on public.centros_veterinarios to authenticated;
+grant select, insert, update  on public.turnos               to authenticated;
+
+-- ───────────────────────────── 20261031000000_animales_pendientes_adopciones.sql ─────────────────────────────
+
+-- Modelo por animal, pendientes y adopciones.
+-- Solo agrega tablas: no modifica `casos`, así que lo existente sigue funcionando.
+-- Reutiliza es_voluntario_activo() y es_coordinador() del esquema inicial.
+
+-- ─────────────────────────────────────────────────────────────
+-- Animales: un caso puede agrupar varios (camada, mamá con bebés) y la
+-- sanidad es de cada uno. Valores alineados con Caso.ts.
+-- ─────────────────────────────────────────────────────────────
+create table public.animales (
+  id                            uuid primary key,              -- lo genera el cliente
+  caso_id                       uuid not null references public.casos (id) on delete cascade,
+  nombre                        text not null,
+  castrado                      text not null default 'PENDIENTE' check (castrado in ('SI', 'NO', 'PENDIENTE')),
+  virales_vif_vilef             text not null default 'PENDIENTE'
+                                check (virales_vif_vilef in
+                                  ('PENDIENTE', 'NEGATIVO', 'VIF_POSITIVO', 'VILEF_POSITIVO', 'AMBOS_POSITIVOS')),
+  embarazada                    boolean not null default false,
+  peso_gramos                   integer check (peso_gramos is null or peso_gramos > 0),
+  fecha_primera_desparasitacion timestamptz,
+  fecha_segunda_desparasitacion timestamptz,
+  fallecido                     boolean not null default false,
+  motivo_fallecimiento          text,
+  -- Último cambio (epoch ms del cliente) por campo, igual que en `casos`.
+  campos_ts                     jsonb not null default '{}'::jsonb,
+  creado_por                    uuid not null default auth.uid() references public.perfiles (id),
+  created_at                    timestamptz not null default now(),
+  updated_at                    timestamptz not null default now(),
+  check (motivo_fallecimiento is null or fallecido)
+);
+
+create index animales_caso_idx on public.animales (caso_id);
+
+alter table public.animales enable row level security;
+
+create policy animales_ver on public.animales
+  for select to authenticated using (public.es_voluntario_activo());
+
+create policy animales_crear on public.animales
+  for insert to authenticated
+  with check (public.es_voluntario_activo() and creado_por = auth.uid());
+
+create policy animales_editar on public.animales
+  for update to authenticated
+  using (public.es_voluntario_activo()) with check (public.es_voluntario_activo());
+
+create function public.tocar_animal() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at := now();
+  new.creado_por := old.creado_por;
+  new.caso_id := old.caso_id;
+  return new;
+end;
+$$;
+
+create trigger animales_tocar
+  before update on public.animales
+  for each row execute function public.tocar_animal();
+
+-- ─────────────────────────────────────────────────────────────
+-- Pendientes: lo que falta hacer (castrar, estudio, cirugía, especialista).
+-- Alimentan la prioridad del caso.
+-- ─────────────────────────────────────────────────────────────
+create table public.pendientes (
+  id           uuid primary key,                                 -- lo genera el cliente
   caso_id      uuid not null references public.casos (id) on delete cascade,
-  tipo         text not null,
-  fecha        timestamptz not null,
+  animal_id    uuid references public.animales (id) on delete cascade,
+  tipo         text not null check (tipo in ('CASTRACION', 'ESTUDIO', 'CIRUGIA', 'ESPECIALISTA', 'OTRO')),
   descripcion  text not null,
-  autor        uuid not null default auth.uid() references auth.users (id),
-  created_at   timestamptz not null default now()
+  resuelto     boolean not null default false,
+  resuelto_en  timestamptz,
+  creado_por   uuid not null default auth.uid() references public.perfiles (id),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
 );
 
-create index if not exists eventos_caso_idx on public.eventos_historial (caso_id, fecha);
+create index pendientes_caso_idx on public.pendientes (caso_id) where not resuelto;
 
--- ─────────────────────────────────────────────────────────────────────────────
--- 5. Tabla de Conflictos Detectados (Trazabilidad sin Pérdida de Datos)
--- ─────────────────────────────────────────────────────────────────────────────
-create table if not exists public.conflictos (
-  id                bigint generated always as identity primary key,
-  caso_id           uuid not null references public.casos (id) on delete cascade,
-  campo             text not null,
-  valor_aplicado    jsonb,
-  valor_descartado  jsonb,
-  autor_descartado  uuid references auth.users (id),
-  detectado_en      timestamptz not null default now(),
-  resuelto          boolean not null default false
+alter table public.pendientes enable row level security;
+
+create policy pendientes_ver on public.pendientes
+  for select to authenticated using (public.es_voluntario_activo());
+
+create policy pendientes_crear on public.pendientes
+  for insert to authenticated
+  with check (public.es_voluntario_activo() and creado_por = auth.uid());
+
+create policy pendientes_editar on public.pendientes
+  for update to authenticated
+  using (public.es_voluntario_activo()) with check (public.es_voluntario_activo());
+
+create function public.tocar_pendiente() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at := now();
+  new.creado_por := old.creado_por;
+  new.caso_id := old.caso_id;
+  if new.resuelto and not old.resuelto then
+    new.resuelto_en := coalesce(new.resuelto_en, now());
+  elsif not new.resuelto then
+    new.resuelto_en := null;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger pendientes_tocar
+  before update on public.pendientes
+  for each row execute function public.tocar_pendiente();
+
+-- ─────────────────────────────────────────────────────────────
+-- Adopciones: una fila por adopción. Si el animal vuelve, queda el registro
+-- anterior (hay casos que se adoptaron y volvieron) y se abre otra.
+-- Datos personales del adoptante: solo coordinadores.
+-- ─────────────────────────────────────────────────────────────
+create table public.adopciones (
+  id                  uuid primary key,                          -- lo genera el cliente
+  caso_id             uuid not null references public.casos (id) on delete cascade,
+  adoptante_nombre    text not null,
+  adoptante_telefono  text,
+  adoptante_correo    text,
+  fecha_adopcion      timestamptz not null,
+  fecha_devolucion    timestamptz,
+  motivo_devolucion   text,
+  registrada_por      uuid not null default auth.uid() references public.perfiles (id),
+  created_at          timestamptz not null default now(),
+  check (fecha_devolucion is null or fecha_devolucion >= fecha_adopcion),
+  check (motivo_devolucion is null or fecha_devolucion is not null)
 );
 
--- ─────────────────────────────────────────────────────────────────────────────
--- 6. Fotografías en Storage y Registro de Metadatos
--- ─────────────────────────────────────────────────────────────────────────────
-create table if not exists public.fotos_caso (
-  id          uuid primary key,
-  caso_id     uuid not null references public.casos (id) on delete cascade,
-  ruta        text not null unique, -- formato: 'caso_id/uuid.jpg'
-  principal   boolean not null default true,
-  subida_por  uuid not null default auth.uid() references auth.users (id),
-  created_at  timestamptz not null default now()
-);
+create index adopciones_caso_idx on public.adopciones (caso_id);
 
-create index if not exists fotos_caso_idx on public.fotos_caso (caso_id);
+alter table public.adopciones enable row level security;
 
--- Creación del Bucket privado casos-fotos en Supabase Storage
+create policy adopciones_coordinador on public.adopciones
+  for all to authenticated
+  using (public.es_coordinador())
+  with check (public.es_coordinador() and registrada_por = auth.uid());
+
+-- ─────────────────────────────────────────────────────────────
+-- Permisos de la Data API (como en el esquema inicial: solo con sesión).
+-- Las políticas RLS de arriba restringen además qué filas puede tocar cada uno.
+-- ─────────────────────────────────────────────────────────────
+-- La app puede cancelar un turno (la cola local envía el borrado): lo borra quien lo creó o un coordinador.
+create policy turnos_borrar on public.turnos
+  for delete to authenticated
+  using (public.es_voluntario_activo() and (creado_por = auth.uid() or public.es_coordinador()));
+
+grant delete on public.turnos to authenticated;
+
+grant select, insert, update on public.animales   to authenticated;
+grant select, insert, update on public.pendientes  to authenticated;
+grant select, insert, update on public.adopciones  to authenticated;
+
+-- ───────────────────────────── 20261112000000_administrador_unico.sql ─────────────────────────────
+
+-- PERF-App: un único administrador; el resto de las personas son voluntarios.
+--
+-- En la base el rol del administrador SIGUE llamándose 'coordinador' (así lo usan es_coordinador(),
+-- las políticas RLS, el panel de aprobaciones y los correos de la Etapa 2). En la app se muestra
+-- como "Administrador". Esta migración solo agrega la regla de que haya UNO.
+--
+-- ANTES DE APLICAR (coordinar con el equipo: es la base compartida):
+--  * La cuenta de coordinador MÁS ANTIGUA queda como administrador y las demás pasan a 'voluntario'.
+--  * Si no hay ningún coordinador, hay que asignar el administrador a mano (ver el final).
+
+-- 1) Si hay más de un coordinador, queda solo el más antiguo.
+update public.perfiles
+set rol = 'voluntario'
+where rol = 'coordinador'
+  and id <> (
+    select id from public.perfiles
+    where rol = 'coordinador'
+    order by created_at asc
+    limit 1
+  );
+
+-- 2) Como mucho una fila puede tener rol 'coordinador' (índice único parcial).
+create unique index if not exists perfiles_un_solo_administrador
+  on public.perfiles ((rol)) where rol = 'coordinador';
+
+-- Si no había ningún coordinador para promover, asignar el administrador a mano:
+--   update public.perfiles set rol = 'coordinador', aprobado = true where email = 'correo@del.admin';
+
+-- ───────────────────────────── 20261124000000_compatibilidad_etapa2.sql ─────────────────────────────
+
+-- PERF-App: adapta la base de Tobias (proyecto kdnosvxrgoxsopmzkghh) al código de la Etapa 2 de Facu
+-- (commit 50e2d0b en main: triaje multicriterio, sync bidireccional, aprobación de voluntarios).
+--
+-- Se pega UNA vez en el SQL Editor de Supabase. Es idempotente (se puede repetir sin romper nada)
+-- y NO borra datos: solo agrega columnas, un bucket, políticas y reemplaza funciones.
+--
+-- Qué necesita el código de Facu que la base todavía no tenía (ver supabase/schema.sql de main):
+--   * casos: gravedad_clinica, vulnerabilidad, nivel_prioridad, motivo_urgencia, puntaje_prioridad,
+--            foto_remote_path, creado_por_user_id y modificado_por_user_id.
+--   * turnos.notification_id y centros_veterinarios.distancia.
+--   * bucket privado 'casos-fotos' (el de la base se llamaba 'fotos-casos').
+--   * aplicar_cambios_caso() con los campos nuevos y la regla de casos cerrados.
+--   * UPDATE sobre casos (SincronizacionFotos guarda foto_remote_path directo).
+--   * aprobar_voluntario() / rechazar_voluntario() (para no depender de la clave service_role).
+--
+-- Se conservan la columna `gravedad` y las tablas animales / pendientes / adopciones.
+
+-- ─────────────────────────────────────────────────────────────
+-- 1) Columnas nuevas
+-- ─────────────────────────────────────────────────────────────
+alter table public.casos
+  add column if not exists gravedad_clinica text not null default 'MODERADA',
+  add column if not exists vulnerabilidad text not null default 'ESTABLE',
+  add column if not exists nivel_prioridad text not null default 'ATENCION',
+  add column if not exists motivo_urgencia text,
+  add column if not exists puntaje_prioridad integer not null default 0,
+  add column if not exists foto_remote_path text,
+  add column if not exists creado_por_user_id uuid default auth.uid() references auth.users (id),
+  add column if not exists modificado_por_user_id uuid references auth.users (id);
+
+alter table public.casos drop constraint if exists casos_gravedad_clinica_check;
+alter table public.casos add constraint casos_gravedad_clinica_check
+  check (gravedad_clinica in ('CRITICA', 'MODERADA', 'LEVE', 'SANA'));
+alter table public.casos drop constraint if exists casos_vulnerabilidad_check;
+alter table public.casos add constraint casos_vulnerabilidad_check
+  check (vulnerabilidad in ('LACTANTE_SIN_MADRE', 'SIN_TRANSITO', 'EN_TRATAMIENTO', 'ESTABLE'));
+alter table public.casos drop constraint if exists casos_nivel_prioridad_check;
+alter table public.casos add constraint casos_nivel_prioridad_check
+  check (nivel_prioridad in ('URGENTE', 'ATENCION', 'AL_DIA'));
+
+create index if not exists casos_estado_idx on public.casos (estado_caso);
+create index if not exists casos_prioridad_idx on public.casos (puntaje_prioridad desc);
+create index if not exists casos_updated_idx on public.casos (updated_at desc);
+
+-- Los casos que ya existían: pasar la gravedad vieja a la nueva y copiar el autor.
+update public.casos
+set gravedad_clinica = case gravedad
+      when 'critico' then 'CRITICA'
+      when 'urgente' then 'MODERADA'
+      else 'LEVE'
+    end,
+    nivel_prioridad = case gravedad
+      when 'critico' then 'URGENTE'
+      when 'urgente' then 'ATENCION'
+      else 'AL_DIA'
+    end,
+    creado_por_user_id = coalesce(creado_por_user_id, creado_por)
+where gravedad_clinica = 'MODERADA' and nivel_prioridad = 'ATENCION' and puntaje_prioridad = 0;
+
+alter table public.turnos add column if not exists notification_id text;
+alter table public.centros_veterinarios add column if not exists distancia text;
+
+-- ─────────────────────────────────────────────────────────────
+-- 2) Bucket de fotos que usa la app ('casos-fotos'), privado
+-- ─────────────────────────────────────────────────────────────
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('casos-fotos', 'casos-fotos', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do nothing;
 
--- ─────────────────────────────────────────────────────────────────────────────
--- 7. Procedimiento de Fusión Campo a Campo (Delta Merge)
--- ─────────────────────────────────────────────────────────────────────────────
+drop policy if exists casos_fotos_storage_ver on storage.objects;
+create policy casos_fotos_storage_ver on storage.objects
+  for select to authenticated using (bucket_id = 'casos-fotos' and public.es_voluntario_activo());
+
+drop policy if exists casos_fotos_storage_subir on storage.objects;
+create policy casos_fotos_storage_subir on storage.objects
+  for insert to authenticated with check (bucket_id = 'casos-fotos' and public.es_voluntario_activo());
+
+-- ─────────────────────────────────────────────────────────────
+-- 3) Permisos de escritura que usa el motor de sincronización
+-- ─────────────────────────────────────────────────────────────
+-- SincronizacionFotos guarda casos.foto_remote_path con un UPDATE directo.
+-- (Los demás cambios de un caso siguen pasando por aplicar_cambios_caso().)
+drop policy if exists casos_actualizar on public.casos;
+create policy casos_actualizar on public.casos
+  for update to authenticated
+  using (public.es_voluntario_activo()) with check (public.es_voluntario_activo());
+
+-- ─────────────────────────────────────────────────────────────
+-- 4) aplicar_cambios_caso(): campos nuevos, autor del cambio y casos cerrados
+-- ─────────────────────────────────────────────────────────────
 create or replace function public.aplicar_cambios_caso(
   p_id uuid,
   p_cambios jsonb,
@@ -241,7 +716,7 @@ begin
     raise exception 'El caso % no existe en el servidor.', p_id using errcode = 'P0002';
   end if;
 
-  -- Regla de cierre definitivo: si el caso ya fue ADOPTADO o FALLECIDO, se bloquean ediciones desfasadas
+  -- Un caso ADOPTADO o FALLECIDO ya está cerrado: se bloquean las ediciones desfasadas.
   if v_caso.estado_caso in ('ADOPTADO', 'FALLECIDO') and (v_caso.updated_at > p_base) then
     raise exception 'El caso % está cerrado definitivamente como %.', p_id, v_caso.estado_caso using errcode = '42501';
   end if;
@@ -256,7 +731,7 @@ begin
 
     continue when v_actual is not distinct from v_nuevo;
 
-    -- Detección de conflicto si otro voluntario editó después de la base local
+    -- Otro voluntario editó este campo después de la última sincronización de este teléfono.
     if v_ms_actual > (extract(epoch from p_base) * 1000)::bigint then
       v_conflictos := v_conflictos || v_campo;
       insert into public.conflictos (caso_id, campo, valor_aplicado, valor_descartado, autor_descartado)
@@ -286,156 +761,276 @@ begin
 end;
 $$;
 
--- ─────────────────────────────────────────────────────────────────────────────
--- 8. Seguridad y Row Level Security (RLS) Estricto
--- ─────────────────────────────────────────────────────────────────────────────
-
--- Habilitar RLS en todas las tablas
-alter table public.perfiles enable row level security;
-alter table public.casos enable row level security;
-alter table public.centros_veterinarios enable row level security;
-alter table public.turnos enable row level security;
-alter table public.eventos_historial enable row level security;
-alter table public.conflictos enable row level security;
-alter table public.fotos_caso enable row level security;
-
--- Revocar todo acceso anónimo (rol anon bloqueado totalmente)
-revoke all on schema public from anon;
-revoke all on all tables in schema public from anon;
-revoke all on all functions in schema public from anon;
-
--- Otorgar uso a usuarios autenticados
-grant usage on schema public to authenticated;
-grant select, update on public.perfiles to authenticated;
-grant select, insert, update on public.casos to authenticated;
-grant select, insert, update, delete on public.centros_veterinarios to authenticated;
-grant select, insert, update, delete on public.turnos to authenticated;
-grant select, insert on public.eventos_historial to authenticated;
-grant select, insert, update on public.conflictos to authenticated;
-grant select, insert on public.fotos_caso to authenticated;
 grant execute on function public.aplicar_cambios_caso(uuid, jsonb, jsonb, timestamptz) to authenticated;
 
--- Políticas RLS: perfiles
-create policy perfiles_ver_propio on public.perfiles
-  for select to authenticated using (id = auth.uid() or public.es_voluntario_activo() or public.es_coordinador());
-
-create policy perfiles_editar_propio on public.perfiles
-  for update to authenticated using (id = auth.uid() or public.es_coordinador()) with check (id = auth.uid() or public.es_coordinador());
-
--- ─────────────────────────────────────────────────────────────────────────────
--- Funciones RPC para Coordinación y Aprobación de Voluntarios
--- ─────────────────────────────────────────────────────────────────────────────
-
--- Aprueba a un voluntario (habilitado para coordinadores o vía service role)
+-- ─────────────────────────────────────────────────────────────
+-- 5) Aprobar / rechazar voluntarios desde la app SIN la clave service_role
+-- ─────────────────────────────────────────────────────────────
 create or replace function public.aprobar_voluntario(p_user_id uuid)
 returns jsonb
-language plpgsql
-security definer
-set search_path = public, auth
-as $$
+language plpgsql security definer set search_path = public, auth as $$
 declare
   v_perfil record;
 begin
   if auth.uid() is not null and not public.es_coordinador() then
-    raise exception 'Solo un coordinador de PERF puede aprobar postulaciones.' using errcode = '42501';
+    raise exception 'Solo el administrador de PERF puede aprobar postulaciones.' using errcode = '42501';
   end if;
 
-  update public.perfiles
-  set aprobado = true
-  where id = p_user_id
-  returning * into v_perfil;
-
+  update public.perfiles set aprobado = true where id = p_user_id returning * into v_perfil;
   if v_perfil.id is null then
     return jsonb_build_object('success', false, 'error', 'Voluntario no encontrado');
   end if;
-
   return jsonb_build_object('success', true, 'nombre', v_perfil.nombre, 'email', v_perfil.email);
 end;
 $$;
 
--- Rechaza a un postulante y elimina toda su información de auth.users y perfiles
 create or replace function public.rechazar_voluntario(p_user_id uuid)
 returns jsonb
-language plpgsql
-security definer
-set search_path = public, auth
-as $$
+language plpgsql security definer set search_path = public, auth as $$
 declare
   v_perfil record;
 begin
   if auth.uid() is not null and not public.es_coordinador() then
-    raise exception 'Solo un coordinador de PERF puede rechazar y eliminar postulaciones.' using errcode = '42501';
+    raise exception 'Solo el administrador de PERF puede rechazar postulaciones.' using errcode = '42501';
   end if;
 
   select * into v_perfil from public.perfiles where id = p_user_id;
-
-  -- 1. Eliminar de auth.users (cascada on delete cascade a public.perfiles)
-  delete from auth.users where id = p_user_id;
-  -- 2. Asegurar eliminación en perfiles
+  delete from auth.users where id = p_user_id;      -- borra también el perfil (on delete cascade)
   delete from public.perfiles where id = p_user_id;
-
-  return jsonb_build_object('success', true, 'nombre', coalesce(v_perfil.nombre, 'Voluntario'), 'email', coalesce(v_perfil.email, ''));
+  return jsonb_build_object('success', true, 'nombre', coalesce(v_perfil.nombre, 'Voluntario'),
+                            'email', coalesce(v_perfil.email, ''));
 end;
 $$;
 
 grant execute on function public.aprobar_voluntario(uuid) to authenticated;
 grant execute on function public.rechazar_voluntario(uuid) to authenticated;
 
+-- Que la API (PostgREST) vea las columnas y funciones nuevas sin esperar.
+notify pgrst, 'reload schema';
 
--- Políticas RLS: casos
-create policy casos_ver on public.casos
+-- ───────────────────────────── 20261125000000_sin_service_role.sql ─────────────────────────────
+
+-- PERF-App: la app deja de usar la clave service_role.
+-- Se pega UNA vez en el SQL Editor de Supabase (idempotente, no borra datos).
+--
+-- Antes la app guardaba los recursos del postulante con la clave maestra. Ahora el trigger que crea
+-- el perfil los copia de los datos del registro, así no hace falta ninguna operación privilegiada
+-- desde el celular. Aprobar y rechazar desde la app usan aprobar_voluntario / rechazar_voluntario
+-- (ya definidas, solo para coordinadores). El enlace del correo y los avisos a coordinadores van por
+-- las Edge Functions supabase/functions/notificar-voluntario y gestionar-voluntario.
+
+create or replace function public.crear_perfil_al_registrarse() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_recursos text[] := '{}';
+begin
+  if jsonb_typeof(new.raw_user_meta_data -> 'recursos') = 'array' then
+    select coalesce(array_agg(r), '{}') into v_recursos
+    from jsonb_array_elements_text(new.raw_user_meta_data -> 'recursos') as r;
+  end if;
+
+  insert into public.perfiles (id, nombre, email, telefono, brigada, zona, recursos)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data ->> 'nombre', 'Voluntario'),
+    new.email,
+    new.raw_user_meta_data ->> 'telefono',
+    coalesce(new.raw_user_meta_data ->> 'brigada', 'Brigada General'),
+    new.raw_user_meta_data ->> 'zona',
+    v_recursos
+  ) on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+-- ───────────────────────────── 20261125000100_cerrar_acceso_anonimo.sql ─────────────────────────────
+
+-- PERF-App: cierra el acceso anónimo (rol `anon`) a las tablas.
+-- Se pega UNA vez en el SQL Editor de Supabase. Es idempotente y NO borra datos.
+--
+-- Por qué: Supabase le da por defecto al rol `anon` permisos sobre toda tabla nueva de `public`.
+-- Hoy las filas ya están protegidas porque las políticas RLS de animales, pendientes y adopciones
+-- son `to authenticated`, pero un solo error en una política dejaría la tabla abierta a cualquiera
+-- que tenga la clave publishable (que viaja dentro de la app). Sacar el permiso de tabla es una
+-- segunda barrera: aunque falle RLS, el rol anónimo no puede ni consultar la tabla.
+--
+-- No afecta a la app: el registro y el login usan la API de Auth, no estas tablas, y las Edge
+-- Functions usan la clave de servidor.
+
+revoke all on all tables    in schema public from anon;
+revoke all on all sequences in schema public from anon;
+
+-- Lo que se cree de acá en adelante tampoco se le da a `anon`.
+alter default privileges in schema public revoke all on tables    from anon;
+alter default privileges in schema public revoke all on sequences from anon;
+
+-- Cómo comprobarlo (debe devolver 0 filas):
+--   select table_name, privilege_type
+--   from information_schema.role_table_grants
+--   where grantee = 'anon' and table_schema = 'public';
+
+-- ───────────────────────────── 20261126000000_cargar_animales_de_casos_existentes.sql ─────────────────────────────
+
+-- PERF-App: crea los animales de los casos que ya existían antes de que la app manejara animales.
+-- Se pega UNA vez en el SQL Editor de Supabase. Es idempotente (solo toca casos que no tienen
+-- ningún animal) y NO borra ni modifica datos existentes.
+--
+-- Cada caso recibe tantos animales como `cantidad_animales`, con la ficha sanitaria del caso
+-- (castrado, virales, desparasitaciones). Si hay más de uno se numeran: "Camada 1", "Camada 2".
+-- Los ids los genera la base una sola vez, así todos los celulares bajan los mismos animales.
+
+insert into public.animales (
+  id, caso_id, nombre, castrado, virales_vif_vilef,
+  fecha_primera_desparasitacion, fecha_segunda_desparasitacion, creado_por
+)
+select
+  gen_random_uuid(),
+  c.id,
+  case when greatest(c.cantidad_animales, 1) = 1 then c.nombre_provisorio else c.nombre_provisorio || ' ' || n end,
+  c.castrado,
+  c.virales_vif_vilef,
+  c.fecha_primera_desparasitacion,
+  c.fecha_segunda_desparasitacion,
+  c.creado_por
+from public.casos c
+cross join lateral generate_series(1, greatest(c.cantidad_animales, 1)) as n
+where not exists (select 1 from public.animales a where a.caso_id = c.id);
+
+-- Cómo comprobarlo: cada caso debe tener al menos un animal (debe devolver 0 filas).
+--   select c.id, c.nombre_provisorio from public.casos c
+--   where not exists (select 1 from public.animales a where a.caso_id = c.id);
+
+-- ───────────────────────────── 20261127000000_coordinadores_responsables.sql ─────────────────────────────
+
+-- PERF-App: el coordinador responsable de un caso pasa a ser un registro con ID propio.
+-- Se pega UNA vez en el SQL Editor de Supabase. Es idempotente y NO borra datos.
+--
+-- Antes `casos.quien_sigue_caso` guardaba un nombre ("Cami") y "Mis casos" comparaba texto. Ahora
+-- hay una tabla `coordinadores` (los cuatro de PERF, cada uno puede enlazarse a una cuenta de
+-- voluntario con `perfil_id`) y `casos.coordinador_id` apunta a ella. `quien_sigue_caso` se conserva
+-- como nombre visible, así lo que ya existe sigue funcionando.
+
+create table if not exists public.coordinadores (
+  id         uuid primary key default gen_random_uuid(),
+  nombre     text not null unique,
+  perfil_id  uuid references public.perfiles (id) on delete set null,   -- su cuenta, si tiene
+  activo     boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+alter table public.coordinadores enable row level security;
+
+drop policy if exists coordinadores_ver on public.coordinadores;
+create policy coordinadores_ver on public.coordinadores
   for select to authenticated using (public.es_voluntario_activo());
 
-create policy casos_crear on public.casos
-  for insert to authenticated with check (public.es_voluntario_activo() and creado_por_user_id = auth.uid());
+drop policy if exists coordinadores_administrar on public.coordinadores;
+create policy coordinadores_administrar on public.coordinadores
+  for all to authenticated
+  using (public.es_coordinador()) with check (public.es_coordinador());
 
-create policy casos_actualizar on public.casos
-  for update to authenticated using (public.es_voluntario_activo()) with check (public.es_voluntario_activo());
+grant select, insert, update, delete on public.coordinadores to authenticated;
 
--- Políticas RLS: turnos
-create policy turnos_ver on public.turnos
-  for select to authenticated using (public.es_voluntario_activo());
+insert into public.coordinadores (nombre)
+values ('Cami'), ('Juli'), ('Martu'), ('Nay')
+on conflict (nombre) do nothing;
 
-create policy turnos_crear on public.turnos
-  for insert to authenticated with check (public.es_voluntario_activo() and creado_por = auth.uid());
+alter table public.casos
+  add column if not exists coordinador_id uuid references public.coordinadores (id) on delete set null;
+create index if not exists casos_coordinador_idx on public.casos (coordinador_id);
 
-create policy turnos_actualizar on public.turnos
-  for update to authenticated using (public.es_voluntario_activo()) with check (public.es_voluntario_activo());
+-- Los casos que ya existían: se enlazan por el nombre que tenían escrito (sin mayúsculas ni espacios de más).
+update public.casos c
+set coordinador_id = k.id
+from public.coordinadores k
+where c.coordinador_id is null
+  and lower(btrim(c.quien_sigue_caso)) = lower(k.nombre);
 
-create policy turnos_borrar on public.turnos
-  for delete to authenticated using (public.es_voluntario_activo());
+-- aplicar_cambios_caso(): igual que la de 20261124, con `coordinador_id` entre los campos editables.
+create or replace function public.aplicar_cambios_caso(
+  p_id uuid,
+  p_cambios jsonb,
+  p_campos_ts jsonb,
+  p_base timestamptz
+)
+returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  c_editables constant text[] := array[
+    'nombre_provisorio', 'cantidad_animales', 'especie', 'edad_estimada', 'historia_origen',
+    'personalidad', 'estado_visible', 'barrio', 'latitud', 'longitud', 'quien_sigue_caso',
+    'transito_nombre', 'transito_telefono', 'transito_correo', 'castrado', 'virales_vif_vilef',
+    'fecha_primera_desparasitacion', 'fecha_segunda_desparasitacion', 'estado_caso',
+    'gravedad_clinica', 'vulnerabilidad', 'nivel_prioridad', 'motivo_urgencia', 'puntaje_prioridad',
+    'foto_remote_path', 'coordinador_id'
+  ];
+  v_caso      public.casos;
+  v_campo     text;
+  v_ms_nuevo  bigint;
+  v_ms_actual bigint;
+  v_actual    jsonb;
+  v_nuevo     jsonb;
+  v_aplicados text[] := '{}';
+  v_conflictos text[] := '{}';
+begin
+  if not public.es_voluntario_activo() then
+    raise exception 'Acceso no autorizado: voluntario inactivo o no verificado.' using errcode = '42501';
+  end if;
 
--- Políticas RLS: eventos_historial
-create policy eventos_ver on public.eventos_historial
-  for select to authenticated using (public.es_voluntario_activo());
+  select * into v_caso from public.casos where id = p_id for update;
+  if not found then
+    raise exception 'El caso % no existe en el servidor.', p_id using errcode = 'P0002';
+  end if;
 
-create policy eventos_crear on public.eventos_historial
-  for insert to authenticated with check (public.es_voluntario_activo() and autor = auth.uid());
+  -- Un caso ADOPTADO o FALLECIDO ya está cerrado: se bloquean las ediciones desfasadas.
+  if v_caso.estado_caso in ('ADOPTADO', 'FALLECIDO') and (v_caso.updated_at > p_base) then
+    raise exception 'El caso % está cerrado definitivamente como %.', p_id, v_caso.estado_caso using errcode = '42501';
+  end if;
 
--- Políticas RLS: centros_veterinarios
-create policy centros_ver on public.centros_veterinarios
-  for select to authenticated using (public.es_voluntario_activo());
+  foreach v_campo in array c_editables loop
+    continue when not (p_cambios ? v_campo);
 
-create policy centros_administrar on public.centros_veterinarios
-  for all to authenticated using (public.es_coordinador()) with check (public.es_coordinador());
+    v_nuevo     := p_cambios -> v_campo;
+    v_actual    := to_jsonb(v_caso) -> v_campo;
+    v_ms_nuevo  := coalesce((p_campos_ts ->> v_campo)::bigint, (extract(epoch from now()) * 1000)::bigint);
+    v_ms_actual := coalesce((v_caso.campos_ts ->> v_campo)::bigint, 0);
 
--- Políticas RLS: conflictos
-create policy conflictos_ver on public.conflictos
-  for select to authenticated using (public.es_voluntario_activo());
+    continue when v_actual is not distinct from v_nuevo;
 
-create policy conflictos_editar on public.conflictos
-  for update to authenticated using (public.es_coordinador()) with check (public.es_coordinador());
+    -- Otro voluntario editó este campo después de la última sincronización de este teléfono.
+    if v_ms_actual > (extract(epoch from p_base) * 1000)::bigint then
+      v_conflictos := v_conflictos || v_campo;
+      insert into public.conflictos (caso_id, campo, valor_aplicado, valor_descartado, autor_descartado)
+      values (
+        p_id, v_campo,
+        case when v_ms_nuevo > v_ms_actual then v_nuevo else v_actual end,
+        case when v_ms_nuevo > v_ms_actual then v_actual else v_nuevo end,
+        auth.uid()
+      );
+    end if;
 
--- Políticas RLS: fotos_caso
-create policy fotos_ver on public.fotos_caso
-  for select to authenticated using (public.es_voluntario_activo());
+    if v_ms_nuevo >= v_ms_actual then
+      execute format(
+        'update public.casos
+            set %1$I = (jsonb_populate_record(null::public.casos, jsonb_build_object(%1$L, $1))).%1$I,
+                campos_ts = campos_ts || jsonb_build_object(%1$L, $2),
+                modificado_por_user_id = $4,
+                updated_at = now()
+          where id = $3',
+        v_campo
+      ) using v_nuevo, v_ms_nuevo, p_id, auth.uid();
+      v_aplicados := v_aplicados || v_campo;
+    end if;
+  end loop;
 
-create policy fotos_crear on public.fotos_caso
-  for insert to authenticated with check (public.es_voluntario_activo() and subida_por = auth.uid());
+  return jsonb_build_object('aplicados', v_aplicados, 'conflictos', v_conflictos);
+end;
+$$;
 
--- Políticas RLS: storage.objects (Bucket privado casos-fotos)
-create policy fotos_storage_ver on storage.objects
-  for select to authenticated using (bucket_id = 'casos-fotos' and public.es_voluntario_activo());
+grant execute on function public.aplicar_cambios_caso(uuid, jsonb, jsonb, timestamptz) to authenticated;
 
-create policy fotos_storage_subir on storage.objects
-  for insert to authenticated with check (bucket_id = 'casos-fotos' and public.es_voluntario_activo());
+notify pgrst, 'reload schema';
+
+-- Cómo comprobarlo:
+--   select nombre, perfil_id from public.coordinadores order by nombre;           -- 4 filas
+--   select count(*) from public.casos where coordinador_id is null;                -- casos sin coordinador enlazado

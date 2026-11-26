@@ -220,4 +220,62 @@ describe('CalcularPrioridadCasoUseCase (Modelo Multicriterio PERF)', () => {
     expect(res.nivelPrioridad).toBe('URGENTE');
     expect(res.motivoUrgencia).toBe('URGENTE • +8 días');
   });
+
+  describe('última revisión', () => {
+    const base = { estadoCaso: 'EN_TRANSITO', gravedadClinica: 'LEVE' as const, vulnerabilidad: 'ESTABLE' as const };
+
+    test('sin revisiones los días se cuentan desde el rescate (igual que antes)', () => {
+      const res = useCase.ejecutar({ ...base, fechaRescate: AHORA - 20 * DIA_MS }, 15, AHORA);
+      expect(res.nivelPrioridad).toBe('URGENTE');
+      expect(res.motivoUrgencia).toBe('URGENTE • +20 días');
+    });
+
+    test('el evento de llegada (misma fecha del rescate) no cambia nada', () => {
+      const rescate = AHORA - 20 * DIA_MS;
+      const res = useCase.ejecutar({ ...base, fechaRescate: rescate, fechaUltimaRevision: rescate }, 15, AHORA);
+      expect(res.motivoUrgencia).toBe('URGENTE • +20 días');
+    });
+
+    test('un caso viejo pero revisado hace poco no es urgente por los días', () => {
+      const res = useCase.ejecutar(
+        { ...base, fechaRescate: AHORA - 40 * DIA_MS, fechaUltimaRevision: AHORA - 2 * DIA_MS },
+        15,
+        AHORA
+      );
+      expect(res.nivelPrioridad).toBe('AL_DIA');
+    });
+
+    test('pasa a atención y luego a urgente según los días sin revisión', () => {
+      const entrada = (diasSinRevision: number) => ({
+        ...base,
+        fechaRescate: AHORA - 60 * DIA_MS,
+        fechaUltimaRevision: AHORA - diasSinRevision * DIA_MS,
+      });
+      const atencion = useCase.ejecutar(entrada(11), 15, AHORA);
+      expect(atencion.nivelPrioridad).toBe('ATENCION');
+      expect(atencion.motivoUrgencia).toBe('ATENCIÓN • 11 días sin revisión');
+      const urgente = useCase.ejecutar(entrada(16), 15, AHORA);
+      expect(urgente.nivelPrioridad).toBe('URGENTE');
+      expect(urgente.motivoUrgencia).toBe('URGENTE • +16 días sin revisión');
+    });
+
+    test('revisar un caso lo baja en la lista: menos puntos que otro igual sin revisar', () => {
+      const sinRevisar = useCase.ejecutar({ ...base, fechaRescate: AHORA - 30 * DIA_MS }, 15, AHORA);
+      const revisado = useCase.ejecutar(
+        { ...base, fechaRescate: AHORA - 30 * DIA_MS, fechaUltimaRevision: AHORA - DIA_MS },
+        15,
+        AHORA
+      );
+      expect(revisado.puntajePrioridad).toBeLessThan(sinRevisar.puntajePrioridad);
+    });
+
+    test('la gravedad crítica sigue siendo urgente aunque se haya revisado hoy', () => {
+      const res = useCase.ejecutar(
+        { ...base, gravedadClinica: 'CRITICA', fechaRescate: AHORA - 5 * DIA_MS, fechaUltimaRevision: AHORA },
+        15,
+        AHORA
+      );
+      expect(res.nivelPrioridad).toBe('URGENTE');
+    });
+  });
 });

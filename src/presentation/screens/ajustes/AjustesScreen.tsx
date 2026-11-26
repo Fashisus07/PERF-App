@@ -1,8 +1,9 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { ReactNode, useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UMBRAL_MAX, UMBRAL_MIN, Voluntario } from '../../../domain/models/Ajustes';
+import { OPCIONES_RECORDATORIO } from '../../../domain/models/Turno';
 import { candadoActivado, celularTieneBloqueo, guardarCandado } from '../../../data/local/CandadoApp';
 import { authRepository } from '../../../di/container';
 import { useAjustes, sincronizarAhora } from '../../hooks/useAjustes';
@@ -10,7 +11,6 @@ import { useOnline } from '../../hooks/useOnline';
 import { colors, fonts } from '../../theme';
 import { AvatarPerfil } from '../rescate/BarraRescate';
 
-const VERSION: string = require('../../../../app.json').expo.version;
 
 type Props = { navigation?: any };
 
@@ -86,10 +86,6 @@ export function AjustesScreen({ navigation }: Props) {
     setSincronizando(false);
   };
 
-  const cerrarSesion = async () => {
-    await authRepository.cerrarSesion();
-    navigation?.reset?.({ index: 0, routes: [{ name: 'Login' }] });
-  };
   const porcentaje = resumen ? Math.min(100, (resumen.megabytes / resumen.capacidadMegabytes) * 100) : 0;
 
   return (
@@ -250,64 +246,30 @@ export function AjustesScreen({ navigation }: Props) {
             </Tarjeta>
 
             <Tarjeta icono="notifications-active" fondo={colors.atencionBg} color={colors.atencion} titulo="Notificaciones de Turnos" sub="Alertas de traslados a veterinarias asociadas">
-              <FilaToggle
-                icono="event"
-                titulo="Recordatorio anticipado"
-                texto="1 día antes del turno asignado"
-                valor={borrador.recordatorioUnDia}
-                onChange={(v) => cambiar({ recordatorioUnDia: v })}
-              />
-              <View style={styles.separador} />
-              <FilaToggle
-                icono="schedule"
-                titulo="Alerta de salida"
-                texto="2 horas antes (para alistar transportadora)"
-                valor={borrador.alertaDosHoras}
-                onChange={(v) => cambiar({ alertaDosHoras: v })}
-              />
+              <Text style={styles.recordatorioTitulo}>¿Con cuánta anticipación avisar?</Text>
+              <View style={styles.recordatorioOpciones}>
+                {OPCIONES_RECORDATORIO.map((o) => {
+                  const activo = borrador.recordatorioMinutos === o.minutos;
+                  return (
+                    <Pressable
+                      key={o.minutos}
+                      style={[styles.recordatorioChip, activo && styles.recordatorioChipActivo]}
+                      onPress={() => cambiar({ recordatorioMinutos: o.minutos })}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: activo }}
+                    >
+                      <Text style={[styles.recordatorioChipText, activo && { color: '#fff' }]}>{o.corto}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
               <View style={styles.info}>
                 <MaterialIcons name="info" size={16} color={colors.textMuted} />
-                <Text style={styles.infoText}>Las notificaciones se envían al dispositivo si tenés la app activa o en segundo plano.</Text>
+                <Text style={styles.infoText}>
+                  Es el valor que aparece marcado al agendar un turno; en cada turno se puede cambiar. Las notificaciones llegan al celular aunque la app esté en segundo plano.
+                </Text>
               </View>
             </Tarjeta>
-
-            <View style={styles.acerca}>
-              <View style={styles.acercaTop}>
-                <View style={styles.logo}>
-                  <Image source={require('../../../../assets/images/logo.png')} style={styles.logoImg} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.acercaNombre}>PERF Móvil</Text>
-                  <Text style={styles.acercaVersion}>Versión {VERSION}</Text>
-                  <Text style={styles.acercaSub}>Para voluntarios de rescate animal</Text>
-                </View>
-              </View>
-              <View style={styles.linea} />
-              <Pressable
-                style={styles.sesion}
-                onPress={() => navigation?.navigate?.('PerfilVoluntario')}
-                accessibilityLabel="Editar perfil del voluntario"
-              >
-                <MaterialIcons name="badge" size={22} color={colors.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sesionLabel}>Sesión activa como</Text>
-                  <Text style={styles.sesionNombre}>
-                    {voluntario?.nombre || 'Voluntario'} · {voluntario?.brigada || 'Brigada PERF'}
-                  </Text>
-                  {voluntario?.email && (
-                    <Text style={{ fontFamily: fonts.semibold, fontSize: 13, color: colors.primary, marginTop: 2 }}>
-                      {voluntario.email} {voluntario.id ? `• UID: ${voluntario.id.slice(0, 8)}...` : ''}
-                    </Text>
-                  )}
-                  <Text style={styles.sesionEditar}>Toca para editar tus datos o equipamiento</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={22} color={colors.textSubtle} />
-              </Pressable>
-              <Pressable style={styles.cerrar} onPress={cerrarSesion}>
-                <MaterialIcons name="logout" size={18} color={colors.urgente} />
-                <Text style={styles.cerrarText}>Cerrar sesión o cambiar voluntario</Text>
-              </Pressable>
-            </View>
           </ScrollView>
 
           <View style={[styles.pie, { paddingBottom: 14 + bottom }]}>
@@ -419,6 +381,11 @@ const styles = StyleSheet.create({
   filaTitulo: { fontFamily: fonts.bold, fontSize: 16, color: colors.text },
   filaTexto: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 19, color: colors.textMuted },
   separador: { height: 1, backgroundColor: colors.border },
+  recordatorioTitulo: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+  recordatorioOpciones: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  recordatorioChip: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 9999, backgroundColor: colors.surfaceChip },
+  recordatorioChipActivo: { backgroundColor: colors.primary },
+  recordatorioChipText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
   toggle: { width: 56, height: 32, borderRadius: 9999, justifyContent: 'center' },
   toggleOn: { backgroundColor: colors.primary },
   toggleOff: { backgroundColor: colors.surfaceChip },

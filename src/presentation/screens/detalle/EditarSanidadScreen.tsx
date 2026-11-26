@@ -18,7 +18,9 @@ import {
   ETIQUETA_VIRALES,
   EstadoVirales,
 } from '../../../domain/models/Caso';
+import { casoRepository } from '../../../di/container';
 import { StackHeader } from '../../components/StackHeader';
+import { useAnimales } from '../../hooks/useAnimales';
 import { useCaso } from '../../hooks/useCaso';
 import { useCasoStore } from '../../stores/useCasoStore';
 import { colors, fonts } from '../../theme';
@@ -42,6 +44,12 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   const casoId = route?.params?.casoId ?? '';
   const { caso, cargando } = useCaso(casoId);
   const actualizarCaso = useCasoStore((s) => s.actualizarCaso);
+  const cargarDetalleCaso = useCasoStore((s) => s.cargarDetalleCaso);
+  const { animales } = useAnimales(casoId);
+  // Con varios animales la ficha es de uno por vez; con uno solo (o ninguno) se edita la del caso.
+  const varios = animales.length > 1;
+  const [animalId, setAnimalId] = useState<string | null>(null);
+  const animal = varios ? animales.find((a) => a.id === animalId) ?? animales[0] : undefined;
 
   const [castrado, setCastrado] = useState<EstadoCastracion | null>(null);
   const [virales, setVirales] = useState<EstadoVirales | null>(null);
@@ -52,10 +60,21 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Valores inicializados con los del caso si no fueron tocados
-  const valorCastrado = castrado ?? caso?.sanidad?.castrado ?? 'PENDIENTE';
-  const valorVirales = virales ?? caso?.sanidad?.virales ?? 'PENDIENTE';
-  const tieneDesp1 = desp1 !== null ? desp1 : Boolean(caso?.sanidad?.fechaPrimeraDesparasitacion);
-  const tieneDesp2 = desp2 !== null ? desp2 : Boolean(caso?.sanidad?.fechaSegundaDesparasitacion);
+  const fuente = animal
+    ? { castrado: animal.castrado, virales: animal.virales, d1: animal.fechaPrimeraDesparasitacion, d2: animal.fechaSegundaDesparasitacion }
+    : { castrado: caso?.sanidad?.castrado, virales: caso?.sanidad?.virales, d1: caso?.sanidad?.fechaPrimeraDesparasitacion, d2: caso?.sanidad?.fechaSegundaDesparasitacion };
+  const valorCastrado = castrado ?? fuente.castrado ?? 'PENDIENTE';
+  const valorVirales = virales ?? fuente.virales ?? 'PENDIENTE';
+  const tieneDesp1 = desp1 !== null ? desp1 : Boolean(fuente.d1);
+  const tieneDesp2 = desp2 !== null ? desp2 : Boolean(fuente.d2);
+
+  const elegirAnimal = (id: string) => {
+    setAnimalId(id);
+    setCastrado(null);
+    setVirales(null);
+    setDesp1(null);
+    setDesp2(null);
+  };
   const textoVisible = estadoVisible !== null ? estadoVisible : caso?.estadoVisible ?? '';
 
   const handleGuardar = async () => {
@@ -64,6 +83,23 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
     setErrorMsg(null);
     try {
       const ahora = Date.now();
+      if (animal) {
+        // Ficha de un animal: se guarda solo la suya; la del caso se recalcula como resumen del grupo.
+        await casoRepository.actualizarAnimal({
+          ...animal,
+          castrado: valorCastrado,
+          virales: valorVirales,
+          fechaPrimeraDesparasitacion: tieneDesp1 ? animal.fechaPrimeraDesparasitacion || ahora : null,
+          fechaSegundaDesparasitacion: tieneDesp2 ? animal.fechaSegundaDesparasitacion || ahora : null,
+        });
+        const fresco = await casoRepository.obtenerPorId(caso.id);
+        if (fresco && fresco.estadoVisible !== textoVisible.trim()) {
+          await actualizarCaso({ ...fresco, estadoVisible: textoVisible.trim() });
+        }
+        await cargarDetalleCaso(caso.id);
+        navigation?.navigate?.('DetalleCaso', { casoId: caso.id, estadoActualizado: true });
+        return;
+      }
       const casoActualizado = {
         ...caso,
         estadoVisible: textoVisible.trim(),
@@ -116,12 +152,33 @@ export function EditarSanidadScreen({ route, navigation }: Props) {
             <MaterialIcons name="pets" size={24} color={colors.primary} />
           </View>
           <View style={styles.pacienteInfo}>
-            <Text style={styles.pacienteNombre}>{caso.nombreProvisorio}</Text>
+            <Text style={styles.pacienteNombre}>{animal ? animal.nombre : caso.nombreProvisorio}</Text>
             <Text style={styles.pacienteSub}>
               {caso.especie} · {caso.barrio} · {caso.edadEstimada || 'Edad no informada'}
             </Text>
           </View>
         </View>
+
+        {varios ? (
+          <View style={styles.seccionCard}>
+            <View style={styles.seccionHeader}>
+              <MaterialIcons name="pets" size={20} color={colors.primary} />
+              <Text style={styles.seccionTitulo}>¿De qué animal es la ficha?</Text>
+            </View>
+            <Text style={styles.seccionDesc}>La ficha sanitaria es de cada animal. Guardá antes de cambiar de uno a otro.</Text>
+            <View style={styles.chipsRow}>
+              {animales.map((a) => {
+                const activo = animal?.id === a.id;
+                return (
+                  <Pressable key={a.id} style={[styles.chip, activo && styles.chipActivo]} onPress={() => elegirAnimal(a.id)}>
+                    {activo && <MaterialIcons name="check" size={16} color={colors.onPrimary} />}
+                    <Text style={[styles.chipText, activo && styles.chipTextActivo]}>{a.nombre}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
 
         {errorMsg ? (
           <View style={styles.errorBanner}>

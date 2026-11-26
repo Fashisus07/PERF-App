@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import {
   Caso,
-  calcularUrgencia,
   diasEnEspera,
   EstadoCaso,
   EventoHistorial,
   TipoEvento,
+  UMBRAL_URGENTE_DIAS,
   Urgencia,
 } from '../../domain/models/Caso';
 import { BorradorRescate } from '../../domain/models/Rescate';
@@ -20,6 +20,10 @@ import {
 
 export type FiltroUrgencia = 'todos' | Urgencia;
 
+/** Cómo se ordena la bandeja: por prioridad (urgentes primero) o por fechas. */
+export type OrdenCasos = 'prioridad' | 'ultimo_rescate' | 'mas_antiguo' | 'ultima_revision';
+export type FiltroEstado = 'todos' | EstadoCaso;
+
 interface CasoState {
   casos: Caso[];
   casoSeleccionado: Caso | null;
@@ -28,8 +32,13 @@ interface CasoState {
   error: string | null;
   filtroUrgencia: FiltroUrgencia;
   busqueda: string;
+  soloMios: boolean;
+  orden: OrdenCasos;
+  estadoFiltro: FiltroEstado;
 
   // Acciones
+  /** Umbral de días con el que se calculan las urgencias que se muestran (viene de Ajustes). */
+  umbralDias: number;
   cargarCasos: (umbralDias?: number, silencioso?: boolean) => Promise<void>;
   cargarDetalleCaso: (id: string) => Promise<Caso | undefined>;
   registrarRescate: (borrador: BorradorRescate, sinConexion?: boolean) => Promise<Caso>;
@@ -39,6 +48,10 @@ interface CasoState {
   sincronizar: () => Promise<number>;
   setFiltroUrgencia: (filtro: FiltroUrgencia) => void;
   setBusqueda: (busqueda: string) => void;
+  setSoloMios: (soloMios: boolean) => void;
+  setOrden: (orden: OrdenCasos) => void;
+  setEstadoFiltro: (estado: FiltroEstado) => void;
+  limpiarFiltros: () => void;
 }
 
 export const useCasoStore = create<CasoState>((set, get) => ({
@@ -49,12 +62,17 @@ export const useCasoStore = create<CasoState>((set, get) => ({
   error: null,
   filtroUrgencia: 'todos',
   busqueda: '',
+  soloMios: false,
+  orden: 'prioridad',
+  estadoFiltro: 'todos',
 
-  cargarCasos: async (umbralDias = 10, silencioso = false) => {
+  umbralDias: UMBRAL_URGENTE_DIAS,
+
+  cargarCasos: async (umbralDias = UMBRAL_URGENTE_DIAS, silencioso = false) => {
     if (!silencioso) set({ cargando: true, error: null });
     try {
       const lista = await listarCasosPorUrgencia.ejecutar(umbralDias);
-      set({ casos: lista, cargando: false, error: null });
+      set({ casos: lista, umbralDias, cargando: false, error: null });
     } catch (e: any) {
       set({ cargando: false, error: e?.message || 'Error al cargar casos' });
     }
@@ -160,4 +178,8 @@ export const useCasoStore = create<CasoState>((set, get) => ({
 
   setFiltroUrgencia: (filtroUrgencia: FiltroUrgencia) => set({ filtroUrgencia }),
   setBusqueda: (busqueda: string) => set({ busqueda }),
+  setSoloMios: (soloMios: boolean) => set({ soloMios }),
+  setOrden: (orden: OrdenCasos) => set({ orden }),
+  setEstadoFiltro: (estadoFiltro: FiltroEstado) => set({ estadoFiltro }),
+  limpiarFiltros: () => set({ orden: 'prioridad', estadoFiltro: 'todos', filtroUrgencia: 'todos' }),
 }));

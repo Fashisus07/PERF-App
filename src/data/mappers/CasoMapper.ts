@@ -1,5 +1,7 @@
+import type { AnimalCaso } from '../../domain/models/Animal';
 import {
   Caso,
+  EVENTOS_QUE_NO_SON_REVISION,
   EventoHistorial,
   SyncStatus,
   Especie,
@@ -56,6 +58,8 @@ export interface CasoRow {
   modificado_por_user_id?: string | null;
   es_urgente: number;
   sync_status: string;
+  /** Derivado del historial (ver SQL_CASO_CON_REVISION). */
+  ultima_revision?: number | null;
   updated_at: number;
 }
 
@@ -68,6 +72,22 @@ export interface TurnoRow {
   recordatorio_minutos: number;
   cumplido: number;
   notification_id?: string | null;
+  sync_status: string;
+  updated_at: number;
+}
+
+export interface AnimalRow {
+  id: string;
+  caso_id: string;
+  nombre: string;
+  castrado: string;
+  virales_vif_vilef: string;
+  embarazada: number;
+  peso_gramos: number | null;
+  fecha_primera_desparasitacion: number | null;
+  fecha_segunda_desparasitacion: number | null;
+  fallecido: number;
+  motivo_fallecimiento: string | null;
   sync_status: string;
   updated_at: number;
 }
@@ -103,6 +123,7 @@ export function casoFromRow(row: CasoRow): Caso {
     gravedadClinica: gravedad,
     vulnerabilidad,
     fechaRescate: row.fecha_rescate,
+    fechaUltimaRevision: row.ultima_revision,
   });
 
   const nivelPrioridad = (row.nivel_prioridad as NivelPrioridad) || calculo.nivelPrioridad;
@@ -128,6 +149,7 @@ export function casoFromRow(row: CasoRow): Caso {
     fotoRemotePath: row.foto_remote_path ?? null,
     fotoSyncStatus: (row.foto_sync_status as any) || (row.foto_uri ? 'PENDING' : 'SYNCED'),
     fechaRescate: row.fecha_rescate,
+    fechaUltimaRevision: row.ultima_revision ?? null,
     quienSigueCaso: row.quien_sigue_caso ?? '',
     transito: {
       nombre: row.transito_nombre ?? '',
@@ -164,6 +186,24 @@ export function turnoFromRow(row: TurnoRow): Turno {
     recordatorioMinutos: row.recordatorio_minutos,
     cumplido: row.cumplido === 1,
     notificationId: row.notification_id ?? null,
+    syncStatus: row.sync_status as SyncStatus,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function animalFromRow(row: AnimalRow): AnimalCaso {
+  return {
+    id: row.id,
+    casoId: row.caso_id,
+    nombre: row.nombre,
+    castrado: row.castrado as EstadoCastracion,
+    virales: row.virales_vif_vilef as EstadoVirales,
+    embarazada: row.embarazada === 1,
+    pesoGramos: row.peso_gramos,
+    fechaPrimeraDesparasitacion: row.fecha_primera_desparasitacion,
+    fechaSegundaDesparasitacion: row.fecha_segunda_desparasitacion,
+    fallecido: row.fallecido === 1,
+    motivoFallecimiento: row.motivo_fallecimiento,
     syncStatus: row.sync_status as SyncStatus,
     updatedAt: row.updated_at,
   };
@@ -261,6 +301,24 @@ export function turnoToParams(turno: Turno): SQLiteBindParams {
   };
 }
 
+export function animalToParams(a: AnimalCaso): SQLiteBindParams {
+  return {
+    $id: a.id,
+    $caso_id: a.casoId,
+    $nombre: a.nombre,
+    $castrado: a.castrado,
+    $virales_vif_vilef: a.virales,
+    $embarazada: a.embarazada ? 1 : 0,
+    $peso_gramos: a.pesoGramos ?? null,
+    $fecha_primera_desparasitacion: a.fechaPrimeraDesparasitacion ?? null,
+    $fecha_segunda_desparasitacion: a.fechaSegundaDesparasitacion ?? null,
+    $fallecido: a.fallecido ? 1 : 0,
+    $motivo_fallecimiento: a.motivoFallecimiento ?? null,
+    $sync_status: a.syncStatus,
+    $updated_at: a.updatedAt,
+  };
+}
+
 export function eventoToParams(evento: EventoHistorial): SQLiteBindParams {
   return {
     $id: evento.id,
@@ -271,3 +329,13 @@ export function eventoToParams(evento: EventoHistorial): SQLiteBindParams {
     $sync_status: evento.syncStatus,
   };
 }
+
+/**
+ * Los casos con la fecha de su última revisión: la del evento más reciente del historial que sea
+ * una visita, nota o tratamiento (no un cambio de tránsito ni una adopción). Se deriva al leer: así
+ * no hay un dato más que sincronizar y todos los celulares ven la misma fecha.
+ */
+export const SQL_CASO_CON_REVISION = `SELECT c.*, (
+    SELECT MAX(e.fecha) FROM eventos_historial e
+    WHERE e.caso_id = c.id AND e.tipo NOT IN (${EVENTOS_QUE_NO_SON_REVISION.map((t) => `'${t}'`).join(', ')})
+  ) AS ultima_revision FROM casos c`;

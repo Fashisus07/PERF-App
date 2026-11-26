@@ -1,18 +1,9 @@
-jest.mock('react-native-url-polyfill/auto', () => ({}));
-jest.mock('../supabaseClient', () => ({
-  adminSupabase: {
-    from: jest.fn(),
-  },
-  supabase: {},
-  SUPABASE_URL: 'https://ibeinjomorryrkqrdpsx.supabase.co',
-}));
-
 import {
   generarHtmlEmailCoordinador,
   DatosNuevoVoluntario,
-} from '../NotificacionesCoordinadoresService';
+} from '../../../../supabase/functions/_shared/emailCoordinador';
 
-describe('NotificacionesCoordinadoresService', () => {
+describe('Correo a coordinadores (Edge Function notificar-voluntario)', () => {
   const datosMock: DatosNuevoVoluntario = {
     id: '1bdb437b-2c0f-4de7-bb33-9cae6b569b6f',
     nombre: 'Facundo Espinosa',
@@ -82,5 +73,17 @@ describe('NotificacionesCoordinadoresService', () => {
     );
 
     expect(html).toContain('eliminarán definitivamente de la base de datos');
+  });
+
+  it('debe escapar el HTML de los datos que escribe el postulante', () => {
+    const html = generarHtmlEmailCoordinador(
+      { ...datosMock, nombre: '<script>alert(1)</script>' },
+      urlAprobar,
+      urlRechazar,
+      'Facundo'
+    );
+
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
   });
 });
